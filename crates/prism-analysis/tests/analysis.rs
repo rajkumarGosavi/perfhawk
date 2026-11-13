@@ -175,3 +175,43 @@ fn out_of_range_sample_type_yields_empty_views() {
     assert_eq!((s.callees.total, s.callers.total), (0, 0));
     assert!(s.callees.children.is_empty() && s.callers.children.is_empty());
 }
+
+/// The unfiltered fast path (stack trie) must agree with the per-sample path
+/// (forced here by a hide filter that matches nothing).
+#[test]
+fn unfiltered_fast_path_matches_per_sample_path() {
+    let mut b = ProfileBuilder::new(
+        vec![SampleType {
+            name: "samples".into(),
+            unit: Unit::Count,
+        }],
+        meta(),
+    );
+    let fr = |b: &mut ProfileBuilder, name: &str, line: u32| {
+        let f = b.function(name, "x.go", 1);
+        b.frame(f, line, 0)
+    };
+    let stacks: &[&[(&str, u32)]] = &[
+        &[("main", 1), ("a", 1), ("b", 1)],
+        &[("main", 1), ("a", 2), ("b", 1)],
+        &[("main", 1), ("a", 1), ("a", 3), ("a", 1)],
+        &[("main", 2), ("c", 1)],
+        &[],
+        &[("main", 1), ("a", 1)],
+        &[("d", 1)],
+    ];
+    for (i, s) in stacks.iter().enumerate() {
+        let frames: Vec<FrameId> = s.iter().map(|&(n, l)| fr(&mut b, n, l)).collect();
+        let st = b.stack(&frames);
+        b.add_sample(st, &[[3, 5, 7, 2, 4, 0, 1][i]], vec![])
+            .unwrap();
+    }
+    let p = b.finish();
+    let slow = Filter::parse(None, None, Some("a^")).unwrap();
+    for min in [0.0, 0.1, 0.3] {
+        assert_eq!(flame(&p, 0, &none(), min), flame(&p, 0, &slow, min));
+    }
+    assert_eq!(top(&p, 0, &none(), 100), top(&p, 0, &slow, 100));
+    assert!(flame(&p, 3, &none(), 0.0).children.is_empty());
+    assert!(top(&p, 3, &none(), 10).is_empty());
+}

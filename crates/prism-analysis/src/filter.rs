@@ -25,6 +25,11 @@ impl Filter {
             hide: c(hide)?,
         })
     }
+
+    /// True when no filter is set (every sample and frame is kept).
+    pub fn is_empty(&self) -> bool {
+        self.focus.is_none() && self.exclude.is_none() && self.hide.is_none()
+    }
 }
 
 /// Regex plus a per-function memo so each function name is tested once.
@@ -66,11 +71,13 @@ pub(crate) fn for_each_sample(
     let mut funcs: Vec<FuncId> = Vec::new();
     for (i, s) in p.samples.iter().enumerate() {
         funcs.clear();
-        funcs.extend(
-            p.stack_frames(s.stack)
-                .into_iter()
-                .map(|f| p.frames[f.0 as usize].function),
-        );
+        let mut cur = s.stack;
+        while let Some(id) = cur {
+            let node = &p.stacks[id.0 as usize];
+            funcs.push(p.frames[node.frame.0 as usize].function);
+            cur = node.parent;
+        }
+        funcs.reverse();
         if exclude.re.is_some() && funcs.iter().any(|&f| exclude.matches(p, f)) {
             continue;
         }

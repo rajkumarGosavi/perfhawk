@@ -1,4 +1,5 @@
-use crate::filter::{for_each_sample, Filter};
+use crate::filter::Filter;
+use crate::tree::function_totals;
 use prism_model::Profile;
 use serde::Serialize;
 
@@ -18,26 +19,7 @@ pub struct TopRow {
 /// counts once toward `total` for that sample.
 pub fn top(p: &Profile, sample_type: usize, filter: &Filter, limit: usize) -> Vec<TopRow> {
     let n = p.functions.len();
-    let mut selfs = vec![0i64; n];
-    let mut totals = vec![0i64; n];
-    let mut seen = vec![0u64; n];
-    let mut stamp = 0u64;
-    let mut root_total = 0i64;
-    for_each_sample(p, sample_type, filter, |funcs, v| {
-        stamp += 1;
-        root_total = root_total.saturating_add(v);
-        if let Some(leaf) = funcs.last() {
-            let s = &mut selfs[leaf.0 as usize];
-            *s = s.saturating_add(v);
-        }
-        for f in funcs {
-            let i = f.0 as usize;
-            if seen[i] != stamp {
-                seen[i] = stamp;
-                totals[i] = totals[i].saturating_add(v);
-            }
-        }
-    });
+    let (root_total, selfs, totals, seen) = function_totals(p, sample_type, filter);
     let pct = |v: i64| {
         if root_total == 0 {
             0.0
@@ -46,7 +28,7 @@ pub fn top(p: &Profile, sample_type: usize, filter: &Filter, limit: usize) -> Ve
         }
     };
     let mut rows: Vec<TopRow> = (0..n)
-        .filter(|&i| seen[i] != 0)
+        .filter(|&i| seen[i])
         .map(|i| {
             let f = &p.functions[i];
             TopRow {
