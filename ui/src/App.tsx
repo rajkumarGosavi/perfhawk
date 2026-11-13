@@ -36,7 +36,7 @@ export default function App() {
       <header className="app-header">
         <h1>
           <button className="linklike" onClick={() => navigate({}, 'push', true)}>
-            PRISM
+            PERFHAWK
           </button>
         </h1>
         <span className="muted">local profiling workbench</span>

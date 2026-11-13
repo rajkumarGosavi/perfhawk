@@ -1,0 +1,17 @@
+[package]
+name = "perfhawk-analysis"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+perfhawk-model = { path = "../perfhawk-model" }
+regex.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+stacker.workspace = true
+rustc-hash.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

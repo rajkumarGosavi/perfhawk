@@ -26,7 +26,7 @@ Observations:
 
 ## .NET: EventPipe SampleProfiler
 
-Not measured end to end in this spike. What is established from the code: `helpers/prism-dotnet/Convert/TraceConverter.cs` already reads TraceEvent events and uses `TimeStampRelativeMSec` (contention events), so every event, including SampleProfiler samples, carries a timestamp relative to the trace start with sub-millisecond resolution. The converter currently collapses samples into aggregated pprof, which drops it.
+Not measured end to end in this spike. What is established from the code: `helpers/perfhawk-dotnet/Convert/TraceConverter.cs` already reads TraceEvent events and uses `TimeStampRelativeMSec` (contention events), so every event, including SampleProfiler samples, carries a timestamp relative to the trace start with sub-millisecond resolution. The converter currently collapses samples into aggregated pprof, which drops it.
 
 **Decision (.NET):** use native timestamps; the helper writes a sidecar of per-sample millisecond offsets next to the pprof, and the Rust side buckets them at 20 ms. Sample yield per second was not measured here (the SampleProfiler's documented default interval is 1 ms, which would give far more samples than 20 ms buckets need).
 
@@ -36,6 +36,6 @@ Not measured end to end in this spike. What is established from the code: `helpe
 |---|---|---|
 | Go | cpu, wall (derived from stack sampling) | 250 ms |
 | .NET | cpu, wall | 20 ms |
-| imports (`prism import`) | none unless the importer carries time | – |
+| imports (`perfhawk import`) | none unless the importer carries time | – |
 
 Neither runtime fails its bar, so the plan continues; no human gate is needed.

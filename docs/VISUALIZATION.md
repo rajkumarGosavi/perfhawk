@@ -1,6 +1,6 @@
 # Visualization & "find it faster" plan
 
-**Status:** V1–V6 delivered (see §7), 2026-11-13 · **Scope:** the analysis UI/CLI for every profile kind prism captures · **Relates to:** [PLAN.md](PLAN.md) §3 (views), §7 (phases), [FOLLOWUPS.md](FOLLOWUPS.md)
+**Status:** V1–V6 delivered (see §7), 2026-11-13 · **Scope:** the analysis UI/CLI for every profile kind perfhawk captures · **Relates to:** [PLAN.md](PLAN.md) §3 (views), §7 (phases), [FOLLOWUPS.md](FOLLOWUPS.md)
 
 Goal: a user opens any profile (CPU, wall, memory, lock, blocking, threads, later block I/O) and gets to *"this function, this call path, this moment is the problem"* in seconds, without knowing the language's own tooling.
 
@@ -50,7 +50,7 @@ Effort: S ≈ days, M ≈ 1–2 weeks, L ≈ 3+ weeks. "Data" = what the model n
 | A2 | **Hot path button** in flame, icicle and a new call tree: expand/highlight the heaviest path (and "next heaviest" on repeat). | VS "Show Hot Path". | tree | S |
 | A3 | **Call tree** (expandable, self/total/%, keyboard nav) linked with flame selection. Already listed in PLAN §3. | The precise, searchable companion to the graph. | tree | M |
 | A4 | **Call graph view** (pprof "Graph"): nodes sized/coloured by flat/cum, edges by flow, dashed = elided, node-count slider, click = focus. Layout via a small layered-graph algorithm in the UI (no Graphviz dependency). | Shows fan-in and shared callees (e.g. five handlers all spending time in one JSON encoder) that flame graphs split across towers. | caller→callee edges from stacks | L |
-| A5 | **Transforms as URL chips**: focus function, focus subtree, merge function, collapse recursion, drop function, collapse by package/module (".NET namespace", "Go package"). Replaces most regex usage for casual users; regex stays for power users. | Firefox transforms, speedscope `r`. | tree ops in `prism-analysis` | M |
+| A5 | **Transforms as URL chips**: focus function, focus subtree, merge function, collapse recursion, drop function, collapse by package/module (".NET namespace", "Go package"). Replaces most regex usage for casual users; regex stays for power users. | Firefox transforms, speedscope `r`. | tree ops in `perfhawk-analysis` | M |
 | A6 | **Left-heavy / merged ordering toggle** and side-by-side **flame + top table** layout. | Speedscope Left Heavy; Parca "Both". | none | S |
 | A7 | **Diff improvements:** diff call tree + "regressions only / improvements only" filter, sort top-changes by %, a "new / gone" badge column, red-blue-colour-blind-safe palette toggle, side-by-side (base | head) mode. | Gregg limitation (vanished paths), Pyroscope side-by-side. | none | M |
 | A8 | **Keyboard model + command palette** (`/` search, `1–5` views, `h` hot path, `[` `]` zoom history, `?` help). | Speedscope. | none | S |
@@ -60,7 +60,7 @@ Effort: S ≈ days, M ≈ 1–2 weeks, L ≈ 3+ weeks. "Data" = what the model n
 
 | # | Feature | Detail | Effort |
 |---|---|---|---|
-| B1 | **Findings panel** (local rule engine, scored, enable/disable): e.g. "one function owns >30 % self time", "recursion deeper than N", "allocation rate dominated by `X`", "lock wait > 20 % of wall in one lock site", "GC/alloc frames > 25 % of CPU", "profile is empty because mutex profiling is disabled" (we already warn), "sampling too sparse (< 100 samples)". Each finding links to the exact node/filter that shows it. | JMC automated analysis. Deterministic and explainable, so it also feeds the parked "Prism Ask" later. | M |
+| B1 | **Findings panel** (local rule engine, scored, enable/disable): e.g. "one function owns >30 % self time", "recursion deeper than N", "allocation rate dominated by `X`", "lock wait > 20 % of wall in one lock site", "GC/alloc frames > 25 % of CPU", "profile is empty because mutex profiling is disabled" (we already warn), "sampling too sparse (< 100 samples)". Each finding links to the exact node/filter that shows it. | JMC automated analysis. Deterministic and explainable, so it also feeds the parked "Perfhawk Ask" later. | M |
 | B2 | **Per-kind starting view** (table in §5). | Principle 5. | S |
 | B3 | **Cross-kind pivot**: from a hot CPU function jump to the same function in the session's wall, lock and memory profiles ("this function also appears at 12 % of lock wait"). | Sessions already group kinds captured together. | S–M |
 
@@ -71,7 +71,7 @@ Effort: S ≈ days, M ≈ 1–2 weeks, L ≈ 3+ weeks. "Data" = what the model n
 | C1 | **Time heat map** with range selection → flame graph for the range; Ctrl/second range → baseline → diff between two windows. | FlameScope + async-profiler heatmap + Pyroscope range-pick. Finds stalls, periodic bursts, warm-up vs steady state. | **per-sample timestamps** | L |
 | C2 | **Timeline with tracks** (per thread/goroutine, thread state: running / runnable / blocked, GC, lock waits), range select drives every other view. | Perfetto, Firefox track timeline; PLAN Phase 2. | timeline kind (PLAN §196) | L |
 | C3 | **Session timeline**: sparkline per kind across the capture window; click a spike to zoom all kinds. | Parca metrics graph. | timestamps | M |
-| C4 | **History view** (multiple sessions of one target over days): a trend line of a function's self time, click a point to open or diff that session. | Pyroscope/Parca time-series → profile. Fits `prism diff` and CI regression gating (PLAN §5.2). | sessions already stored | M |
+| C4 | **History view** (multiple sessions of one target over days): a trend line of a function's self time, click a point to open or diff that session. | Pyroscope/Parca time-series → profile. Fits `perfhawk diff` and CI regression gating (PLAN §5.2). | sessions already stored | M |
 
 ### Tier D — power tools
 
@@ -132,9 +132,9 @@ D1 **Query tab** (filter DSL from PLAN §205, then SQL over timelines via embedd
 
 **V4 rulings:** in-house layered layout instead of a library (closes §9 Q1; the layout module is isolated so a library could replace it); nodes are the top N by total, so a small-total high-self function can be hidden (the slider is the escape hatch); no differential graph; no node dragging or clustering.
 
-**V5 rulings:** C2 (per-thread tracks) deferred to the Phase 2 event timeline; time data is a sidecar file beside the profile blob (no model or store migration); buckets are decided at capture time (Q2): 20 ms for .NET, one pprof window (250 ms, from the spike in [perf/timestamps.md](perf/timestamps.md)) for Go; samples carry a `prism.bucket` label that the capture client turns into the sidecar; Go wall-clock (fgprof) has no windowed route so it has no time data; windows are in ms from capture start; the heat map ignores the current window; the session timeline aligns profiles by start time.
+**V5 rulings:** C2 (per-thread tracks) deferred to the Phase 2 event timeline; time data is a sidecar file beside the profile blob (no model or store migration); buckets are decided at capture time (Q2): 20 ms for .NET, one pprof window (250 ms, from the spike in [perf/timestamps.md](perf/timestamps.md)) for Go; samples carry a `perfhawk.bucket` label that the capture client turns into the sidecar; Go wall-clock (fgprof) has no windowed route so it has no time data; windows are in ms from capture start; the heat map ignores the current window; the session timeline aligns profiles by start time.
 
-**V6 rulings:** series come from `series:<name>` tags or a key derived from the target (program basename, or URL), with no schema change; a function is identified by its exact name (a rename is one improvement and one regression); History points for sessions where the function is absent are gaps, not zeros; Enter or Open from a History point opens the profile's flame with the function highlighted (history has no per-profile function id); `prism check` reads the local store only and does no PR commenting (a later phase); see [CI.md](CI.md).
+**V6 rulings:** series come from `series:<name>` tags or a key derived from the target (program basename, or URL), with no schema change; a function is identified by its exact name (a rename is one improvement and one regression); History points for sessions where the function is absent are gaps, not zeros; Enter or Open from a History point opens the profile's flame with the function highlighted (history has no per-profile function id); `perfhawk check` reads the local store only and does no PR commenting (a later phase); see [CI.md](CI.md).
 
 Order rationale: V1–V3 need no new capture data and give the largest "time to first insight" win; V4 is the one "pprof web" gap users will notice; V5 is the largest build and unlocks the transient-problem class that aggregate graphs cannot show.
 

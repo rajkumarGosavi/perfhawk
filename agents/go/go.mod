@@ -1,4 +1,4 @@
-module github.com/rajkumarGosavi/prism/agents/go
+module github.com/rajkumarGosavi/perfhawk/agents/go
 
 go 1.22
 

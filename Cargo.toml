@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/prism-model",
-    "crates/prism-import",
-    "crates/prism-analysis",
-    "crates/prism-store",
-    "crates/prism-capture",
-    "crates/prism-server",
-    "crates/prism-cli",
+    "crates/perfhawk-model",
+    "crates/perfhawk-import",
+    "crates/perfhawk-analysis",
+    "crates/perfhawk-store",
+    "crates/perfhawk-capture",
+    "crates/perfhawk-server",
+    "crates/perfhawk-cli",
     "tools/genprof",
 ]
 

@@ -1,7 +1,7 @@
 # Unified Profiling Workflow App — Research & Plan
 
 **Status:** Draft v0.1 · 2026-11-13
-**Working name:** `prism` (placeholder; one CLI binary `prism`, one UI)
+**Working name:** `perfhawk` (placeholder; one CLI binary `perfhawk`, one UI)
 
 **Goal:** One consistent, *on-demand* (not continuous) profiling workflow across languages for six profile kinds: **CPU, wall-clock, memory, mutex/lock, block I/O, goroutine/thread**.
 
@@ -11,7 +11,7 @@
 
 | Topic | Decision |
 |---|---|
-| UI surface | **CLI + local browser UI** (`prism ui`); Tauri desktop wrapper later, same code |
+| UI surface | **CLI + local browser UI** (`perfhawk ui`); Tauri desktop wrapper later, same code |
 | Primary users | **Developers, local machines / local containers**; remote, Kubernetes, SSH deferred to Phase 3 |
 | MVP languages | **Go and C# / .NET** |
 | MVP operating systems | **Linux, macOS and Windows** (full cross-platform from the start) |
@@ -31,11 +31,11 @@
 | Threads & tasks | pprof `goroutine` debug=2 — native | Diagnostics IPC stack snapshot (`dotnet-stack` equivalent) + thread-pool counters — native | — |
 
 **.NET integration approach.** .NET exposes everything through the cross-platform **Diagnostics IPC** protocol (Unix domain socket on Linux/macOS, named pipe on Windows), which streams EventPipe `.nettrace` data. Plan:
-- MVP: a small bundled **.NET helper (`prism-dotnet`)** built on `Microsoft.Diagnostics.NETCore.Client` + `TraceEvent` that starts sessions, parses `.nettrace` and emits our unified model. Fastest path to correct parsing (TraceEvent handles rundown, method maps, R2R/JIT symbols).
+- MVP: a small bundled **.NET helper (`perfhawk-dotnet`)** built on `Microsoft.Diagnostics.NETCore.Client` + `TraceEvent` that starts sessions, parses `.nettrace` and emits our unified model. Fastest path to correct parsing (TraceEvent handles rundown, method maps, R2R/JIT symbols).
 - Later: native Rust Diagnostics IPC client + nettrace parser to drop the .NET dependency.
 - Requires the target's runtime to have diagnostics enabled (default on; `DOTNET_EnableDiagnostics=0` disables it — detect and explain).
 
-**Go integration approach.** No helper needed for attach-style capture when the app exposes `net/http/pprof`; otherwise provide `prism/agent` (a tiny Go package: pprof + exec trace + flight recorder + fgprof behind one endpoint) and a launch mode for `go test`/`go run` that injects profiling flags.
+**Go integration approach.** No helper needed for attach-style capture when the app exposes `net/http/pprof`; otherwise provide `perfhawk/agent` (a tiny Go package: pprof + exec trace + flight recorder + fgprof behind one endpoint) and a launch mode for `go test`/`go run` that injects profiling flags.
 
 ### 0.2 Open-core boundary
 
@@ -158,11 +158,11 @@ The same word means different things per runtime. The UI must present **one sema
 
 ```
             ┌──────────────── UI (React + TS, WebGL flame graphs) ───────────────┐
-            │  Desktop (Tauri)   │   Browser (`prism ui`)   │   IDE (VS Code/JB) │
+            │  Desktop (Tauri)   │   Browser (`perfhawk ui`)   │   IDE (VS Code/JB) │
             └───────────────┬────────────────────────────────────────────────────┘
                             │ JSON-RPC / gRPC (local)        Analysis also runs as WASM in UI
 ┌───────────────────────────┴─────────────────────────────────────────────────────┐
-│ prism core (Rust, single static binary)                                         │
+│ perfhawk core (Rust, single static binary)                                         │
 │  ┌──────────────┐ ┌────────────────┐ ┌───────────────┐ ┌─────────────────────┐  │
 │  │ Session      │ │ Analysis engine│ │ Symbolizer    │ │ Store               │  │
 │  │ orchestrator │ │ merge/diff/    │ │ DWARF, PDB,   │ │ SQLite metadata +   │  │
@@ -205,14 +205,14 @@ Export: pprof, OTLP Profiles, speedscope, Firefox Profiler, collapsed, Chrome tr
 - **Query language**: small filter DSL (`kind=cpu fn~"json" thread="worker-*"`) + optional SQL over timelines (DuckDB embedded).
 
 ### 4.4 Store & sharing
-- Local workspace: `~/.prism` or per-repo `.prism/` — SQLite (sessions, tags, git commit, env, host) + compressed blobs.
-- Share: export a self-contained `.prism` bundle (profile + symbols + metadata), or push to an **optional** tiny share server (single container, S3 backend). This is *not* a continuous profiling backend — just artifact hosting with links and comments.
+- Local workspace: `~/.perfhawk` or per-repo `.perfhawk/` — SQLite (sessions, tags, git commit, env, host) + compressed blobs.
+- Share: export a self-contained `.perfhawk` bundle (profile + symbols + metadata), or push to an **optional** tiny share server (single container, S3 backend). This is *not* a continuous profiling backend — just artifact hosting with links and comments.
 
 ### 4.5 Tech stack (recommended)
 - **Core/CLI:** Rust (single binary, fast parsing of large profiles, WASM target, `aya`/`libbpf-rs` for eBPF, `gimli`/`object`/`pdb` crates for symbolization).
 - **UI:** TypeScript + React (or Solid) + canvas/WebGL flame graph renderer; virtualized tables; same bundle for desktop/web/IDE webview.
 - **Desktop:** Tauri (small, native, reuses Rust core in-process).
-- **Language helper agents (optional, tiny):** Go package `prism/agent` (exposes pprof + trace + fgprof over one endpoint), Python/Node/Java helpers only where attach is impossible.
+- **Language helper agents (optional, tiny):** Go package `perfhawk/agent` (exposes pprof + trace + fgprof over one endpoint), Python/Node/Java helpers only where attach is impossible.
 
 ---
 
@@ -221,16 +221,16 @@ Export: pprof, OTLP Profiles, speedscope, Firefox Profiler, collapsed, Chrome tr
 Same five verbs in every language, CLI and UI mirror each other:
 
 ```bash
-prism targets                          # list processes/pods with detected runtime + supported kinds
-prism record --pid 4123 --kinds cpu,wall,lock --duration 30s
-prism record -- python app.py          # launch mode
-prism record --k8s pod/api-7f9 -c app --kinds cpu,io
-prism record --pid 4123 --trigger "cpu>80% for 10s" --kinds cpu,threads
-prism open last                        # UI on the latest session
-prism diff main.prism feature.prism    # A/B
-prism report last --format md|html     # shareable findings
-prism export last --to pprof|otlp|speedscope
-prism import trace.jfr heap.hprof profile.cpuprofile   # analyze anything
+perfhawk targets                          # list processes/pods with detected runtime + supported kinds
+perfhawk record --pid 4123 --kinds cpu,wall,lock --duration 30s
+perfhawk record -- python app.py          # launch mode
+perfhawk record --k8s pod/api-7f9 -c app --kinds cpu,io
+perfhawk record --pid 4123 --trigger "cpu>80% for 10s" --kinds cpu,threads
+perfhawk open last                        # UI on the latest session
+perfhawk diff main.perfhawk feature.perfhawk    # A/B
+perfhawk report last --format md|html     # shareable findings
+perfhawk export last --to pprof|otlp|speedscope
+perfhawk import trace.jfr heap.hprof profile.cpuprofile   # analyze anything
 ```
 
 **Session = unit of work:** target metadata, environment, git SHA, multiple kinds captured *concurrently over the same window* (so CPU, lock and I/O line up on one timeline), notes, tags.
@@ -243,11 +243,11 @@ prism import trace.jfr heap.hprof profile.cpuprofile   # analyze anything
 
 **High value, fits the non-continuous scope**
 1. **Execution timeline view** — correlate CPU, GC pauses, lock waits, I/O and scheduler latency on one time axis (Go trace, JFR, ETW, eBPF). This is where most "why is it slow" answers come from.
-2. **Diff & regression gating in CI** — `prism bench`/`prism ci`: profile benchmarks (`go test -bench`, JMH, pytest-benchmark, criterion), compare against baseline artifact, fail/comment on PR when a function regresses > X%.
+2. **Diff & regression gating in CI** — `perfhawk bench`/`perfhawk ci`: profile benchmarks (`go test -bench`, JMH, pytest-benchmark, criterion), compare against baseline artifact, fail/comment on PR when a function regresses > X%.
 3. **Heap snapshot analysis & leak finder** — dominator tree, retained size, "growth between snapshot 1 → 2 → 3" (3-snapshot technique), duplicated strings/collections.
 4. **Off-CPU & scheduler analysis** (runqueue latency, CPU throttling in containers — cgroup `cpu.stat` throttled time) — huge real-world win for Kubernetes users.
 5. **Triggered / flight-recorder captures** — capture on threshold, signal, HTTP call, or "last 30s" ring buffer (Go flight recorder, JFR, perf ring buffer). Gives the benefits of continuous profiling for incidents without running a system.
-6. **AI analysis assistant ("Prism Ask")** — natural-language questions, auto-insights, explain-this, compare narratives, capture copilot; expose an **MCP server** (`prism mcp`) so coding agents can record/analyze profiles directly. Opt-in and local-model-capable for privacy. **Deferred until the basic app is ready** — design parked in [AI.md](AI.md).
+6. **AI analysis assistant ("Perfhawk Ask")** — natural-language questions, auto-insights, explain-this, compare narratives, capture copilot; expose an **MCP server** (`perfhawk mcp`) so coding agents can record/analyze profiles directly. Opt-in and local-model-capable for privacy. **Deferred until the basic app is ready** — design parked in [AI.md](AI.md).
 7. **IDE integration** — VS Code/JetBrains: "Profile this test/run config", inline gutter annotations with self/total time per line, jump from flame frame to source.
 8. **PGO export** — produce Go PGO `default.pgo`, LLVM/`.profdata`-ready, .NET/JVM hints.
 9. **Runtime counters panel** — GC stats, heap size, goroutine/thread counts, event-loop lag, GIL contention, sampled alongside the capture.
@@ -258,7 +258,7 @@ prism import trace.jfr heap.hprof profile.cpuprofile   # analyze anything
 12. **Permissions helper** — explains & fixes `perf_event_paranoid`, `ptrace_scope`, `CAP_SYS_PTRACE/CAP_BPF`, SIP on macOS, admin on Windows.
 13. **Symbol management** — debuginfod client, PDB symbol servers, source-map upload, split DWARF, stripped-binary warnings.
 14. **Redaction** — scrub paths, hostnames, env vars, string contents of heap snapshots before sharing.
-15. **Scripting API / notebooks** — Python & TS bindings over the analysis engine (`prism.load("x.prism").top(10)`), Jupyter integration.
+15. **Scripting API / notebooks** — Python & TS bindings over the analysis engine (`perfhawk.load("x.perfhawk").top(10)`), Jupyter integration.
 16. **Collaboration** — comments pinned to frames, saved views (URL encodes transforms), report templates.
 
 **Later / optional**
@@ -270,12 +270,12 @@ prism import trace.jfr heap.hprof profile.cpuprofile   # analyze anything
 
 | Phase | Scope | Exit criteria |
 |---|---|---|
-| **0. Foundations** (4–6 wk) | Rust core, unified model, pprof/collapsed/speedscope importers (cpuprofile/JFR → Phase 3), flame/icicle/top/sandwich UI, local store, `prism import/ls/show/open/ui` — [implementation plan](superpowers/plans/2026-11-13-phase0-foundations.md) | 500 MB pprof imports ≤ 20 s; flame/top queries ≤ 1 s |
-| **1. MVP capture** (8–10 wk) | Providers: **Go, .NET** (via `prism-dotnet` helper) · kinds: CPU, wall, memory, lock, threads · launch + attach · sessions · diff · **Linux, macOS, Windows** | Same `prism record` UX works for Go and .NET on all three OSes; matrix in §0.1 green except Block I/O — [implementation plan](superpowers/plans/2026-11-13-phase1-capture.md) |
+| **0. Foundations** (4–6 wk) | Rust core, unified model, pprof/collapsed/speedscope importers (cpuprofile/JFR → Phase 3), flame/icicle/top/sandwich UI, local store, `perfhawk import/ls/show/open/ui` — [implementation plan](superpowers/plans/2026-11-13-phase0-foundations.md) | 500 MB pprof imports ≤ 20 s; flame/top queries ≤ 1 s |
+| **1. MVP capture** (8–10 wk) | Providers: **Go, .NET** (via `perfhawk-dotnet` helper) · kinds: CPU, wall, memory, lock, threads · launch + attach · sessions · diff · **Linux, macOS, Windows** | Same `perfhawk record` UX works for Go and .NET on all three OSes; matrix in §0.1 green except Block I/O — [implementation plan](superpowers/plans/2026-11-13-phase1-capture.md) |
 | **2. Contention & I/O** (6–8 wk) | Block I/O: Linux **eBPF provider**, Windows **ETW provider**, macOS best-effort; off-CPU / scheduler analysis; timeline view; Doctor mode | Block I/O per stack for Go and .NET on Linux & Windows |
 | **3. Breadth** (8 wk) | Java, Python, Node, then Ruby, Rust/C/C++ (perf/samply); Docker/Kubernetes/SSH targets; heap snapshot analysis; native Rust nettrace parser | Full languages × 3 OS capability matrix published |
 | **4. Workflow** (ongoing) | CI regression gating, IDE plugins, triggers/flight recorder, share server, plugin SDK | Teams use it in PR review |
-| **5. AI (deferred)** | Prism Ask per [AI.md](AI.md) — picked up only after Phases 0–3 ship | — |
+| **5. AI (deferred)** | Perfhawk Ask per [AI.md](AI.md) — picked up only after Phases 0–3 ship | — |
 
 ---
 
@@ -298,7 +298,7 @@ prism import trace.jfr heap.hprof profile.cpuprofile   # analyze anything
 
 All questions are answered — see §0. Follow-ups decided 2026-11-13:
 1. Minimum supported target versions: **Go 1.22+, .NET 8+**.
-2. The self-contained `prism-dotnet` helper (+30–60 MB) is **acceptable for the MVP**; the native Rust nettrace parser stays in Phase 3.
+2. The self-contained `perfhawk-dotnet` helper (+30–60 MB) is **acceptable for the MVP**; the native Rust nettrace parser stays in Phase 3.
 
 ---
 

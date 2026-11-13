@@ -1,7 +1,7 @@
 OTHER BUNDLED COMPONENTS
 ========================
 
-prism-dotnet.exe (the .NET recording helper) is a self-contained single-file
+perfhawk-dotnet.exe (the .NET recording helper) is a self-contained single-file
 application. It bundles:
 
   - The .NET 8 runtime and base class library
@@ -17,7 +17,7 @@ application. It bundles:
     Copyright (c) Microsoft Corporation. MIT License.
     https://github.com/microsoft/perfview
 
-The Go agent (github.com/rajkumarGosavi/prism/agents/go) is not part of this
+The Go agent (github.com/rajkumarGosavi/perfhawk/agents/go) is not part of this
 package; it is a library compiled into your own program. It depends on:
 
   - github.com/felixge/fgprof (MIT)         https://github.com/felixge/fgprof

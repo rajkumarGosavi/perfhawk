@@ -1,4 +1,4 @@
-# Releasing Prism
+# Releasing Perfhawk
 
 For maintainers. The engineering checklist is in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md); the launch plan is in [LAUNCH.md](LAUNCH.md).
 
@@ -8,7 +8,7 @@ A **draft** GitHub Release (published by a human) with:
 
 | Asset | What |
 |---|---|
-| `prism-<version>-windows-x64.zip` | `prism.exe` (UI embedded), `prism-dotnet.exe` (self-contained helper), `LICENSE`, `THIRD_PARTY_NOTICES.txt`, `CHANGELOG.md`, `README.txt`, `examples\` |
+| `perfhawk-<version>-windows-x64.zip` | `perfhawk.exe` (UI embedded), `perfhawk-dotnet.exe` (self-contained helper), `LICENSE`, `THIRD_PARTY_NOTICES.txt`, `CHANGELOG.md`, `README.txt`, `examples\` |
 | `SHA256SUMS` | SHA-256 of the zip |
 | `install.ps1` | The installer, from `scripts/install.ps1` |
 
@@ -17,7 +17,7 @@ Plus a Go module tag for the agent (see below).
 ## Steps
 
 1. **Branch and freeze.** Work from `main`; CI must be green on Windows.
-2. **Version.** Set `version` in `Cargo.toml` `[workspace.package]` and `<Version>` in `helpers/prism-dotnet/PrismDotnet.csproj` to the same value.
+2. **Version.** Set `version` in `Cargo.toml` `[workspace.package]` and `<Version>` in `helpers/perfhawk-dotnet/PerfhawkDotnet.csproj` to the same value.
 3. **Changelog.** Move `Unreleased` entries under the new version with a date in `CHANGELOG.md`.
 4. **Release candidate.** Tag `v0.1.0-rc.1` (a tag containing `-` becomes a *pre-release*):
    ```powershell
@@ -37,7 +37,7 @@ Plus a Go module tag for the agent (see below).
    ```powershell
    mkdir $env:TEMP\gotest; cd $env:TEMP\gotest
    go mod init example.com/t
-   go get github.com/rajkumarGosavi/prism/agents/go@v0.1.0
+   go get github.com/rajkumarGosavi/perfhawk/agents/go@v0.1.0
    ```
    Go's module proxy caches a version forever; **never move or delete a published tag**. If something is wrong, publish `v0.1.1`.
 9. **Smoke test the published release:** `irm .../install.ps1 | iex` on a clean machine.
@@ -49,7 +49,7 @@ Branch from the tag, fix, bump the patch version, tag `v0.1.1`. The workflow is 
 
 ## Code signing
 
-Unsigned binaries trigger SmartScreen and antivirus warnings. Sign **`prism.exe` and `prism-dotnet.exe` before they are zipped**, i.e. in the Release workflow between "Third-party notices" and "Package" (there is a comment marking the spot).
+Unsigned binaries trigger SmartScreen and antivirus warnings. Sign **`perfhawk.exe` and `perfhawk-dotnet.exe` before they are zipped**, i.e. in the Release workflow between "Third-party notices" and "Package" (there is a comment marking the spot).
 
 Options, cheapest first:
 
@@ -57,7 +57,7 @@ Options, cheapest first:
 - **Azure Trusted Signing**: low monthly cost, no hardware token. Needs an Azure subscription and identity validation (can take days).
 - **OV/EV certificate** from a CA: EV gives immediate SmartScreen reputation but needs a hardware token or cloud HSM.
 
-Start identity validation early; it has lead time. After signing, add a verification step: `Get-AuthenticodeSignature .\prism.exe` must be `Valid`.
+Start identity validation early; it has lead time. After signing, add a verification step: `Get-AuthenticodeSignature .\perfhawk.exe` must be `Valid`.
 Submit each release to Microsoft Security Intelligence (<https://www.microsoft.com/wdsi/filesubmission>) as a proactive false-positive check.
 
 ## Local dry run
@@ -66,13 +66,13 @@ From a Windows PowerShell prompt at the repo root (needs Rust, Node, .NET 8 SDK,
 
 ```powershell
 cd ui; npm ci; npm run build; cd ..
-cargo build --release --locked -p prism-cli
-dotnet publish helpers/prism-dotnet -c Release -r win-x64 --self-contained `
+cargo build --release --locked -p perfhawk-cli
+dotnet publish helpers/perfhawk-dotnet -c Release -r win-x64 --self-contained `
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
   -p:EnableCompressionInSingleFile=true -o target/helper
 ./tools/release/build-notices.ps1
 ./tools/release/package.ps1 -Version dev-local
-./tools/release/smoke-test.ps1 -Zip dist/prism-dev-local-windows-x64.zip
+./tools/release/smoke-test.ps1 -Zip dist/perfhawk-dev-local-windows-x64.zip
 ```
 
 ## Generated files

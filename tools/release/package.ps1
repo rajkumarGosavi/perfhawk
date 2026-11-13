@@ -1,19 +1,19 @@
 <#
-.SYNOPSIS  Assemble dist/prism-<version>-windows-x64.zip and its SHA256SUMS.
-.DESCRIPTION Expects: target/release/prism.exe, target/helper/prism-dotnet.exe,
+.SYNOPSIS  Assemble dist/perfhawk-<version>-windows-x64.zip and its SHA256SUMS.
+.DESCRIPTION Expects: target/release/perfhawk.exe, target/helper/perfhawk-dotnet.exe,
              THIRD_PARTY_NOTICES.txt (see build-notices.ps1).
 #>
 param([Parameter(Mandatory)][string]$Version)
 $ErrorActionPreference = 'Stop'
 Set-Location (Resolve-Path "$PSScriptRoot/../..")
 
-$name  = "prism-$Version-windows-x64"
+$name  = "perfhawk-$Version-windows-x64"
 $stage = "dist/stage/$name"
 Remove-Item dist -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $stage | Out-Null
 
-Copy-Item target/release/prism.exe        $stage
-Copy-Item target/helper/prism-dotnet.exe  $stage
+Copy-Item target/release/perfhawk.exe        $stage
+Copy-Item target/helper/perfhawk-dotnet.exe  $stage
 Copy-Item LICENSE, THIRD_PARTY_NOTICES.txt, CHANGELOG.md $stage
 Copy-Item tools/release/README.txt $stage/README.txt
 Copy-Item examples $stage/examples -Recurse `

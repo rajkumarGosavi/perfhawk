@@ -44,15 +44,15 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Build prism.exe (UI embedded)
-        run: cargo build --release --locked -p prism-cli
+      - name: Build perfhawk.exe (UI embedded)
+        run: cargo build --release --locked -p perfhawk-cli
 
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
       - name: Build self-contained .NET helper
         run: >
-          dotnet publish helpers/prism-dotnet -c Release -r win-x64 --self-contained
+          dotnet publish helpers/perfhawk-dotnet -c Release -r win-x64 --self-contained
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
           -p:EnableCompressionInSingleFile=true -o target/helper
 
@@ -63,8 +63,8 @@ jobs:
           ./tools/release/build-notices.ps1 -Output THIRD_PARTY_NOTICES.txt
 
       # Code signing goes here once a certificate or Azure Trusted Signing
-      # account exists (see docs/RELEASING.md). Sign prism.exe and
-      # target/helper/prism-dotnet.exe BEFORE packaging.
+      # account exists (see docs/RELEASING.md). Sign perfhawk.exe and
+      # target/helper/perfhawk-dotnet.exe BEFORE packaging.
 
       - name: Package
         shell: pwsh
@@ -72,11 +72,11 @@ jobs:
 
       - name: Smoke test the package
         shell: pwsh
-        run: ./tools/release/smoke-test.ps1 -Zip "dist/prism-${{ env.VERSION }}-windows-x64.zip"
+        run: ./tools/release/smoke-test.ps1 -Zip "dist/perfhawk-${{ env.VERSION }}-windows-x64.zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: prism-windows-x64
+          name: perfhawk-windows-x64
           path: dist/*
 
       - name: Draft GitHub Release

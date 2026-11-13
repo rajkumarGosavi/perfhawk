@@ -1,13 +1,13 @@
 # Example programs
 
 Two small "order service" simulations with deliberate performance problems, for
-trying prism by hand. You can **record** them live with `prism record`, or have
+trying perfhawk by hand. You can **record** them live with `perfhawk record`, or have
 the Go demo write profile files that you import.
 
 | Demo | What it produces | Problems built in |
 |---|---|---|
-| [`go-demo`](go-demo/) | Live recording via the prism agent, or six pprof files: CPU, heap, allocs, mutex, block, goroutine | Wasteful re-hashing and JSON in request handling, a cache that keeps growing, a hot lock held during "DB calls", a slow channel consumer, parked goroutines |
-| [`dotnet-demo`](dotnet-demo/) | Live recording with `prism record` (all five kinds), or one speedscope file per workload via `dotnet-trace` | Same request handling, string concatenation in a loop, a contended `lock`, flushed 1-byte-buffer file writes |
+| [`go-demo`](go-demo/) | Live recording via the perfhawk agent, or six pprof files: CPU, heap, allocs, mutex, block, goroutine | Wasteful re-hashing and JSON in request handling, a cache that keeps growing, a hot lock held during "DB calls", a slow channel consumer, parked goroutines |
+| [`dotnet-demo`](dotnet-demo/) | Live recording with `perfhawk record` (all five kinds), or one speedscope file per workload via `dotnet-trace` | Same request handling, string concatenation in a loop, a contended `lock`, flushed 1-byte-buffer file writes |
 
 See the [user guide](../docs/USER_GUIDE.md) for the full walkthrough.
 
@@ -18,35 +18,35 @@ cd examples/go-demo
 go run . -out profiles -duration 10s
 ```
 
-The program prints a ready-to-run `prism import ...` line for the six files.
+The program prints a ready-to-run `perfhawk import ...` line for the six files.
 
-To record it live instead (it starts the prism agent by default; `-files=false`
-skips the demo's own CPU profile so prism can capture CPU):
+To record it live instead (it starts the perfhawk agent by default; `-files=false`
+skips the demo's own CPU profile so perfhawk can capture CPU):
 
 ```bash
 go run . -files=false -duration 60s &
-prism record --pid <pid printed in the log> --duration 10s
-prism ui
+perfhawk record --pid <pid printed in the log> --duration 10s
+perfhawk ui
 ```
 
-Or let prism launch a built binary: `go build -o go-demo . && prism record -- ./go-demo -files=false`.
-Profile its tests with `prism record --go-test . --kinds cpu,memory`.
+Or let perfhawk launch a built binary: `go build -o go-demo . && perfhawk record -- ./go-demo -files=false`.
+Profile its tests with `perfhawk record --go-test . --kinds cpu,memory`.
 
-## .NET with `prism record` (needs .NET SDK 8+)
+## .NET with `perfhawk record` (needs .NET SDK 8+)
 
-Build the demo and the prism helper once, then record. No `dotnet-trace` needed:
+Build the demo and the perfhawk helper once, then record. No `dotnet-trace` needed:
 
 ```bash
 dotnet build examples/dotnet-demo -c Release
-dotnet publish helpers/prism-dotnet -c Release -o target/helper
-export PRISM_DOTNET=$PWD/target/helper/prism-dotnet.dll    # or put prism-dotnet next to prism
+dotnet publish helpers/perfhawk-dotnet -c Release -o target/helper
+export PERFHAWK_DOTNET=$PWD/target/helper/perfhawk-dotnet.dll    # or put perfhawk-dotnet next to perfhawk
 
-prism record --duration 10s -- dotnet examples/dotnet-demo/bin/Release/net8.0/dotnet-demo.dll all 15
+perfhawk record --duration 10s -- dotnet examples/dotnet-demo/bin/Release/net8.0/dotnet-demo.dll all 15
 ```
 
 This captures CPU (approximate), wall-clock, allocations, lock contention and
 threads, grouped as one session. To attach to a running demo instead, use
-`prism record --pid <pid>`.
+`perfhawk record --pid <pid>`.
 
 ## .NET with dotnet-trace (alternative)
 
@@ -74,5 +74,5 @@ If PowerShell blocks the script, run it with
 Each workload (`cpu`, `alloc`, `lock`, `io`) is captured separately and imported
 with `--kind wall`. Speedscope files exported by `dotnet-trace` contain sampled
 thread stacks, which include waiting threads, so they are wall-clock-like. That
-makes them good for CPU and "where are threads stuck" questions. `prism record`
+makes them good for CPU and "where are threads stuck" questions. `perfhawk record`
 adds real allocation and lock-contention profiles.

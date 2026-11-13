@@ -1,0 +1,25 @@
+[package]
+name = "perfhawk-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+perfhawk-model = { path = "../perfhawk-model" }
+perfhawk-import = { path = "../perfhawk-import" }
+rusqlite.workspace = true
+bincode.workspace = true
+zstd.workspace = true
+sha2.workspace = true
+hex.workspace = true
+getrandom = "0.4"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+rusqlite.workspace = true
+tempfile.workspace = true
+genprof = { path = "../../tools/genprof" }
+perfhawk-analysis = { path = "../perfhawk-analysis" }

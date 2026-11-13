@@ -238,7 +238,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /** Deletes must carry a custom header: it forces a CORS preflight that the server never approves. */
-const DELETE_INIT: RequestInit = { method: 'DELETE', headers: { 'X-Prism-Request': '1' } }
+const DELETE_INIT: RequestInit = { method: 'DELETE', headers: { 'X-Perfhawk-Request': '1' } }
 
 const p = (ref: string) => `/api/profiles/${encodeURIComponent(ref)}`
 

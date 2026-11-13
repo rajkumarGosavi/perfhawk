@@ -5,7 +5,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: {
-    // The Prism server's Host guard requires its own host, hence changeOrigin.
+    // The Perfhawk server's Host guard requires its own host, hence changeOrigin.
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:7878',

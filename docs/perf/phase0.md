@@ -3,10 +3,10 @@
 Exit criterion (PLAN.md §7): a 500 MB uncompressed pprof imports in ≤ 20 s,
 and flame/top queries on it answer in ≤ 1 s each.
 
-Gate test: `crates/prism-store/tests/perf.rs` (`#[ignore]`):
+Gate test: `crates/perfhawk-store/tests/perf.rs` (`#[ignore]`):
 
 ```
-cargo test -p prism-store --release --test perf -- --ignored --nocapture
+cargo test -p perfhawk-store --release --test perf -- --ignored --nocapture
 ```
 
 It generates the profile with `genprof::generate(dir/big.pb, 500, 42)` into a
@@ -73,21 +73,21 @@ Baseline = code before this task (commit `316afb7`) with the gate test.
 What changed, measured with the first-draft file (import = `import_pprof`
 alone unless noted):
 
-1. **prism-import: decode raw pprof once.** `import_bytes` used to decode the
+1. **perfhawk-import: decode raw pprof once.** `import_bytes` used to decode the
    whole protobuf in `detect_format` (to recognise raw pprof) and again in
    `import_pprof`. Detection and import now share `decode_plausible`;
    `detect_format`'s behaviour is unchanged. Saves one full decode (~2 s and
    a transient ~2 GB copy).
-2. **prism-import: dense location lookup.** Location id → frames used a
+2. **perfhawk-import: dense location lookup.** Location id → frames used a
    SipHash `HashMap<u64, Vec<FrameId>>` looked up for each of the ~290 M
    references. Now a dense `Vec` index (when ids are compact, else an Fx map)
    into one flat frame table. With (3): 28.7 s → 23.4 s.
-3. **prism-model: Fx hashing in `ProfileBuilder`** (`rustc-hash`).
-4. **prism-model: child hints in `ProfileBuilder::stack`.** Each stack node
+3. **perfhawk-model: Fx hashing in `ProfileBuilder`** (`rustc-hash`).
+4. **perfhawk-model: child hints in `ProfileBuilder::stack`.** Each stack node
    remembers the last child taken; stacks sharing a prefix skip the hash map
    almost always (the remaining cost was cache misses on a 3 M entry table).
    23.4 s → 7.0 s; `Store::import` 32.7 s → 4.0–7.7 s.
-5. **prism-analysis: unfiltered flame/top from the stack trie.** With no
+5. **perfhawk-analysis: unfiltered flame/top from the stack trie.** With no
    focus/exclude/hide filter, values are summed per stack-trie node and the
    function-merged tree is built from the trie in O(stack nodes + samples)
    instead of walking every sample's ~400 frames. Siblings are merged with a
@@ -98,7 +98,7 @@ alone unless noted):
    `Vec` allocation and with Fx hashing and child hints in the arena. A test
    asserts the fast path equals the per-sample path.
    Flame 27.9 s → 0.15 s, top 1.8 s → 0.27 s.
-6. **prism-analysis: prune before allocating.** `into_flame` decides which
+6. **perfhawk-analysis: prune before allocating.** `into_flame` decides which
    nodes survive the threshold first and only allocates names/`FlameNode`s
    for survivors.
 

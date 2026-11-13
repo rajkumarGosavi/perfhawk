@@ -1,5 +1,5 @@
 // go-demo is a small "order service" simulation that writes one pprof file per
-// profile kind prism understands, so you can try the app without instrumenting
+// profile kind perfhawk understands, so you can try the app without instrumenting
 // a real service.
 //
 //	go run . -out profiles -duration 10s
@@ -14,12 +14,12 @@
 //	goroutine.pb.gz  goroutine dump  (workers parked on channels / locks)
 //
 // It also serves net/http/pprof on -pprof (default 127.0.0.1:6060) and starts
-// the prism agent (-agent, default on), so a live run can be recorded:
+// the perfhawk agent (-agent, default on), so a live run can be recorded:
 //
-//	go run . -files=false -duration 60s     # then: prism record --pid <pid>
+//	go run . -files=false -duration 60s     # then: perfhawk record --pid <pid>
 //
 // -files=false skips the demo's own CPU profile, which would otherwise hold
-// the runtime's single CPU profiler while prism tries to capture it.
+// the runtime's single CPU profiler while perfhawk tries to capture it.
 package main
 
 import (
@@ -39,7 +39,7 @@ import (
 	"sync"
 	"time"
 
-	agent "github.com/rajkumarGosavi/prism/agents/go"
+	agent "github.com/rajkumarGosavi/perfhawk/agents/go"
 )
 
 type Order struct {
@@ -59,7 +59,7 @@ func main() {
 	out := flag.String("out", "profiles", "directory to write profiles into")
 	duration := flag.Duration("duration", 10*time.Second, "how long to run the workload")
 	pprofAddr := flag.String("pprof", "127.0.0.1:6060", "net/http/pprof listen address (empty to disable)")
-	useAgent := flag.Bool("agent", true, "start the prism agent so `prism record --pid` can attach")
+	useAgent := flag.Bool("agent", true, "start the perfhawk agent so `perfhawk record --pid` can attach")
 	files := flag.Bool("files", true, "write profile files at the end (holds the CPU profiler while running)")
 	flag.Parse()
 
@@ -71,10 +71,10 @@ func main() {
 	if *useAgent {
 		a, err := agent.Start(agent.Options{})
 		if err != nil {
-			log.Fatalf("prism agent: %v", err)
+			log.Fatalf("perfhawk agent: %v", err)
 		}
 		defer a.Close()
-		log.Printf("prism agent on %s (pid %d)", a.Addr(), os.Getpid())
+		log.Printf("perfhawk agent on %s (pid %d)", a.Addr(), os.Getpid())
 	}
 
 	// Record every mutex contention and every blocking event; sample heap often.
@@ -146,11 +146,11 @@ func main() {
 	writeLookup(*out, "block", "block.pb.gz")
 
 	abs, _ := filepath.Abs(*out)
-	fmt.Printf("\nwrote profiles to %s\nnext:\n  prism import", abs)
+	fmt.Printf("\nwrote profiles to %s\nnext:\n  perfhawk import", abs)
 	for _, n := range []string{"cpu", "heap", "allocs", "mutex", "block", "goroutine"} {
 		fmt.Printf(" %q", filepath.Join(abs, n+".pb.gz"))
 	}
-	fmt.Println("\n  prism ui")
+	fmt.Println("\n  perfhawk ui")
 }
 
 // --- the simulated service -------------------------------------------------

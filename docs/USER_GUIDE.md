@@ -1,15 +1,15 @@
-# Prism User Guide
+# Perfhawk User Guide
 
 **Applies to:** Phase 1 (Capture) · updated 2026-11-13
 
-Prism is a local-first profiling workbench. It brings profiles from different
+Perfhawk is a local-first profiling workbench. It brings profiles from different
 languages and tools into one model, then lets you explore them through one CLI and
 one browser UI. Nothing leaves your machine: data is stored locally, and the UI
 server only listens on `127.0.0.1`.
 
-> **Scope.** Prism **imports** profile files (Go pprof, collapsed/folded stacks,
+> **Scope.** Perfhawk **imports** profile files (Go pprof, collapsed/folded stacks,
 > speedscope JSON, `.nettrace`) and **records** directly from live Go and .NET
-> processes (`prism record`) into *sessions*. Two profiles can be diffed in the
+> processes (`perfhawk record`) into *sessions*. Two profiles can be diffed in the
 > CLI and the UI. See [PLAN.md](PLAN.md) §7.
 
 ---
@@ -27,10 +27,10 @@ npm run build
 
 ```bash
 cd ..
-cargo build --release -p prism-cli
+cargo build --release -p perfhawk-cli
 ```
 
-The binary is `target/release/prism` (`prism.exe` on Windows), with the UI
+The binary is `target/release/perfhawk` (`perfhawk.exe` on Windows), with the UI
 embedded. Put it on your `PATH` or call it by path. Build the UI before the
 binary; otherwise the server shows a "UI not built" page.
 
@@ -41,21 +41,21 @@ cd examples/go-demo
 go run . -out profiles -duration 10s
 ```
 
-The demo prints a full `prism import ...` line for the files it wrote. Then run:
+The demo prints a full `perfhawk import ...` line for the files it wrote. Then run:
 
 ```bash
-prism ls
+perfhawk ls
 ```
 
 ```bash
-prism show cpu --top 10
+perfhawk show cpu --top 10
 ```
 
 ```bash
-prism ui
+perfhawk ui
 ```
 
-`prism ui` prints `prism UI: http://127.0.0.1:7878/` and opens your browser.
+`perfhawk ui` prints `perfhawk UI: http://127.0.0.1:7878/` and opens your browser.
 Click a profile to explore it. Stop the server with **Ctrl+C**.
 
 For .NET, see [examples/README.md](../examples/README.md).
@@ -65,8 +65,8 @@ To record instead of importing, run the demo live and attach (see §4a):
 ```bash
 cd examples/go-demo
 go run . -files=false -duration 60s &      # prints its pid
-prism record --pid <pid> --duration 10s
-prism ui
+perfhawk record --pid <pid> --duration 10s
+perfhawk ui
 ```
 
 ## 3. Concepts
@@ -77,9 +77,9 @@ prism ui
 | **Kind** | What the profile measures: `cpu`, `wall`, `memory`, `lock`, `blocking`, `block_io`, `threads`, or `unknown`. Kind is detected from the data and can be overridden with `--kind`. |
 | **Sample type** | One measured value per sample. A Go heap profile has four: `alloc_objects`, `alloc_space`, `inuse_objects` and `inuse_space`. Each has a unit (`nanoseconds`, `bytes` or `count`). |
 | **Self / Total** | *Self* is the cost spent in the function itself. *Total* also includes everything it calls. A recursive function is counted once per sample in Total. |
-| **Session** | One `prism record` run. It groups the profiles captured together (one per kind), plus the target, status (`complete`, `partial`, `cancelled`, `failed`), duration and any warnings. |
+| **Session** | One `perfhawk record` run. It groups the profiles captured together (one per kind), plus the target, status (`complete`, `partial`, `cancelled`, `failed`), duration and any warnings. |
 | **Fidelity** | How a profile's numbers were obtained: `native` (reported by the runtime's own profiler), `approximate` (reconstructed, treat absolute values as estimates), `derived` (computed from other data, for example wall-clock from stack sampling), `sampled external` (sampled from outside the process), or `unknown` (an imported file). Shown as a badge next to the kind everywhere. |
-| **Reference** | How you name a profile in commands: `last` (most recent), a full id, a unique id prefix of at least 4 hex characters, or the exact display name. If a name matches several profiles (for example after re-running a demo), prism lists the candidates; use the short id from `prism ls`. |
+| **Reference** | How you name a profile in commands: `last` (most recent), a full id, a unique id prefix of at least 4 hex characters, or the exact display name. If a name matches several profiles (for example after re-running a demo), perfhawk lists the candidates; use the short id from `perfhawk ls`. |
 
 ### How kinds are detected
 
@@ -98,13 +98,13 @@ disk I/O; that is `block_io`, which arrives with Phase 2.
 ## 4. CLI reference
 
 All commands accept `--home <DIR>` to choose the data directory. Otherwise
-`$PRISM_HOME` is used, and failing that the platform default:
+`$PERFHAWK_HOME` is used, and failing that the platform default:
 
-- Windows: `%APPDATA%\prism`
-- macOS: `~/Library/Application Support/prism`
-- Linux: `$XDG_DATA_HOME/prism` or `~/.local/share/prism`
+- Windows: `%APPDATA%\perfhawk`
+- macOS: `~/Library/Application Support/perfhawk`
+- Linux: `$XDG_DATA_HOME/perfhawk` or `~/.local/share/perfhawk`
 
-### `prism import <FILES>... [--name N] [--kind K] [--tag T]...`
+### `perfhawk import <FILES>... [--name N] [--kind K] [--tag T]...`
 
 Imports one or more files. Each file prints one line:
 
@@ -126,7 +126,7 @@ Supported formats are detected from content, not file extension:
 Windows tip: PowerShell does not expand `*.pb.gz`. List the files, or run the
 command from Git Bash.
 
-### `prism ls [--json]`
+### `perfhawk ls [--json]`
 
 Lists profiles, newest first:
 
@@ -137,48 +137,48 @@ ID            KIND     FORMAT  SAMPLES     TOTAL  NAME    IMPORTED (UTC)
 
 TOTAL is the default sample type's total. IMPORTED is shown in UTC. `--json` prints full records.
 
-### `prism show [REF] [--top N] [--st NAME] [--focus RE] [--exclude RE] [--hide RE] [--sort self|total]`
+### `perfhawk show [REF] [--top N] [--st NAME] [--focus RE] [--exclude RE] [--hide RE] [--sort self|total]`
 
 Prints the hottest functions, sorted by self value by default, or by total with `--sort total` (REF defaults to `last`). When a filter is set, the header total reads `total: <filtered> (of <unfiltered>)`:
 
 ```
-prism show heap --st alloc_space --top 5
+perfhawk show heap --st alloc_space --top 5
 ```
 
 ```
-prism show cpu --focus 'main\.' --hide 'runtime\.'
+perfhawk show cpu --focus 'main\.' --hide 'runtime\.'
 ```
 
 The filters are regular expressions matched against function names (see §6).
 
-### `prism import trace.nettrace`
+### `perfhawk import trace.nettrace`
 
 A `.nettrace` file (from `dotnet-trace` or the EventPipe) is converted by the
 .NET helper into one profile per kind (`cpu`, `wall`, `memory`, `lock`,
 `threads`), named `<file>-<kind>` and tagged `nettrace`. It needs the helper
 (see §4a).
 
-### `prism open [REF_OR_FILE] [--port P] [--no-browser]`
+### `perfhawk open [REF_OR_FILE] [--port P] [--no-browser]`
 
 Starts the UI on a profile. If the argument is an existing file, it is imported
-first, so `prism open trace.speedscope.json` is the one-step "just show me"
+first, so `perfhawk open trace.speedscope.json` is the one-step "just show me"
 command. The default port is 7878; `--port 0` picks a free port.
 
-### `prism ui [--port P] [--open]`
+### `perfhawk ui [--port P] [--open]`
 
 Starts the UI on the profile list and prints its address. It does not open a
 browser unless you pass `--open`.
 
 ## 4a. Recording
 
-### `prism record [TARGET] [--kinds K,...] [--duration 30s] [--name N] [--tag T]... [--timeline|--no-timeline] [--open] [--port P]`
+### `perfhawk record [TARGET] [--kinds K,...] [--duration 30s] [--name N] [--tag T]... [--timeline|--no-timeline] [--open] [--port P]`
 
 Captures profiles from a live process and stores them as one session. Choose
 **exactly one** target:
 
 | Target | Meaning |
 |---|---|
-| `--pid N` | Attach to a running Go (with the prism agent) or .NET 8+ process. |
+| `--pid N` | Attach to a running Go (with the perfhawk agent) or .NET 8+ process. |
 | `--url http://127.0.0.1:6060` | Attach to a Go `net/http/pprof` endpoint (with or without the agent). |
 | `--go-test PKG [-- ARGS]` | Run `go test` for one package and profile it. |
 | `-- PROGRAM ARGS...` | Launch a program and profile it: a .NET program (`dotnet app.dll`, or an apphost with a `.runtimeconfig.json`) or a Go program that embeds the agent. |
@@ -194,7 +194,7 @@ ID            KIND      FIDELITY     SAMPLES     TOTAL  NOTE
 ```
 
 Exit codes: `0` complete (also *partial*: the target exited before the window
-ended, and prism keeps what it captured), `130` cancelled with Ctrl-C (partial
+ended, and perfhawk keeps what it captured), `130` cancelled with Ctrl-C (partial
 data is still imported), `1` failed, `2` usage error.
 
 What each runtime supports (no admin/root needed for any of it):
@@ -208,11 +208,11 @@ What each runtime supports (no admin/root needed for any of it):
 | blocking | native | not available in Phase 1 |
 | threads | native | native |
 
-**Go targets.** Add the agent to your program (`go get github.com/rajkumarGosavi/prism/agents/go`, or a
+**Go targets.** Add the agent to your program (`go get github.com/rajkumarGosavi/perfhawk/agents/go`, or a
 `replace` directive for a local checkout):
 
 ```go
-import agent "github.com/rajkumarGosavi/prism/agents/go"
+import agent "github.com/rajkumarGosavi/perfhawk/agents/go"
 
 func main() {
     a, _ := agent.Start(agent.Options{}) // loopback only
@@ -221,38 +221,38 @@ func main() {
 }
 ```
 
-or import it with `_ "github.com/rajkumarGosavi/prism/agents/go"` and start the program with
-`PRISM_AGENT=1` (this is what `prism record -- ./myprog` does). The agent serves
+or import it with `_ "github.com/rajkumarGosavi/perfhawk/agents/go"` and start the program with
+`PERFHAWK_AGENT=1` (this is what `perfhawk record -- ./myprog` does). The agent serves
 `net/http/pprof`, adds wall-clock profiling, raises the mutex/block sampling
 rates only for the capture window and restores them afterwards, and publishes
-`<temp>/prism-agents/<pid>.json` so `--pid` can find it. If your program enables
+`<temp>/perfhawk-agents/<pid>.json` so `--pid` can find it. If your program enables
 block profiling itself, call `agent.SetBlockProfileRate` instead of
 `runtime.SetBlockProfileRate` so the agent can put your rate back. Without the
 agent, use `--url` against your own `net/http/pprof` endpoint; `wall` is then
 unavailable, and `lock`/`blocking` are empty unless your program sets
-`runtime.SetMutexProfileFraction` / `SetBlockProfileRate` (prism warns when
+`runtime.SetMutexProfileFraction` / `SetBlockProfileRate` (perfhawk warns when
 that is the case). Go 1.22+.
 
 **.NET targets** (.NET 8+, same user, diagnostics enabled) are recorded through
-the `prism-dotnet` helper, which uses EventPipe. Prism looks for it in the
-`PRISM_DOTNET` environment variable (an executable, or a `.dll` run with
-`dotnet`), then next to the `prism` binary. Build it with:
+the `perfhawk-dotnet` helper, which uses EventPipe. Perfhawk looks for it in the
+`PERFHAWK_DOTNET` environment variable (an executable, or a `.dll` run with
+`dotnet`), then next to the `perfhawk` binary. Build it with:
 
 ```bash
-dotnet publish helpers/prism-dotnet -c Release -o <dir>
+dotnet publish helpers/perfhawk-dotnet -c Release -o <dir>
 ```
 
-### `prism targets [--json]`
+### `perfhawk targets [--json]`
 
 Lists what can be attached to: Go processes running the agent and .NET 8+
 processes, with runtime version when known.
 
-### `prism sessions [--json]`
+### `perfhawk sessions [--json]`
 
 Lists sessions: id, name, status, start time (UTC), duration, profile count and
 target. Refer to a session by `last`, its id, a unique id prefix, or its name.
 
-### `prism diff <BASE> <HEAD> [--st NAME] [--normalize none|total] [--top N] [--focus RE] [--exclude RE] [--hide RE]`
+### `perfhawk diff <BASE> <HEAD> [--st NAME] [--normalize none|total] [--top N] [--focus RE] [--exclude RE] [--hide RE]`
 
 Compares two profiles that share a sample type (same name and unit) and prints
 the functions whose self value changed most. Positive deltas (a `+` sign) mean
@@ -261,12 +261,12 @@ first, which separates "this function got slower" from "the whole run was
 longer". Profiles with no common sample type (for example CPU vs heap) give an
 error listing both sets. Diffing a profile against itself gives all-zero deltas.
 
-### `prism check <HEAD> --baseline <BASE> [--sample-type NAME] [--threshold PCT] [--min-value POINTS] [--limit N] [--json]`
+### `perfhawk check <HEAD> --baseline <BASE> [--sample-type NAME] [--threshold PCT] [--min-value POINTS] [--limit N] [--json]`
 
 Compares a profile with a baseline and exits 0 (no regression), 1 (a function
 regressed) or 2 (bad input). Meant for CI; see [CI.md](CI.md).
 
-### `prism rm <REF>... [--session]`
+### `perfhawk rm <REF>... [--session]`
 
 Deletes profiles, or whole sessions (and their profiles) with `--session`. It
 prints `removed <id> <name>` for each; an unknown reference is reported and the
@@ -282,7 +282,7 @@ fidelity badge; click one to open it. **Profiles** is the flat list of every
 profile with its kind, fidelity, format, sample count, total and import time.
 You can **drag and drop** files onto the page (or use *Choose file*) to import
 without the CLI. Both lists have a **Delete** button that asks for confirmation.
-`prism record --open` jumps straight to the new session (`/?session=<id>`).
+`perfhawk record --open` jumps straight to the new session (`/?session=<id>`).
 
 ### Fidelity badges
 Next to every kind the UI shows `native`, `approximate`, `derived`,
@@ -376,7 +376,7 @@ session; **Diff with previous** compares the session with the one before it. At
 most the 200 most recent sessions are shown. In the URL: `series`, `kind`, `fn`.
 
 ### Regression checks
-`prism check <profile> --baseline <profile>` exits 0 when nothing regressed, 1 when
+`perfhawk check <profile> --baseline <profile>` exits 0 when nothing regressed, 1 when
 a function did, and 2 for bad input, so it can gate a CI job. See
 [CI.md](CI.md) for what counts as a regression, the options and a GitHub Actions
 example.
@@ -396,7 +396,7 @@ and `b0`/`b1` (baseline), in milliseconds from the start of the capture.
 
 Resolution depends on the runtime: Go CPU is captured in 250 ms windows, .NET CPU
 and wall in 20 ms buckets. Go wall-clock and every other kind have no time data,
-and neither do imported files (the Time tab is hidden for them). `prism record`
+and neither do imported files (the Time tab is hidden for them). `perfhawk record`
 captures time data by default where it can; use `--no-timeline` to skip it. If a
 runtime cannot provide it, the session records a warning ("no time resolution for
 wall"). Windows at the heat map's resolution are approximate: Go spreads a window's
@@ -503,7 +503,7 @@ An invalid regex shows an error banner instead of a graph.
 
 ## 7. Recipes
 
-**"Why is my Go service using CPU?"** Run `prism show cpu`, then switch to the
+**"Why is my Go service using CPU?"** Run `perfhawk show cpu`, then switch to the
 Flame view. Look for wide plateaus. In the demo, `checksum` (repeated SHA-256)
 and `encoding/json` dominate.
 
@@ -530,46 +530,46 @@ at running code, set **Exclude** to `UNMANAGED_CODE_TIME`. In the demo,
 and `ReserveInventory` (spinning while holding the lock) dominates `lock`.
 
 **"Did my change help?"** Import the before and after profiles, tag them
-(`--tag before`, `--tag after`) and compare them with `prism diff before after`
+(`--tag before`, `--tag after`) and compare them with `perfhawk diff before after`
 or the UI's diff view.
 
 ## 8. Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| `error: cannot bind 127.0.0.1:7878` | Another prism (or another app) is using the port. Use `--port 0` or stop the other process. |
+| `error: cannot bind 127.0.0.1:7878` | Another perfhawk (or another app) is using the port. Use `--port 0` or stop the other process. |
 | Browser shows "UI not built" | Run `npm run build` in `ui/`, then rebuild the binary. |
-| `403 forbidden` in the browser | Open the exact printed URL (`127.0.0.1:<port>`). Prism rejects other host names to block DNS-rebinding attacks. |
+| `403 forbidden` in the browser | Open the exact printed URL (`127.0.0.1:<port>`). Perfhawk rejects other host names to block DNS-rebinding attacks. |
 | `unknown format` on import | The file isn't pprof, collapsed or speedscope. Check that it isn't truncated, or convert it to one of these. |
 | A speedscope / collapsed profile shows kind `unknown` | Re-import with `--kind cpu` or `--kind wall` (identical bytes are deduplicated, so delete and re-import, or use a fresh `--home`). |
-| `is ambiguous (2 matches: ...)` | Several profiles share that name (for example after re-running a demo). Use the short id from `prism ls` instead of the name. |
-| Mutex profile is empty (Go) | Call `runtime.SetMutexProfileFraction(n)`. For block profiles, call `runtime.SetBlockProfileRate(n)`. When recording with the prism agent this is handled for you. |
+| `is ambiguous (2 matches: ...)` | Several profiles share that name (for example after re-running a demo). Use the short id from `perfhawk ls` instead of the name. |
+| Mutex profile is empty (Go) | Call `runtime.SetMutexProfileFraction(n)`. For block profiles, call `runtime.SetBlockProfileRate(n)`. When recording with the perfhawk agent this is handled for you. |
 
 ### Troubleshooting capture
 
 | Symptom | Fix |
 |---|---|
-| `Go process without the prism agent: start the agent or pass --url ...` | The pid is a Go program with no prism agent. Add `github.com/rajkumarGosavi/prism/agents/go`, or expose `net/http/pprof` and use `--url`. (Detected on Linux only.) |
-| `pid N: not found among reachable .NET 8+ processes ...` | The process is not .NET, has `DOTNET_EnableDiagnostics=0`, runs as another user, or (Linux/macOS) uses a different `TMPDIR` than prism. Run prism as the same user with the same `TMPDIR`. |
+| `Go process without the perfhawk agent: start the agent or pass --url ...` | The pid is a Go program with no perfhawk agent. Add `github.com/rajkumarGosavi/perfhawk/agents/go`, or expose `net/http/pprof` and use `--url`. (Detected on Linux only.) |
+| `pid N: not found among reachable .NET 8+ processes ...` | The process is not .NET, has `DOTNET_EnableDiagnostics=0`, runs as another user, or (Linux/macOS) uses a different `TMPDIR` than perfhawk. Run perfhawk as the same user with the same `TMPDIR`. |
 | `the target has DOTNET_EnableDiagnostics=0` | Restart the target without that variable (or set it to 1). |
-| `the target runs as another user, or TMPDIR differs` | Run prism as the target's user and with the target's `TMPDIR` (Linux/macOS). |
+| `the target runs as another user, or TMPDIR differs` | Run perfhawk as the target's user and with the target's `TMPDIR` (Linux/macOS). |
 | `pid N is not a .NET 8+ process` | Only .NET 8 and newer are supported. |
-| `the .NET helper (prism-dotnet) was not found` | `prism-dotnet` ships next to `prism` in the release package: reinstall Prism or copy it back beside `prism`, or set `PRISM_DOTNET`. From source: `dotnet publish helpers/prism-dotnet -c Release -o <dir>`. |
-| `prism-dotnet protocol X is not supported; rebuild the helper` | The helper and prism are from different versions; rebuild the helper. |
-| `program did not start the prism agent; import github.com/rajkumarGosavi/prism/agents/go` | The launched Go program does not import the agent. |
+| `the .NET helper (perfhawk-dotnet) was not found` | `perfhawk-dotnet` ships next to `perfhawk` in the release package: reinstall Perfhawk or copy it back beside `perfhawk`, or set `PERFHAWK_DOTNET`. From source: `dotnet publish helpers/perfhawk-dotnet -c Release -o <dir>`. |
+| `perfhawk-dotnet protocol X is not supported; rebuild the helper` | The helper and perfhawk are from different versions; rebuild the helper. |
+| `program did not start the perfhawk agent; import github.com/rajkumarGosavi/perfhawk/agents/go` | The launched Go program does not import the agent. |
 | `mutex profiling is disabled in the target ...` | A warning, not a failure: the profile is empty because the target has not enabled mutex/block sampling and no agent is present. |
-| Session is `partial` | The target exited before the window ended. Prism keeps what it captured. |
+| Session is `partial` | The target exited before the window ended. Perfhawk keeps what it captured. |
 
 ## 9. Where data lives
 
-`<home>/prism.db` (SQLite metadata) and `<home>/blobs/` (compressed profiles).
-Deleting the directory removes everything; `prism rm` removes individual
+`<home>/perfhawk.db` (SQLite metadata) and `<home>/blobs/` (compressed profiles).
+Deleting the directory removes everything; `perfhawk rm` removes individual
 profiles or sessions. Temporary agent discovery files live in
-`<temp>/prism-agents/`.
+`<temp>/perfhawk-agents/`.
 
 ## 10. Coming next
 
 - **Phase 2:** block I/O and off-CPU via eBPF (Linux) and ETW (Windows), and per-thread timeline tracks. The time heat map and session timeline already exist (see Time); tracks need thread and state events that capture does not record yet.
-- **Later:** a query tab, source annotation, and PR comments for `prism check`.
+- **Later:** a query tab, source annotation, and PR comments for `perfhawk check`.
 
 See [PLAN.md](PLAN.md) for the full roadmap.

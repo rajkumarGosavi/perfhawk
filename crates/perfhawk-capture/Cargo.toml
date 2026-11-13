@@ -1,0 +1,21 @@
+[package]
+name = "perfhawk-capture"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+perfhawk-model = { path = "../perfhawk-model" }
+perfhawk-store = { path = "../perfhawk-store" }
+thiserror.workspace = true
+ctrlc = "3"
+ureq = { version = "2", features = ["json"] }
+perfhawk-import = { path = "../perfhawk-import" }
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+perfhawk-analysis = { path = "../perfhawk-analysis" }
+tiny_http = "0.12"
+flate2.workspace = true

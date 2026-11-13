@@ -44,7 +44,7 @@ func start(t *testing.T, opts Options) *Agent {
 }
 
 func discoveryFile() string {
-	return filepath.Join(os.TempDir(), "prism-agents", fmt.Sprintf("%d.json", os.Getpid()))
+	return filepath.Join(os.TempDir(), "perfhawk-agents", fmt.Sprintf("%d.json", os.Getpid()))
 }
 
 func TestStartWritesDiscoveryAndCloseRemoves(t *testing.T) {
@@ -106,7 +106,7 @@ func TestInfoEndpoint(t *testing.T) {
 		Pid       int    `json:"pid"`
 		GoVersion string `json:"go_version"`
 	}
-	if err := json.Unmarshal(get(t, "http://"+a.Addr()+"/debug/prism/info"), &info); err != nil {
+	if err := json.Unmarshal(get(t, "http://"+a.Addr()+"/debug/perfhawk/info"), &info); err != nil {
 		t.Fatal(err)
 	}
 	if info.Protocol != 1 || info.Pid != os.Getpid() || info.GoVersion != runtime.Version() {
@@ -120,7 +120,7 @@ func TestInfoEndpoint(t *testing.T) {
 
 func TestWallReturnsPprof(t *testing.T) {
 	a := start(t, Options{DisableDiscovery: true})
-	body := get(t, "http://"+a.Addr()+"/debug/prism/wall?seconds=1")
+	body := get(t, "http://"+a.Addr()+"/debug/perfhawk/wall?seconds=1")
 	p, err := profile.Parse(bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("not a pprof profile: %v", err)
@@ -168,7 +168,7 @@ func TestContentionRestoresRates(t *testing.T) {
 			stop()
 		}
 	}()
-	body := get(t, "http://"+a.Addr()+"/debug/prism/contention?seconds=2&kind=mutex")
+	body := get(t, "http://"+a.Addr()+"/debug/perfhawk/contention?seconds=2&kind=mutex")
 	p, err := profile.Parse(bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("not a pprof profile: %v", err)
@@ -186,7 +186,7 @@ func TestContentionBlockRestoresRate(t *testing.T) {
 	SetBlockProfileRate(0)
 	stop := contend()
 	defer stop()
-	body := get(t, "http://"+a.Addr()+"/debug/prism/contention?seconds=1&kind=block")
+	body := get(t, "http://"+a.Addr()+"/debug/perfhawk/contention?seconds=1&kind=block")
 	if _, err := profile.Parse(bytes.NewReader(body)); err != nil {
 		t.Fatalf("not a pprof profile: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestContentionBlockRestoresRate(t *testing.T) {
 	}
 	// An app-chosen rate set through the wrapper is what gets restored.
 	SetBlockProfileRate(1)
-	_ = get(t, "http://"+a.Addr()+"/debug/prism/contention?seconds=1&kind=block")
+	_ = get(t, "http://"+a.Addr()+"/debug/perfhawk/contention?seconds=1&kind=block")
 	if got := blockRate.Load(); got != 1 {
 		t.Fatalf("app block rate not preserved: %d", got)
 	}
@@ -204,7 +204,7 @@ func TestContentionBlockRestoresRate(t *testing.T) {
 
 func TestContentionBadKind(t *testing.T) {
 	a := start(t, Options{DisableDiscovery: true})
-	resp, err := http.Get("http://" + a.Addr() + "/debug/prism/contention?seconds=1&kind=nope")
+	resp, err := http.Get("http://" + a.Addr() + "/debug/perfhawk/contention?seconds=1&kind=nope")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestContentionCancelledRequestRestores(t *testing.T) {
 	runtime.SetMutexProfileFraction(0)
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", "http://"+a.Addr()+"/debug/prism/contention?seconds=30&kind=mutex", nil)
+	req, _ := http.NewRequestWithContext(ctx, "GET", "http://"+a.Addr()+"/debug/perfhawk/contention?seconds=30&kind=mutex", nil)
 	if _, err := http.DefaultClient.Do(req); err == nil {
 		t.Fatal("expected client timeout")
 	}
@@ -236,7 +236,7 @@ func TestContentionCancelledRequestRestores(t *testing.T) {
 }
 
 func TestHelperProcess(t *testing.T) {
-	if os.Getenv("PRISM_AGENT_HELPER") != "1" {
+	if os.Getenv("PERFHAWK_AGENT_HELPER") != "1" {
 		t.Skip("helper process only")
 	}
 	// Block until stdin closes so the parent controls our lifetime.
@@ -247,7 +247,7 @@ func runHelper(t *testing.T, env ...string) (discovery string, stop func()) {
 	t.Helper()
 	tmp := t.TempDir()
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
-	cmd.Env = append(os.Environ(), "PRISM_AGENT_HELPER=1", "TMP="+tmp, "TEMP="+tmp, "TMPDIR="+tmp)
+	cmd.Env = append(os.Environ(), "PERFHAWK_AGENT_HELPER=1", "TMP="+tmp, "TEMP="+tmp, "TMPDIR="+tmp)
 	cmd.Env = append(cmd.Env, env...)
 	in, err := cmd.StdinPipe()
 	if err != nil {
@@ -257,11 +257,11 @@ func runHelper(t *testing.T, env ...string) (discovery string, stop func()) {
 		t.Fatal(err)
 	}
 	stop = func() { _ = in.Close(); _ = cmd.Wait() }
-	return filepath.Join(tmp, "prism-agents", fmt.Sprintf("%d.json", cmd.Process.Pid)), stop
+	return filepath.Join(tmp, "perfhawk-agents", fmt.Sprintf("%d.json", cmd.Process.Pid)), stop
 }
 
 func TestAutoStartOnlyWithEnv(t *testing.T) {
-	file, stop := runHelper(t, "PRISM_AGENT=1")
+	file, stop := runHelper(t, "PERFHAWK_AGENT=1")
 	defer stop()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -269,16 +269,16 @@ func TestAutoStartOnlyWithEnv(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("discovery file did not appear with PRISM_AGENT=1")
+			t.Fatal("discovery file did not appear with PERFHAWK_AGENT=1")
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	file2, stop2 := runHelper(t, "PRISM_AGENT=")
+	file2, stop2 := runHelper(t, "PERFHAWK_AGENT=")
 	defer stop2()
 	time.Sleep(1500 * time.Millisecond)
 	if _, err := os.Stat(file2); !os.IsNotExist(err) {
-		t.Fatal("agent started without PRISM_AGENT=1")
+		t.Fatal("agent started without PERFHAWK_AGENT=1")
 	}
 }
 
@@ -296,7 +296,7 @@ func TestStartSucceedsWhenDiscoveryCannotBeWritten(t *testing.T) {
 		t.Fatalf("Start failed because discovery was unwritable: %v", err)
 	}
 	defer a.Close()
-	get(t, "http://"+a.Addr()+"/debug/prism/info")
+	get(t, "http://"+a.Addr()+"/debug/perfhawk/info")
 }
 
 func busyLoop(stop <-chan struct{}) {
@@ -323,7 +323,7 @@ func TestCPUWindowsReturnsLabelledWindows(t *testing.T) {
 	stop := make(chan struct{})
 	defer close(stop)
 	busyLoop(stop)
-	body := get(t, "http://"+a.Addr()+"/debug/prism/cpu-windows?seconds=1&window_ms=100")
+	body := get(t, "http://"+a.Addr()+"/debug/perfhawk/cpu-windows?seconds=1&window_ms=100")
 	p, err := profile.ParseData(body)
 	if err != nil {
 		t.Fatalf("not a pprof: %v", err)
@@ -333,9 +333,9 @@ func TestCPUWindowsReturnsLabelledWindows(t *testing.T) {
 	}
 	seen := map[int64]bool{}
 	for _, s := range p.Sample {
-		v, ok := s.NumLabel["prism.bucket"]
+		v, ok := s.NumLabel["perfhawk.bucket"]
 		if !ok || len(v) != 1 {
-			t.Fatalf("sample without prism.bucket label: %+v", s.NumLabel)
+			t.Fatalf("sample without perfhawk.bucket label: %+v", s.NumLabel)
 		}
 		seen[v[0]] = true
 	}
@@ -352,7 +352,7 @@ func TestCPUWindowsReturnsLabelledWindows(t *testing.T) {
 func TestCPUWindowsBadParams(t *testing.T) {
 	a := start(t, Options{DisableDiscovery: true})
 	for _, q := range []string{"", "?seconds=0", "?seconds=601", "?seconds=x", "?seconds=1&window_ms=10", "?seconds=1&window_ms=99999"} {
-		resp, err := http.Get("http://" + a.Addr() + "/debug/prism/cpu-windows" + q)
+		resp, err := http.Get("http://" + a.Addr() + "/debug/perfhawk/cpu-windows" + q)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -370,7 +370,7 @@ func TestCPUWindowsConflictsWithRunningProfile(t *testing.T) {
 		t.Skipf("cannot start a CPU profile here: %v", err)
 	}
 	defer pprof.StopCPUProfile()
-	resp, err := http.Get("http://" + a.Addr() + "/debug/prism/cpu-windows?seconds=1")
+	resp, err := http.Get("http://" + a.Addr() + "/debug/perfhawk/cpu-windows?seconds=1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +384,7 @@ func TestCPUWindowsCancelledRequestFreesTheProfiler(t *testing.T) {
 	a := start(t, Options{DisableDiscovery: true})
 	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", "http://"+a.Addr()+"/debug/prism/cpu-windows?seconds=30&window_ms=100", nil)
+	req, _ := http.NewRequestWithContext(ctx, "GET", "http://"+a.Addr()+"/debug/perfhawk/cpu-windows?seconds=30&window_ms=100", nil)
 	if resp, err := http.DefaultClient.Do(req); err == nil {
 		resp.Body.Close()
 	}
@@ -417,7 +417,7 @@ func TestRejectsNonLoopbackHost(t *testing.T) {
 		"evil.example:80": 403,
 		"127.0.0.1.evil":  403,
 	} {
-		req, _ := http.NewRequest("GET", "http://"+a.Addr()+"/debug/prism/info", nil)
+		req, _ := http.NewRequest("GET", "http://"+a.Addr()+"/debug/perfhawk/info", nil)
 		req.Host = host
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {

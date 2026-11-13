@@ -1,4 +1,4 @@
-# Prism Ask — Natural-Language Profiling Insights
+# Perfhawk Ask — Natural-Language Profiling Insights
 
 **Status:** ⏸ **Deferred** (decided 2026-11-13) — parked until the basic app (PLAN.md Phases 0–3) is ready. Kept for reference; not in current scope.
 Draft v0.1 · extends [PLAN.md](PLAN.md) §6 item 6
@@ -24,32 +24,32 @@ Draft v0.1 · extends [PLAN.md](PLAN.md) §6 item 6
 | **Ask panel** (chat beside any view) | Multi-turn Q&A over the open session(s) | "Where does the wall-clock time go that isn't CPU?" |
 | **Auto-insights** (after every capture) | 3–5 ranked findings cards generated automatically | "61% of wall time is blocked in `os.read` on `/data/idx` → Block I/O view" |
 | **Explain this** (right-click a frame / range / object) | Focused explanation with source context and likely fix | "Why is `json.Marshal` hot here?" |
-| **Compare narrative** (on `prism diff`) | Plain-language regression/improvement summary | "p99 regression comes from new lock in `cache.Get` (+38 ms/req)" |
+| **Compare narrative** (on `perfhawk diff`) | Plain-language regression/improvement summary | "p99 regression comes from new lock in `cache.Get` (+38 ms/req)" |
 | **Command bar → filter** | NL → deterministic query DSL / UI transform, shown before applying | "only worker threads, hide stdlib" → `thread~"worker-*" !lib:stdlib` |
 | **Capture copilot** | Turns a goal into a capture plan, waits for approval | "profile why login is slow in pod api-7f9" → plan: cpu+wall+lock 30s, trigger on `/login` |
-| **Report writer** | Drafts a shareable Markdown/HTML report from findings | `prism report --ai last` |
-| **CLI / agents** | `prism ask "…"` and an MCP server so coding agents use the same tools | `prism mcp` |
+| **Report writer** | Drafts a shareable Markdown/HTML report from findings | `perfhawk report --ai last` |
+| **CLI / agents** | `perfhawk ask "…"` and an MCP server so coding agents use the same tools | `perfhawk mcp` |
 
 **Example exchange**
 
 > **User:** Why did checkout get slower after yesterday's deploy?
-> **Prism:** Comparing `run-1142` (before) and `run-1187` (after), wall-clock per request rose 41 ms. Most of it (≈34 ms) is new **lock contention** in `inventory.(*Cache).Get` [node:7f2a] waiting on `sync.RWMutex.Lock` held by `refreshLoop` [node:9c11]. CPU time is essentially unchanged [diff:cpu]. The refresh holds the write lock while calling `db.Query` [src:cache.go:88]. Suggested fix: build the new map outside the lock and swap it atomically. *Confidence: high (native mutex profile, 2 runs).*
+> **Perfhawk:** Comparing `run-1142` (before) and `run-1187` (after), wall-clock per request rose 41 ms. Most of it (≈34 ms) is new **lock contention** in `inventory.(*Cache).Get` [node:7f2a] waiting on `sync.RWMutex.Lock` held by `refreshLoop` [node:9c11]. CPU time is essentially unchanged [diff:cpu]. The refresh holds the write lock while calling `db.Query` [src:cache.go:88]. Suggested fix: build the new map outside the lock and swap it atomically. *Confidence: high (native mutex profile, 2 runs).*
 
 ---
 
 ## 3. Architecture
 
 ```
- UI (Ask panel, cards, citations)        CLI `prism ask`        External agents
+ UI (Ask panel, cards, citations)        CLI `perfhawk ask`        External agents
             │  streaming events                 │                    │ MCP
             ▼                                   ▼                    ▼
- ┌──────────────────────────── prism-ai (orchestrator) ─────────────────────────┐
+ ┌──────────────────────────── perfhawk-ai (orchestrator) ─────────────────────────┐
  │ Router → Agent loop (tool use) → Evidence validator → Insight renderer       │
  │ Context builder · Redactor · Approval gate · Cost/latency budget · Cache     │
  │ Model provider interface:  Claude (default) │ local/OpenAI-compatible (opt.) │
  └───────────────┬──────────────────────────────────────────────────────────────┘
                  │ JSON-RPC (local)
- ┌───────────────▼──────────────── prism core (Rust) ───────────────────────────┐
+ ┌───────────────▼──────────────── perfhawk core (Rust) ───────────────────────────┐
  │ Analysis tools · Query DSL · Timeline SQL (DuckDB) · Symbolizer · Store      │
  │ Knowledge base: per-runtime rules & idioms (Go/JVM/Python/Node/.NET/…)        │
  └──────────────────────────────────────────────────────────────────────────────┘
@@ -57,7 +57,7 @@ Draft v0.1 · extends [PLAN.md](PLAN.md) §6 item 6
 
 **Where the orchestrator lives.** Rust has no official Anthropic SDK, so the recommended split is:
 - **Rust core** exposes all analysis as tools (JSON-RPC + MCP).
-- **`prism-ai`** is a small TypeScript service (bundled with Node/Bun as a sidecar in the desktop app, started by `prism ui`/`prism ask`) using the official `@anthropic-ai/sdk` and its tool runner. The UI already is TypeScript, so types and schemas are shared.
+- **`perfhawk-ai`** is a small TypeScript service (bundled with Node/Bun as a sidecar in the desktop app, started by `perfhawk ui`/`perfhawk ask`) using the official `@anthropic-ai/sdk` and its tool runner. The UI already is TypeScript, so types and schemas are shared.
 - API keys never live in the webview; the sidecar holds them (OS keychain).
 
 *(Alternative: implement the loop in Rust over raw HTTP. Fewer moving parts, but you hand-maintain request types, streaming and tool-loop logic. Recommend the TS sidecar.)*
@@ -116,7 +116,7 @@ Tool design notes:
 }
 ```
 
-- **Evidence validator** (deterministic, in `prism-ai`): every `evidence` id must exist in tool results from this conversation, and every number quoted must match a tool value within rounding. Failing findings are dropped or flagged "unverified".
+- **Evidence validator** (deterministic, in `perfhawk-ai`): every `evidence` id must exist in tool results from this conversation, and every number quoted must match a tool value within rounding. Failing findings are dropped or flagged "unverified".
 - **Runtime knowledge base:** short curated docs per runtime/kind (e.g. "Go `block` ≠ disk I/O", "JVM safepoint bias", "Node event-loop lag"), retrieved via `runtime_knowledge` rather than stuffed into every prompt.
 
 ---
@@ -134,7 +134,7 @@ API features to use:
 - **Prompt caching** on system prompt + tool definitions + session context — large cost/latency win for multi-turn chats.
 - **Server-side refusal fallbacks** (`fallbacks: "default"`) enabled by default so a rare classifier refusal doesn't break the panel.
 - **Task budget** on long "investigate this incident" runs so the agent paces itself.
-- **MCP:** `prism mcp` exposes the same tool set to Claude Code / other agents, so "profile and fix this" can happen inside a coding agent.
+- **MCP:** `perfhawk mcp` exposes the same tool set to Claude Code / other agents, so "profile and fix this" can happen inside a coding agent.
 
 ---
 
@@ -163,7 +163,7 @@ Build an eval suite before shipping:
 
 | Phase | AI scope |
 |---|---|
-| **Phase 1** (with MVP capture) | Engine tools + JSON-RPC; `prism ask` CLI; Ask panel with streaming; citations + validator; Claude provider; redaction v1 |
+| **Phase 1** (with MVP capture) | Engine tools + JSON-RPC; `perfhawk ask` CLI; Ask panel with streaming; citations + validator; Claude provider; redaction v1 |
 | **Phase 2** | Auto-insights cards, Explain-this, NL → filter, Compare narrative, eval suite in CI |
 | **Phase 3** | Capture copilot with approvals, timeline SQL tool, heap tools, runtime knowledge base for all languages, MCP server |
 | **Phase 4** | Report writer, local-model mode, org policies, IDE integration (ask from editor gutter) |

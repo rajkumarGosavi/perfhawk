@@ -7,6 +7,6 @@ license.workspace = true
 publish = false
 
 [dependencies]
-prism-import = { path = "../../crates/prism-import" }
+perfhawk-import = { path = "../../crates/perfhawk-import" }
 prost.workspace = true
 clap = { version = "4", features = ["derive"] }

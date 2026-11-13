@@ -23,7 +23,7 @@ describe('api', () => {
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('/api/profiles/ab12')
     expect(init.method).toBe('DELETE')
-    expect((init.headers as Record<string, string>)['X-Prism-Request']).toBe('1')
+    expect((init.headers as Record<string, string>)['X-Perfhawk-Request']).toBe('1')
   })
 
   it('deleteSession returns the removed count', async () => {
@@ -31,7 +31,7 @@ describe('api', () => {
     expect(await deleteSession('s1')).toEqual({ removed: 3 })
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('/api/sessions/s1')
-    expect((init.headers as Record<string, string>)['X-Prism-Request']).toBe('1')
+    expect((init.headers as Record<string, string>)['X-Perfhawk-Request']).toBe('1')
   })
 
   it('non-2xx becomes an ApiError with the server code', async () => {

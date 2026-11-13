@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Captures one speedscope profile per workload of dotnet-demo with dotnet-trace,
-# then imports them into prism.
+# then imports them into perfhawk.
 #
 #   ./profile.sh                  # all modes, 10 s each
 #   MODES="cpu lock" SECONDS_PER_MODE=5 ./profile.sh
 #
 # Requires: .NET SDK 8+, dotnet-trace (dotnet tool install --global dotnet-trace),
-# and a built prism (cargo build -p prism-cli) or prism on PATH.
+# and a built perfhawk (cargo build -p perfhawk-cli) or perfhawk on PATH.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -16,9 +16,9 @@ OUT="${OUT:-profiles}"
 
 command -v dotnet-trace >/dev/null || { echo "dotnet-trace not found. Install it with: dotnet tool install --global dotnet-trace" >&2; exit 1; }
 
-PRISM="$(command -v prism || true)"
-if [ -z "$PRISM" ]; then
-  for c in ../../target/release/prism ../../target/release/prism.exe ../../target/debug/prism ../../target/debug/prism.exe; do [ -x "$c" ] && PRISM="$c" && break; done
+PERFHAWK="$(command -v perfhawk || true)"
+if [ -z "$PERFHAWK" ]; then
+  for c in ../../target/release/perfhawk ../../target/release/perfhawk.exe ../../target/debug/perfhawk ../../target/debug/perfhawk.exe; do [ -x "$c" ] && PERFHAWK="$c" && break; done
 fi
 
 dotnet build -c Release -nologo -v q
@@ -32,10 +32,10 @@ for mode in $MODES; do
   files+=("$OUT/dotnet-$mode.speedscope.json")
 done
 
-if [ -n "$PRISM" ]; then
-  for f in "${files[@]}"; do "$PRISM" import "$f" --kind wall --tag dotnet-demo; done
-  echo; echo "Open the UI with:  $PRISM ui"
+if [ -n "$PERFHAWK" ]; then
+  for f in "${files[@]}"; do "$PERFHAWK" import "$f" --kind wall --tag dotnet-demo; done
+  echo; echo "Open the UI with:  $PERFHAWK ui"
 else
-  echo; echo "prism not found; import manually:"
-  for f in "${files[@]}"; do echo "  prism import \"$f\" --kind wall"; done
+  echo; echo "perfhawk not found; import manually:"
+  for f in "${files[@]}"; do echo "  perfhawk import \"$f\" --kind wall"; done
 fi

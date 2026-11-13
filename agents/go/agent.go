@@ -1,10 +1,10 @@
-// Package agent embeds a small prism profiling endpoint in a Go program.
+// Package agent embeds a small perfhawk profiling endpoint in a Go program.
 //
 // It serves the standard net/http/pprof handlers plus wall-clock profiling
 // (fgprof) and temporary mutex/block profiling, on a loopback-only address,
-// and publishes a discovery file so `prism record --pid` can find it.
+// and publishes a discovery file so `perfhawk record --pid` can find it.
 //
-// Importing the package with a blank import and setting PRISM_AGENT=1 starts
+// Importing the package with a blank import and setting PERFHAWK_AGENT=1 starts
 // the agent automatically; otherwise call Start.
 package agent
 
@@ -23,7 +23,7 @@ import (
 	"github.com/felixge/fgprof"
 )
 
-// Protocol is the version of the HTTP contract prism speaks to this agent.
+// Protocol is the version of the HTTP contract perfhawk speaks to this agent.
 const Protocol = 1
 
 // Options configures Start.
@@ -34,7 +34,7 @@ type Options struct {
 	DisableDiscovery bool
 }
 
-// Agent is a running prism endpoint.
+// Agent is a running perfhawk endpoint.
 type Agent struct {
 	srv       *http.Server
 	ln        net.Listener
@@ -44,9 +44,9 @@ type Agent struct {
 }
 
 func init() {
-	if os.Getenv("PRISM_AGENT") == "1" {
+	if os.Getenv("PERFHAWK_AGENT") == "1" {
 		if _, err := Start(Options{}); err != nil {
-			fmt.Fprintf(os.Stderr, "prism agent: %v\n", err)
+			fmt.Fprintf(os.Stderr, "perfhawk agent: %v\n", err)
 		}
 	}
 }
@@ -61,7 +61,7 @@ func checkLoopback(addr string) error {
 	}
 	ip := net.ParseIP(host)
 	if ip == nil || !ip.IsLoopback() {
-		return fmt.Errorf("address %q is not loopback; the prism agent only listens on loopback", addr)
+		return fmt.Errorf("address %q is not loopback; the perfhawk agent only listens on loopback", addr)
 	}
 	return nil
 }
@@ -111,7 +111,7 @@ func Start(opts Options) (*Agent, error) {
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	mux.HandleFunc("/debug/prism/info", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/debug/perfhawk/info", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"protocol":   Protocol,
@@ -119,9 +119,9 @@ func Start(opts Options) (*Agent, error) {
 			"go_version": runtime.Version(),
 		})
 	})
-	mux.Handle("/debug/prism/wall", fgprof.Handler())
-	mux.HandleFunc("/debug/prism/contention", contentionHandler)
-	mux.HandleFunc("/debug/prism/cpu-windows", cpuWindowsHandler)
+	mux.Handle("/debug/perfhawk/wall", fgprof.Handler())
+	mux.HandleFunc("/debug/perfhawk/contention", contentionHandler)
+	mux.HandleFunc("/debug/perfhawk/cpu-windows", cpuWindowsHandler)
 
 	a := &Agent{
 		srv: &http.Server{Handler: loopbackHostOnly(mux), ReadHeaderTimeout: 10 * time.Second},
@@ -132,7 +132,7 @@ func Start(opts Options) (*Agent, error) {
 		// The discovery directory is shared (the temp dir); failing to write there, for
 		// example because another user owns it, must not keep the agent from running.
 		if err := a.writeDiscovery(); err != nil {
-			fmt.Fprintf(os.Stderr, "prism agent: discovery file not written (use --url to attach): %v\n", err)
+			fmt.Fprintf(os.Stderr, "perfhawk agent: discovery file not written (use --url to attach): %v\n", err)
 		} else {
 			watchSignals(a)
 		}

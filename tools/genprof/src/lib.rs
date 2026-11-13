@@ -11,7 +11,7 @@
 //! sample types: `samples/count` and `cpu/nanoseconds`. Output is uncompressed
 //! protobuf, written streaming until it reaches the requested size.
 
-use prism_import::pprof::proto;
+use perfhawk_import::pprof::proto;
 use prost::Message;
 use std::fs::File;
 use std::io::{BufWriter, Write};

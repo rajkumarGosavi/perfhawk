@@ -9,9 +9,9 @@ $ErrorActionPreference = 'Stop'
 Set-Location (Resolve-Path "$PSScriptRoot/../..")
 
 $parts = New-Object System.Collections.Generic.List[string]
-$parts.Add("PRISM THIRD-PARTY NOTICES`r`nPrism itself is Apache-2.0 (see LICENSE). It includes the following third-party software.`r`n`r`n")
+$parts.Add("PERFHAWK THIRD-PARTY NOTICES`r`nPerfhawk itself is Apache-2.0 (see LICENSE). It includes the following third-party software.`r`n`r`n")
 
-$tmp = Join-Path ([IO.Path]::GetTempPath()) 'prism-rust-notices.txt'
+$tmp = Join-Path ([IO.Path]::GetTempPath()) 'perfhawk-rust-notices.txt'
 $ErrorActionPreference = 'Continue'   # cargo-about logs to stderr; Windows PowerShell 5.1 treats that as an error
 cargo about generate about.hbs --workspace -o $tmp
 $code = $LASTEXITCODE

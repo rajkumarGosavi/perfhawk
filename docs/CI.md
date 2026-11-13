@@ -1,12 +1,12 @@
 # Regression checks in CI
 
-`prism check` compares a profile with a baseline and exits non-zero when a function got meaningfully more expensive. It reads only the local profile store (or files you import first), so it needs no server.
+`perfhawk check` compares a profile with a baseline and exits non-zero when a function got meaningfully more expensive. It reads only the local profile store (or files you import first), so it needs no server.
 
 ```
-prism check <HEAD> --baseline <BASE> [--sample-type NAME] [--threshold PCT] [--min-value POINTS] [--limit N] [--json]
+perfhawk check <HEAD> --baseline <BASE> [--sample-type NAME] [--threshold PCT] [--min-value POINTS] [--limit N] [--json]
 ```
 
-`HEAD` and `BASE` are profile references: an id, a unique id prefix or a name, as for `prism diff`. Import files first with `prism import`.
+`HEAD` and `BASE` are profile references: an id, a unique id prefix or a name, as for `perfhawk diff`. Import files first with `perfhawk import`.
 
 ## What counts as a regression
 
@@ -42,8 +42,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: { go-version: stable }
-      - name: Install prism
-        run: cargo install --path crates/prism-cli --locked   # or download a release build
+      - name: Install perfhawk
+        run: cargo install --path crates/perfhawk-cli --locked   # or download a release build
 
       # 1. Profile the benchmark on this commit.
       - name: Profile (head)
@@ -61,9 +61,9 @@ jobs:
       # 3. Compare. Exit 1 fails the job.
       - name: Check
         run: |
-          prism import head.pb.gz --name head
-          prism import baseline/base.pb.gz --name base
-          prism check head --baseline base --threshold 10 --json | tee perf-check.json
+          perfhawk import head.pb.gz --name head
+          perfhawk import baseline/base.pb.gz --name base
+          perfhawk check head --baseline base --threshold 10 --json | tee perf-check.json
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -74,10 +74,10 @@ On the main branch, a second job uploads `head.pb.gz` as the `perf-baseline` art
 
 ## History and series
 
-For trends over many runs, tag recordings with `--tag series:<name>` (for example `prism record --tag series:checkout --pid 1234`). The **History** view then plots one function across the sessions of that series. Without the tag, sessions are grouped by the program they profiled. See the [user guide](USER_GUIDE.md).
+For trends over many runs, tag recordings with `--tag series:<name>` (for example `perfhawk record --tag series:checkout --pid 1234`). The **History** view then plots one function across the sessions of that series. Without the tag, sessions are grouped by the program they profiled. See the [user guide](USER_GUIDE.md).
 
 ## Limits
 
 - No pull request comments, dashboards or a shared server yet: those belong to a later phase.
-- `prism check` compares one profile with one baseline; it does not look at trends.
+- `perfhawk check` compares one profile with one baseline; it does not look at trends.
 - Function names are matched exactly, with no fuzzy rename detection.

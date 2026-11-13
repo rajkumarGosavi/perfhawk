@@ -6,10 +6,10 @@
 /examples/*/profiles/
 /examples/dotnet-demo/bin/
 /examples/dotnet-demo/obj/
-/helpers/prism-dotnet/bin/
-/helpers/prism-dotnet/obj/
-/helpers/prism-dotnet/tests/bin/
-/helpers/prism-dotnet/tests/obj/
+/helpers/perfhawk-dotnet/bin/
+/helpers/perfhawk-dotnet/obj/
+/helpers/perfhawk-dotnet/tests/bin/
+/helpers/perfhawk-dotnet/tests/obj/
 
 # Release artifacts (generated)
 /dist/
