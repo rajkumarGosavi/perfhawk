@@ -18,14 +18,25 @@ export function toFlameNodes(root: DiffNode): DiffFlameNode {
     headSelf: n.headSelf,
   })
   const out = make(root)
+  const created: DiffFlameNode[] = [out] // parents always precede their children
   const stack: [DiffNode, DiffFlameNode][] = [[root, out]]
   while (stack.length) {
     const [n, o] = stack.pop()!
     for (const c of n.children) {
       const co = make(c)
       o.children.push(co)
+      created.push(co)
       stack.push([c, co])
     }
+  }
+  // A frame's width is the larger of its base and head value, but cost can move between
+  // callees (one shrinks, another grows), so children may need more room than the parent's
+  // own max. Widen bottom-up so a parent always spans its children.
+  for (let i = created.length - 1; i >= 0; i--) {
+    const node = created[i]
+    let sum = 0
+    for (const c of node.children) sum += c.total
+    if (sum > node.total) node.total = sum
   }
   return out
 }

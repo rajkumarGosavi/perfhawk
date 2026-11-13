@@ -10,8 +10,18 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 pub const PROTOCOL: u64 = 1;
-/// How long the helper gets to finish after `stop` before it is killed.
-const STOP_GRACE: Duration = Duration::from_secs(10);
+/// How long the helper may stay silent after `stop` before it is killed. The real helper
+/// needs up to ~30 s for EventPipe rundown, then converts the trace, so this is an idle
+/// limit that restarts on every event rather than a fixed deadline.
+const DEFAULT_STOP_GRACE: Duration = Duration::from_secs(45);
+
+fn stop_grace() -> Duration {
+    std::env::var("PRISM_STOP_GRACE_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(DEFAULT_STOP_GRACE)
+}
 
 /// How to start the helper: `program` plus leading arguments (e.g. `dotnet` + `[helper.dll]`).
 #[derive(Debug, Clone, PartialEq)]
@@ -186,6 +196,7 @@ pub fn run_helper(
         }
     });
 
+    let grace = stop_grace();
     let result = (|| -> Result<(), CaptureError> {
         let mut saw_hello = false;
         let mut finished = false;
@@ -200,7 +211,7 @@ pub fn run_helper(
                 }
                 stop_sent_at = Some(Instant::now());
             }
-            if stop_sent_at.is_some_and(|t| t.elapsed() > STOP_GRACE) {
+            if stop_sent_at.is_some_and(|t| t.elapsed() > grace) {
                 return Err(CaptureError::Helper(
                     "prism-dotnet did not stop in time and was killed".into(),
                 ));
@@ -229,6 +240,9 @@ pub fn run_helper(
                                 ))
                             }
                         }
+                    }
+                    if stop_sent_at.is_some() {
+                        stop_sent_at = Some(Instant::now()); // still working: restart the idle clock
                     }
                     if matches!(ev, HelperEvent::Done { .. } | HelperEvent::Error { .. }) {
                         finished = true;

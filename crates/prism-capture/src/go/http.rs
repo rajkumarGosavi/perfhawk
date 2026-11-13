@@ -195,6 +195,10 @@ pub(crate) fn capture_http(
                 pending.remove(&kind);
                 gone |= g;
                 warnings.push(format!("{kind}: {text}"));
+                if gone {
+                    // The target is gone: nothing else can arrive, so do not wait out the window.
+                    break;
+                }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,

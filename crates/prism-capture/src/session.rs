@@ -131,7 +131,10 @@ pub fn record(
             degraded = true;
         }
     }
+    // A terminal Ctrl-C reaches the whole process group, so the target can die at the
+    // same moment the user cancels; the user's cancellation is what gets recorded.
     let mut status = match outcome.end {
+        _ if cancel.is_cancelled() => SessionStatus::Cancelled,
         CaptureEnd::Complete => SessionStatus::Complete,
         CaptureEnd::TargetExited => SessionStatus::Partial,
         CaptureEnd::Cancelled => SessionStatus::Cancelled,

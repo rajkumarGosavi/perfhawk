@@ -101,11 +101,13 @@ func Start(opts Options) (*Agent, error) {
 	}
 	go func() { _ = a.srv.Serve(ln) }()
 	if !opts.DisableDiscovery {
+		// The discovery directory is shared (the temp dir); failing to write there, for
+		// example because another user owns it, must not keep the agent from running.
 		if err := a.writeDiscovery(); err != nil {
-			_ = a.srv.Close()
-			return nil, err
+			fmt.Fprintf(os.Stderr, "prism agent: discovery file not written (use --url to attach): %v\n", err)
+		} else {
+			watchSignals(a)
 		}
-		watchSignals(a)
 	}
 	return a, nil
 }

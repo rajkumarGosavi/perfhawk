@@ -76,10 +76,18 @@ fn mock(routes: Vec<(&str, Route)>) -> Mock {
                 .find_map(|kv| kv.strip_prefix("seconds="))
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(0);
+            let s2 = s.clone();
             std::thread::spawn(move || match route {
                 Some(r) => {
                     if r.delay_by_seconds {
-                        std::thread::sleep(Duration::from_secs(secs));
+                        // A stopped mock hangs up on in-flight requests, like a dead target.
+                        let until = Instant::now() + Duration::from_secs(secs);
+                        while Instant::now() < until {
+                            if s2.load(Ordering::SeqCst) {
+                                return;
+                            }
+                            std::thread::sleep(Duration::from_millis(25));
+                        }
                     }
                     let resp = tiny_http::Response::from_data(r.body).with_status_code(r.status);
                     let _ = req.respond(resp);
@@ -577,4 +585,75 @@ fn go_test_mode_produces_cpu_and_heap() {
     let out = out.unwrap();
     assert!(out.artifacts.iter().any(|a| a.kind == ProfileKind::Cpu));
     assert!(out.artifacts.iter().any(|a| a.kind == ProfileKind::Memory));
+}
+
+#[test]
+fn target_dying_mid_window_ends_capture_promptly() {
+    // A raw TCP "target" that accepts requests, never answers, then hangs up (dies).
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let streams = Arc::new(Mutex::new(Vec::new()));
+    let acc = streams.clone();
+    std::thread::spawn(move || {
+        for st in listener.incoming().flatten() {
+            acc.lock().unwrap().push(st);
+        }
+    });
+    let killer = streams.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(500));
+        for st in killer.lock().unwrap().drain(..) {
+            let _ = st.shutdown(std::net::Shutdown::Both);
+        }
+    });
+    let rt = RuntimeInfo {
+        provider: "go",
+        pid: Some(1),
+        url: Some(base.clone()),
+        runtime_version: Some("go1.22.0".into()),
+        command: None,
+    };
+    let start = Instant::now();
+    let out = GoProvider::new()
+        .capture(
+            &rt,
+            &Target::Url(base),
+            &plan(vec![ProfileKind::Cpu, ProfileKind::Memory], 30),
+            &CancelToken::new(),
+            &|_| {},
+        )
+        .unwrap();
+    assert!(
+        start.elapsed() < Duration::from_secs(10),
+        "{:?}",
+        start.elapsed()
+    );
+    assert_eq!(out.end, CaptureEnd::TargetExited);
+}
+
+#[test]
+fn discovery_ignores_non_loopback_addresses() {
+    // A planted file must not make prism talk to (and import from) another host.
+    let m = mock(agent_routes());
+    let port = m.base.rsplit(':').next().unwrap().to_string();
+    let dir = tempfile::TempDir::new().unwrap();
+    for (i, addr) in ["0.0.0.0", "10.1.2.3", "example.com", "[2001:db8::1]"]
+        .iter()
+        .enumerate()
+    {
+        let pid = 4242 + i as u32;
+        std::fs::write(
+            dir.path().join(format!("{pid}.json")),
+            format!(
+                r#"{{"pid":{pid},"addr":"{addr}:{port}","go_version":"go1.22.0","protocol":1}}"#
+            ),
+        )
+        .unwrap();
+        assert!(discovery::discover_in(dir.path(), pid).is_none(), "{addr}");
+    }
+    assert!(
+        m.hits.lock().unwrap().is_empty(),
+        "no request may be sent to a non-loopback address: {:?}",
+        m.hits.lock().unwrap()
+    );
 }

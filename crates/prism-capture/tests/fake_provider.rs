@@ -296,3 +296,23 @@ fn cancel_token_wait_timeout() {
     assert!(t.is_cancelled());
     assert!(t.wait_timeout(Duration::from_secs(10)));
 }
+
+#[test]
+fn cancelled_token_wins_over_target_exited() {
+    // Ctrl-C reaches the whole process group, so the target may die at the same
+    // moment; the user's cancellation is what the session records.
+    let caps = vec![cap(ProfileKind::Cpu, true)];
+    let token = CancelToken::new();
+    let t2 = token.clone();
+    let (_t, store, reg) = setup(caps, move |_| {
+        t2.cancel();
+        Ok(CaptureOutcome {
+            artifacts: vec![art(ProfileKind::Cpu, Fidelity::Native, CPU)],
+            end: CaptureEnd::TargetExited,
+            warnings: vec![],
+        })
+    });
+    let s = record(&store, &reg, &req(vec![]), &token, &|_| {}).unwrap();
+    assert_eq!(s.status, SessionStatus::Cancelled);
+    assert_eq!(s.profile_ids.len(), 1);
+}

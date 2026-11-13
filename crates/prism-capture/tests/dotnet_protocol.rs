@@ -544,3 +544,76 @@ fn convert_nettrace_returns_artifacts_with_fidelity() {
     let err = convert_nettrace_with(&err_h, &trace).unwrap_err();
     assert!(err.to_string().contains("bad trace"), "{err}");
 }
+
+#[test]
+fn stop_grace_restarts_while_the_helper_keeps_reporting() {
+    // After `stop` the real helper spends a long time on rundown and conversion but
+    // keeps emitting progress; killing it at a fixed deadline would lose the capture.
+    let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::set_var("PRISM_STOP_GRACE_MS", "2500");
+    let dir = tempfile::TempDir::new().unwrap();
+    let mut lines = vec![HELLO.to_string(), pid_listing(9), LIST_DONE.to_string()];
+    lines.push(r#"{"for":"collect","type":"wait_stop"}"#.to_string());
+    // 7 x 1.6 s = 11.2 s of shutdown work: longer than the old fixed 10 s deadline,
+    // but never silent for longer than the 2.5 s idle grace.
+    for i in 0..7 {
+        lines.push(r#"{"for":"collect","type":"sleep","ms":1600}"#.to_string());
+        lines.push(format!(
+            r#"{{"for":"collect","type":"progress","message":"step {i}"}}"#
+        ));
+    }
+    lines.push(art("wall", CPU));
+    lines.push(r#"{"for":"collect","type":"done","end":"cancelled"}"#.to_string());
+    let p = provider(scripted(&dir, &lines));
+    let rt = detect_pid(&p, 9);
+    let token = CancelToken::new();
+    let t2 = token.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300));
+        t2.cancel();
+    });
+    let res = p.capture(
+        &rt,
+        &Target::Pid(9),
+        &plan(vec![ProfileKind::Wall]),
+        &token,
+        &|_| {},
+    );
+    std::env::remove_var("PRISM_STOP_GRACE_MS");
+    let out = res.expect("capture survives a slow, chatty shutdown");
+    assert_eq!(out.end, CaptureEnd::Cancelled);
+    assert_eq!(out.artifacts.len(), 1);
+}
+
+#[test]
+fn silent_helper_is_killed_after_the_grace() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    std::env::set_var("PRISM_STOP_GRACE_MS", "800");
+    let dir = tempfile::TempDir::new().unwrap();
+    let lines = vec![
+        HELLO.to_string(),
+        pid_listing(9),
+        LIST_DONE.to_string(),
+        r#"{"for":"collect","type":"wait_stop"}"#.to_string(),
+        r#"{"for":"collect","type":"sleep","ms":20000}"#.to_string(),
+    ];
+    let p = provider(scripted(&dir, &lines));
+    let rt = detect_pid(&p, 9);
+    let token = CancelToken::new();
+    let t2 = token.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300));
+        t2.cancel();
+    });
+    let start = Instant::now();
+    let res = p.capture(
+        &rt,
+        &Target::Pid(9),
+        &plan(vec![ProfileKind::Wall]),
+        &token,
+        &|_| {},
+    );
+    std::env::remove_var("PRISM_STOP_GRACE_MS");
+    assert!(res.unwrap_err().to_string().contains("did not stop"));
+    assert!(start.elapsed() < Duration::from_secs(10));
+}

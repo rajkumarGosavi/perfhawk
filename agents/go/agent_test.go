@@ -280,3 +280,20 @@ func TestAutoStartOnlyWithEnv(t *testing.T) {
 		t.Fatal("agent started without PRISM_AGENT=1")
 	}
 }
+
+func TestStartSucceedsWhenDiscoveryCannotBeWritten(t *testing.T) {
+	// Another user may own the shared discovery directory; that must not stop the agent.
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"TMP", "TEMP", "TMPDIR"} {
+		t.Setenv(k, blocker)
+	}
+	a, err := Start(Options{})
+	if err != nil {
+		t.Fatalf("Start failed because discovery was unwritable: %v", err)
+	}
+	defer a.Close()
+	get(t, "http://"+a.Addr()+"/debug/prism/info")
+}

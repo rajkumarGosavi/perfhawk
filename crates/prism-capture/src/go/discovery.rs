@@ -66,7 +66,13 @@ pub fn discover_in(dir: &Path, pid: u32) -> Option<Discovery> {
     if v.get("pid")?.as_u64()? != pid as u64 || v.get("protocol")?.as_u64()? != PROTOCOL {
         return None;
     }
-    let url = format!("http://{}", v.get("addr")?.as_str()?);
+    // Only ever talk to loopback: the file lives in a shared temp directory and could be planted.
+    let addr = v.get("addr")?.as_str()?;
+    let sock: std::net::SocketAddr = addr.parse().ok()?;
+    if !sock.ip().is_loopback() {
+        return None;
+    }
+    let url = format!("http://{addr}");
     let info = agent_info(&url, Duration::from_secs(2)).ok()??;
     if info.pid != pid {
         return None;
