@@ -414,7 +414,7 @@ The Graph view (key `8`) draws the profile as a graph of functions: each box is 
 function (taller and darker means more self cost), each arrow a caller-to-callee
 relationship, and thicker arrows carry more of the profile. A **dotted** arrow
 means functions that are not shown lie between the two (so the call is indirect).
-It shows only the top functions by total cost (default 80, set with the **Nodes**
+It shows only the top functions by total cost (default 10, set with the **Nodes**
 slider, up to 300; the count is in the URL as `gn`), and says how many more are
 hidden. Pan by dragging, zoom with the wheel or the + / − buttons, **Fit** resets.
 Keyboard: arrow keys move between callers, callees and neighbours, **Enter** opens

@@ -107,7 +107,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       view === 'time'
         ? getHeatmap(ref, { st, focus: qf, exclude: qe, hide: qh, tx, cols: 600 }).then((heat) => ({ kind: 'heat', heat }))
         : view === 'graph'
-        ? getGraph(ref, { ...q, nodes: state.graphNodes ?? 80 }).then((graph) => ({ kind: 'graph', graph }))
+        ? getGraph(ref, { ...q, nodes: state.graphNodes ?? 10 }).then((graph) => ({ kind: 'graph', graph }))
         : view === 'groups'
         ? getGroups(ref, { ...q, by: groupBy, limit: 500 }).then((rows) => ({ kind: 'groups', rows }))
         : view === 'top'
@@ -372,7 +372,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         <GraphView
           graph={data.graph}
           unit={unit}
-          nodes={state.graphNodes ?? 80}
+          nodes={state.graphNodes ?? 10}
           onNodes={(n) => replace({ graphNodes: n })}
           onOpenFunc={(f) => pushView({ view: 'sandwich', func: f })}
           onTransform={onTransform}

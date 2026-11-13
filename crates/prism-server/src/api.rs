@@ -538,7 +538,7 @@ async fn graph_h(
     Q(q): Q<AnalysisQuery>,
 ) -> ApiResult<Response> {
     let nodes = match q.nodes {
-        None => 80,
+        None => 10,
         Some(0) => return Err(ApiError::bad("nodes must be at least 1")),
         Some(n) => n.min(300),
     };
