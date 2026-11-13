@@ -57,6 +57,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
     if (!record) return
     if (view === 'sandwich' && func === undefined) {
       setData(null)
+      setLoading(false)
       return
     }
     let stale = false
