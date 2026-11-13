@@ -1148,7 +1148,6 @@ dependencies = [
  "prism-analysis",
  "prism-import",
  "prism-model",
- "prost",
  "rusqlite",
  "serde",
  "serde_json",
