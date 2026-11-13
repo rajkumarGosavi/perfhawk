@@ -108,6 +108,43 @@ enum Command {
         #[arg(last = true, value_name = "PROGRAM")]
         program: Vec<String>,
     },
+    /// Triage a service: what is slow (CPU, locks, I/O, scheduler) and what to run next
+    Doctor {
+        /// Attach to a process id
+        #[arg(long)]
+        pid: Option<u32>,
+        /// Attach to a Go net/http/pprof endpoint
+        #[arg(long, value_name = "URL")]
+        url: Option<String>,
+        /// Profile `go test` for a package (test arguments after `--`)
+        #[arg(long, value_name = "PKG")]
+        go_test: Option<String>,
+        /// Capture window: <n>ms|s|m, 1s to 10m
+        #[arg(long, default_value = "60s", value_parser = prism_capture::parse_duration)]
+        duration: Duration,
+        /// Session name
+        #[arg(long)]
+        name: Option<String>,
+        /// Diagnose an existing session instead of capturing
+        #[arg(
+            long,
+            value_name = "REF",
+            conflicts_with_all = ["pid", "url", "go_test", "check"]
+        )]
+        session: Option<String>,
+        /// Machine-readable output
+        #[arg(long)]
+        json: bool,
+        /// List what can be captured for the target and what is missing; capture nothing
+        #[arg(long)]
+        check: bool,
+        /// After the report, run the recommended follow-up capture (never elevates)
+        #[arg(long)]
+        follow_up: bool,
+        /// Program to launch and its arguments
+        #[arg(last = true, value_name = "PROGRAM")]
+        program: Vec<String>,
+    },
     /// List recording targets (Go agents, .NET processes)
     Targets {
         #[arg(long)]
@@ -261,6 +298,41 @@ async fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     }
+    if let Command::Doctor {
+        pid,
+        url,
+        go_test,
+        program,
+        session,
+        ..
+    } = &cli.command
+    {
+        let probe = cmd::record::Args {
+            pid: *pid,
+            url: url.clone(),
+            go_test: go_test.clone(),
+            trailing: program.clone(),
+            kinds: vec![],
+            duration: Duration::from_secs(1),
+            name: None,
+            tags: vec![],
+            timeline: true,
+        };
+        let bad = match (session, cmd::record::build_target(&probe)) {
+            (Some(_), _) if !program.is_empty() => {
+                Some("--session cannot be combined with a program".to_string())
+            }
+            (Some(_), _) => None,
+            (None, Ok(_)) => None,
+            (None, Err(m)) => Some(format!("{m} (or --session <REF> to diagnose a recorded session)")),
+        };
+        if let Some(m) = bad {
+            let _ = Cli::command()
+                .error(clap::error::ErrorKind::ArgumentConflict, m)
+                .print();
+            return ExitCode::from(2);
+        }
+    }
     let home = cli.home.unwrap_or_else(default_home);
     let is_check = matches!(cli.command, Command::Check { .. });
     let store = match Store::open(&home) {
@@ -380,6 +452,50 @@ async fn main() -> ExitCode {
                 }
             }
             ExitCode::from(code)
+        }
+        Command::Doctor {
+            pid,
+            url,
+            go_test,
+            duration,
+            name,
+            session,
+            json,
+            check,
+            follow_up,
+            program,
+        } => {
+            let target = if session.is_some() {
+                None
+            } else {
+                let args = cmd::record::Args {
+                    pid,
+                    url,
+                    go_test,
+                    trailing: program,
+                    kinds: vec![],
+                    duration,
+                    name: name.clone(),
+                    tags: vec![],
+                    timeline: true,
+                };
+                match cmd::record::build_target(&args) {
+                    Ok(t) => Some(t),
+                    Err(m) => return fail(m),
+                }
+            };
+            ExitCode::from(cmd::doctor::run(
+                &store,
+                cmd::doctor::Args {
+                    target,
+                    session,
+                    duration,
+                    name,
+                    json,
+                    check,
+                    follow_up,
+                },
+            ))
         }
         Command::Targets { json } => done(cmd::targets::run(json)),
         Command::Sessions { json } => done(cmd::sessions::run(&store, json)),
