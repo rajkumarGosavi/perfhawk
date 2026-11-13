@@ -9,4 +9,4 @@ mod tree;
 pub use filter::Filter;
 pub use sandwich::{sandwich, Sandwich};
 pub use top::{filtered_total, top, TopRow, TopSort};
-pub use tree::{flame, inverted_flame, FlameNode};
+pub use tree::{flame, flame_with, inverted_flame, inverted_flame_with, FlameNode, FlameOptions};
