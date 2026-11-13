@@ -4,6 +4,7 @@
 mod diff;
 mod filter;
 mod findings;
+mod graph;
 mod groups;
 mod pivot;
 mod sandwich;
@@ -17,6 +18,7 @@ pub use diff::{
 };
 pub use filter::Filter;
 pub use findings::{findings, Evidence, Finding, FindingAction, RuleConfig, Severity};
+pub use graph::{call_graph, CallGraph, GraphEdge, GraphNode};
 pub use groups::{groups, GroupBy, GroupRow};
 pub use pivot::function_stats;
 pub use sandwich::{sandwich, Sandwich};
