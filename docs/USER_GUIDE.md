@@ -16,7 +16,7 @@ server only listens on `127.0.0.1`.
 
 ## 1. Install / build
 
-Prerequisites: Rust (stable) and Node 20+ to build. Go 1.22+ and .NET 8+ are
+Prerequisites: Rust (stable) and Node 22.12+ to build. Go 1.22+ and .NET 8+ are
 only needed for the example programs.
 
 ```bash
@@ -68,7 +68,7 @@ For .NET, see [examples/README.md](../examples/README.md).
 | **Kind** | What the profile measures: `cpu`, `wall`, `memory`, `lock`, `blocking`, `block_io`, `threads`, or `unknown`. Kind is detected from the data and can be overridden with `--kind`. |
 | **Sample type** | One measured value per sample. A Go heap profile has four: `alloc_objects`, `alloc_space`, `inuse_objects` and `inuse_space`. Each has a unit (`nanoseconds`, `bytes` or `count`). |
 | **Self / Total** | *Self* is the cost spent in the function itself. *Total* also includes everything it calls. A recursive function is counted once per sample in Total. |
-| **Reference** | How you name a profile in commands: `last` (most recent), a full id, a unique id prefix of at least 4 hex characters, or the exact display name. |
+| **Reference** | How you name a profile in commands: `last` (most recent), a full id, a unique id prefix of at least 4 hex characters, or the exact display name. If a name matches several profiles (for example after re-running a demo), prism lists the candidates; use the short id from `prism ls`. |
 
 ### How kinds are detected
 
@@ -110,7 +110,7 @@ Supported formats are detected from content, not file extension:
 
 - **pprof** (`.pb.gz` or raw protobuf), from Go `runtime/pprof`, `net/http/pprof`, `go test -cpuprofile`, async-profiler and others.
 - **Collapsed / folded stacks** (`main;a;b 42` per line), from `stackcollapse-*`, `py-spy --format raw`, `perf script | stackcollapse-perf.pl` and others.
-- **speedscope JSON**, from `dotnet-trace --format Speedscope`, `py-spy --format speedscope`, `rbspy` and others. Every profile in the file (one per thread for `dotnet-trace`) is merged, and each sample is labelled with its thread.
+- **speedscope JSON**, from `dotnet-trace --format Speedscope`, `py-spy --format speedscope`, `rbspy` and others. Every profile in the file (one per thread for `dotnet-trace`) is merged, and each sample is labelled with its thread (thread filtering in the UI arrives later).
 
 Windows tip: PowerShell does not expand `*.pb.gz`. List the files, or run the
 command from Git Bash.
@@ -120,15 +120,15 @@ command from Git Bash.
 Lists profiles, newest first:
 
 ```
-ID            KIND     FORMAT  SAMPLES     TOTAL  NAME    IMPORTED
+ID            KIND     FORMAT  SAMPLES     TOTAL  NAME    IMPORTED (UTC)
 984dbaaf5c15  cpu      pprof      4575    87.3 s  cpu     2026-11-13 06:05
 ```
 
-TOTAL is the default sample type's total. `--json` prints full records.
+TOTAL is the default sample type's total. IMPORTED is shown in UTC. `--json` prints full records.
 
-### `prism show [REF] [--top N] [--st NAME] [--focus RE] [--exclude RE] [--hide RE]`
+### `prism show [REF] [--top N] [--st NAME] [--focus RE] [--exclude RE] [--hide RE] [--sort self|total]`
 
-Prints the hottest functions, sorted by self value (REF defaults to `last`):
+Prints the hottest functions, sorted by self value by default, or by total with `--sort total` (REF defaults to `last`). When a filter is set, the header total reads `total: <filtered> (of <unfiltered>)`:
 
 ```
 prism show heap --st alloc_space --top 5
@@ -175,7 +175,7 @@ at the top.
 
 ### Top
 A table of functions with Self, Self %, Total and Total %. Click a column header
-to sort. Click a function to open it in Sandwich.
+to sort by Self or Total; the server does the sorting, so Total always shows the functions with the highest total. Click a function to open it in Sandwich.
 
 ### Sandwich
 This view is centered on one function. **Callers** (who calls it) are drawn
@@ -241,6 +241,7 @@ dedicated diff view arrives in Phase 1.
 | `403 forbidden` in the browser | Open the exact printed URL (`127.0.0.1:<port>`). Prism rejects other host names to block DNS-rebinding attacks. |
 | `unknown format` on import | The file isn't pprof, collapsed or speedscope. Check that it isn't truncated, or convert it to one of these. |
 | A speedscope / collapsed profile shows kind `unknown` | Re-import with `--kind cpu` or `--kind wall` (identical bytes are deduplicated, so delete and re-import, or use a fresh `--home`). |
+| `is ambiguous (2 matches: ...)` | Several profiles share that name (for example after re-running a demo). Use the short id from `prism ls` instead of the name. |
 | Mutex profile is empty (Go) | Call `runtime.SetMutexProfileFraction(n)`. For block profiles, call `runtime.SetBlockProfileRate(n)`. |
 
 ## 9. Where data lives
