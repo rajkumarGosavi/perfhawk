@@ -9,9 +9,9 @@ use axum::{
 };
 use prism_analysis::{
     call_graph, diff_flame_sides, diff_top_sorted_sides, findings, flame_with, function_stats,
-    groups, heatmap, inverted_flame_with, match_sample_type, parse_transforms, sandwich, top,
-    DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow, DiffSort, Filter, FlameOptions,
-    GroupBy, RuleConfig, TopSort, Window,
+    groups, heatmap, history_point, inverted_flame_with, match_sample_type, parse_transforms,
+    sandwich, series_key, top, DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow, DiffSort,
+    Filter, FlameOptions, GroupBy, RuleConfig, TopSort, Window,
 };
 use prism_model::{FuncId, Profile, ProfileKind, Timeline};
 use prism_store::{ImportOptions, ProfileRecord, SampleTypeInfo, StoreError};
@@ -129,6 +129,8 @@ pub fn routes() -> Router<St> {
             "/api/sessions/{reference}/timeline",
             get(session_timeline_h),
         )
+        .route("/api/series", get(series_h))
+        .route("/api/history", get(history_h))
         .route("/api/diff", get(diff_h))
         .route("/api/profiles/{reference}/flame", get(flame_h))
         .route("/api/profiles/{reference}/top", get(top_h))
@@ -935,6 +937,192 @@ async fn session_timeline_h(
         Ok(SessionTimelineOut {
             duration_ms: (span / 1_000_000).min(i64::MAX as u128) as i64,
             series,
+        })
+    })
+    .await?;
+    Ok(Json(out).into_response())
+}
+
+const MAX_HISTORY_POINTS: usize = 200;
+
+fn key_of(s: &prism_store::SessionRecord) -> String {
+    series_key(
+        &s.tags,
+        &s.target.runtime,
+        s.target.command.as_deref(),
+        s.target.url.as_deref(),
+    )
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SeriesOut {
+    key: String,
+    runtime: String,
+    session_count: usize,
+    kinds: Vec<String>,
+    last_started_at_unix_ms: i64,
+}
+
+async fn series_h(State(s): State<St>) -> ApiResult<Response> {
+    let store = s.store.clone();
+    let out = blocking(move || {
+        let sessions = store.list_sessions()?;
+        let kinds: std::collections::HashMap<String, ProfileKind> =
+            store.list()?.into_iter().map(|r| (r.id, r.kind)).collect();
+        let mut by_key: std::collections::BTreeMap<String, SeriesOut> = Default::default();
+        for sess in &sessions {
+            let key = key_of(sess);
+            let e = by_key.entry(key.clone()).or_insert_with(|| SeriesOut {
+                key,
+                runtime: sess.target.runtime.clone(),
+                session_count: 0,
+                kinds: vec![],
+                last_started_at_unix_ms: i64::MIN,
+            });
+            e.session_count += 1;
+            e.last_started_at_unix_ms = e.last_started_at_unix_ms.max(sess.started_at_unix_ms);
+            for id in &sess.profile_ids {
+                if let Some(k) = kinds.get(id) {
+                    let name = k.as_str().to_string();
+                    if !e.kinds.contains(&name) {
+                        e.kinds.push(name);
+                    }
+                }
+            }
+        }
+        let mut out: Vec<SeriesOut> = by_key.into_values().collect();
+        for o in &mut out {
+            o.kinds.sort();
+        }
+        out.sort_by(|a, b| {
+            b.last_started_at_unix_ms
+                .cmp(&a.last_started_at_unix_ms)
+                .then_with(|| a.key.cmp(&b.key))
+        });
+        Ok(out)
+    })
+    .await?;
+    Ok(Json(out).into_response())
+}
+
+#[derive(Deserialize, Default)]
+struct HistoryQuery {
+    series: Option<String>,
+    kind: Option<String>,
+    func: Option<String>,
+    st: Option<String>,
+    focus: Option<String>,
+    exclude: Option<String>,
+    hide: Option<String>,
+    tx: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HistoryPointOut {
+    session_id: String,
+    short_id: String,
+    profile_id: String,
+    started_at_unix_ms: i64,
+    #[serde(flatten)]
+    value: prism_analysis::HistoryValue,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HistoryOut {
+    series: String,
+    kind: ProfileKind,
+    func: String,
+    sample_type: Option<SampleTypeOut>,
+    points: Vec<HistoryPointOut>,
+}
+
+async fn history_h(State(s): State<St>, Q(q): Q<HistoryQuery>) -> ApiResult<Response> {
+    let need = |v: &Option<String>, name: &str| -> ApiResult<String> {
+        v.clone()
+            .filter(|x| !x.is_empty())
+            .ok_or_else(|| ApiError::bad(format!("missing required query parameter '{name}'")))
+    };
+    let series = need(&q.series, "series")?;
+    let kind_text = need(&q.kind, "kind")?;
+    let func = need(&q.func, "func")?;
+    let kind = ProfileKind::parse(&kind_text)
+        .ok_or_else(|| ApiError::bad(format!("unknown kind '{kind_text}'")))?;
+    let filter = build_filter(
+        q.focus.as_deref(),
+        q.exclude.as_deref(),
+        q.hide.as_deref(),
+        q.tx.as_deref(),
+    )?;
+    let want_st = q.st.clone();
+    let store = s.store.clone();
+    let out = blocking(move || {
+        let mut sessions: Vec<_> = store
+            .list_sessions()?
+            .into_iter()
+            .filter(|x| key_of(x) == series)
+            .collect();
+        sessions.sort_by(|a, b| {
+            a.started_at_unix_ms
+                .cmp(&b.started_at_unix_ms)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        let records: std::collections::HashMap<String, ProfileRecord> = store
+            .list()?
+            .into_iter()
+            .map(|r| (r.id.clone(), r))
+            .collect();
+        // Only sessions that captured this kind count toward the 200 most recent.
+        let mut picked: Vec<(prism_store::SessionRecord, &ProfileRecord)> = Vec::new();
+        for sess in sessions {
+            let hit = sess
+                .profile_ids
+                .iter()
+                .filter_map(|id| records.get(id))
+                .find(|r| r.kind == kind);
+            if let Some(r) = hit {
+                picked.push((sess, r));
+            }
+        }
+        if picked.len() > MAX_HISTORY_POINTS {
+            picked.drain(..picked.len() - MAX_HISTORY_POINTS);
+        }
+        let st_name = want_st.or_else(|| {
+            picked.first().and_then(|(_, r)| {
+                r.sample_types
+                    .get(r.default_sample_type)
+                    .map(|t| t.name.clone())
+            })
+        });
+        let sample_type = st_name.as_ref().and_then(|n| {
+            picked
+                .iter()
+                .find_map(|(_, r)| r.sample_types.iter().find(|t| &t.name == n))
+                .map(|t| SampleTypeOut {
+                    name: t.name.clone(),
+                    unit: t.unit.clone(),
+                })
+        });
+        let mut points = Vec::with_capacity(picked.len());
+        for (sess, rec) in &picked {
+            let p = store.load(&rec.id)?;
+            let value = history_point(&p, st_name.as_deref().unwrap_or(""), &filter, &func);
+            points.push(HistoryPointOut {
+                session_id: sess.id.clone(),
+                short_id: sess.short_id.clone(),
+                profile_id: rec.id.clone(),
+                started_at_unix_ms: sess.started_at_unix_ms,
+                value,
+            });
+        }
+        Ok(HistoryOut {
+            series,
+            kind,
+            func,
+            sample_type,
+            points,
         })
     })
     .await?;

@@ -379,3 +379,153 @@ async fn session_timeline_points_are_clamped_and_unknown_session_404() {
     let (st, _) = get(addr, "/api/sessions/nope/timeline").await;
     assert_eq!(st, 404);
 }
+
+// ---- V6 series and history ----
+
+fn folded(a: u32, c: u32) -> Vec<u8> {
+    format!("main;work;a {a}\nmain;other;c {c}\n").into_bytes()
+}
+
+fn series_session(store: &Store, tag: &str, kind: ProfileKind, body: &[u8]) -> SessionRecord {
+    std::thread::sleep(std::time::Duration::from_millis(3));
+    let s = store
+        .create_session(
+            "nightly",
+            TargetInfo {
+                runtime: "go".into(),
+                pid: Some(1),
+                command: Some("/bin/svc".into()),
+                url: None,
+                runtime_version: None,
+            },
+            &[kind],
+            &[tag.to_string()],
+        )
+        .unwrap();
+    store
+        .import(
+            body,
+            ImportOptions {
+                kind_override: Some(kind),
+                file_name: Some("x.folded".into()),
+                session_id: Some(s.id.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    store
+        .finish_session(&s.id, prism_store::SessionStatus::Complete, 1000, &[])
+        .unwrap()
+}
+
+fn enc(s: &str) -> String {
+    s.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn series_lists_sessions_grouped_by_tag() {
+    let (_d, store, addr) = start().await;
+    for (a, c) in [(10, 90), (20, 80), (30, 70)] {
+        series_session(&store, "series:demo", ProfileKind::Cpu, &folded(a, c));
+    }
+    series_session(&store, "x", ProfileKind::Cpu, &folded(5, 5));
+    let (st, v) = get(addr, "/api/series").await;
+    assert_eq!(st, 200, "{v}");
+    let arr = v.as_array().unwrap();
+    let demo = arr.iter().find(|s| s["key"] == "demo").unwrap();
+    assert_eq!(demo["sessionCount"], 3);
+    assert_eq!(demo["runtime"], "go");
+    assert_eq!(demo["kinds"], serde_json::json!(["cpu"]));
+    assert!(demo["lastStartedAtUnixMs"].is_i64());
+    assert!(arr
+        .iter()
+        .any(|s| s["key"] == "go:svc" && s["sessionCount"] == 1));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn history_returns_points_in_time_order() {
+    let (_d, store, addr) = start().await;
+    for (a, c) in [(10, 90), (20, 80), (30, 70)] {
+        series_session(&store, "series:demo", ProfileKind::Cpu, &folded(a, c));
+    }
+    let (st, v) = get(addr, "/api/history?series=demo&kind=cpu&func=a").await;
+    assert_eq!(st, 200, "{v}");
+    assert_eq!(v["series"], "demo");
+    assert_eq!(v["func"], "a");
+    assert!(v["sampleType"]["name"].is_string());
+    let pts = v["points"].as_array().unwrap();
+    assert_eq!(pts.len(), 3);
+    let vals: Vec<i64> = pts.iter().map(|p| p["value"].as_i64().unwrap()).collect();
+    assert_eq!(vals, [10, 20, 30]);
+    assert!(pts.iter().all(|p| p["found"] == true));
+    let times: Vec<i64> = pts
+        .iter()
+        .map(|p| p["startedAtUnixMs"].as_i64().unwrap())
+        .collect();
+    assert!(times.windows(2).all(|w| w[0] <= w[1]));
+    assert!(
+        pts[0]["sessionId"].is_string()
+            && pts[0]["shortId"].is_string()
+            && pts[0]["profileId"].is_string()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn history_marks_absent_functions_and_skips_sessions_without_the_kind() {
+    let (_d, store, addr) = start().await;
+    series_session(&store, "series:demo", ProfileKind::Cpu, &folded(10, 90));
+    series_session(&store, "series:demo", ProfileKind::Memory, &folded(1, 1));
+    series_session(&store, "series:demo", ProfileKind::Cpu, b"main;other;c 5\n");
+    let (_, v) = get(addr, "/api/history?series=demo&kind=cpu&func=a").await;
+    let pts = v["points"].as_array().unwrap();
+    assert_eq!(pts.len(), 2, "{v}");
+    assert_eq!(pts[0]["found"], true);
+    assert_eq!(pts[1]["found"], false);
+    let (_, v) = get(addr, "/api/history?series=nope&kind=cpu&func=a").await;
+    assert_eq!(v["points"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn history_validates_parameters_and_encodes_unusual_series_keys() {
+    let (_d, store, addr) = start().await;
+    series_session(&store, "series:svc:é/1", ProfileKind::Cpu, &folded(10, 90));
+    for bad in [
+        "/api/history?kind=cpu&func=a",
+        "/api/history?series=demo&func=a",
+        "/api/history?series=demo&kind=cpu",
+        "/api/history?series=&kind=cpu&func=a",
+        "/api/history?series=demo&kind=bogus&func=a",
+        "/api/history?series=demo&kind=cpu&func=a&tx=bogus",
+    ] {
+        let (st, v) = get(addr, bad).await;
+        assert_eq!(st, 400, "{bad}: {v}");
+    }
+    let (st, v) = get(
+        addr,
+        &format!("/api/history?series={}&kind=cpu&func=a", enc("svc:é/1")),
+    )
+    .await;
+    assert_eq!(st, 200);
+    assert_eq!(v["points"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn history_keeps_the_most_recent_200_points() {
+    let (_d, store, addr) = start().await;
+    for i in 0..205u32 {
+        series_session(&store, "series:big", ProfileKind::Cpu, &folded(i + 1, 100));
+    }
+    let (_, v) = get(addr, "/api/history?series=big&kind=cpu&func=a").await;
+    let pts = v["points"].as_array().unwrap();
+    assert_eq!(pts.len(), 200);
+    assert_eq!(pts.last().unwrap()["value"], 205);
+    assert_eq!(pts[0]["value"], 6);
+}
