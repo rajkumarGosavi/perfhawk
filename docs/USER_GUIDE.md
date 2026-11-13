@@ -291,6 +291,14 @@ and delta. Below it, **Top changes** lists the functions that moved most. You ca
 **Swap** base and head, choose the sample type (only types both profiles have),
 and **Normalize to head total**.
 
+Further controls: **Regressions only** / **Improvements only** keep the rows and
+call-tree nodes that grew or shrank; **Sort changes by %** orders Top changes by
+relative change (functions new in the head come first); a **Status** column marks
+functions `new` or `gone`; **Side by side** shows the base and head flame graphs
+next to each other; **Colour-blind palette** swaps red/green for orange/blue
+(remembered in this browser); the **Call tree** tab shows the diff as an
+expandable tree with a Δ column. Transform chips (below) apply to both profiles.
+
 Very deep stacks are capped at 1000 frames by default (`depth=N` in the URL
 changes it): the frame at the cap is hatched and its tooltip says deeper frames
 were folded into it. If a graph is taller than the browser's canvas limit, the
@@ -348,13 +356,37 @@ child), **Left** collapses (or moves to the parent), **Home/End** jump, and
 **Enter** opens the function in Sandwich. A node shows its first 200 children
 and a "… N more" row; use Focus to narrow.
 
+### Transforms
+Reversible reductions, shown as chips under the filter bar and stored in the URL
+(`tx`). **Focus subtree** keeps only the part of each stack from a function down;
+**Merge** removes a function from every stack (its cost goes to its caller);
+**Drop** removes every sample that passes through a function; **Collapse
+recursion** folds direct recursion into one frame; **Collapse packages** folds a
+run of frames from one package or namespace into its entry frame (a heuristic
+for Go paths and .NET namespaces). Add one from the add row (exact function
+name) or, in the Call tree, select a node and press `f`, `m` or `x`. Remove a
+chip with its × button. Transforms apply to every view, including Diff.
+
+### Groups
+The Groups view (key `7`) groups samples. **By site** (default for lock and
+blocking profiles) groups by the innermost frame that is not `runtime.`, `sync.`
+or `internal/` and shows total, count and mean wait. **By identical stack**
+(default elsewhere; useful for thread and goroutine dumps) shows how many samples
+share exactly the same stack, leaf frame first. At most 500 rows are shown.
+
+### Same function in other profiles
+For a profile captured in a session with other kinds, the Summary and Sandwich
+views list the same function (matched by exact name) in the session's other
+profiles with its share of that profile, and an Open button.
+
 ### Keyboard shortcuts
 Press **?** in a profile for this list. Shortcuts are off while you type in a
 field.
 
 | Key | Action |
 |---|---|
-| `1` `2` `3` `4` `5` `6` | Summary, Flame, Icicle, Call tree, Top, Both |
+| `1` `2` `3` `4` `5` `6` `7` | Summary, Flame, Icicle, Call tree, Top, Both, Groups |
+| `f` `m` `x` | Focus subtree / Merge / Drop the selected call-tree node |
 | `h` | Toggle hot path |
 | `/` | Focus Search |
 | `?` | Show shortcuts |
@@ -364,7 +396,7 @@ field.
 The URL holds everything: profile, view, sample type, filters, search and the
 selected function. Reloading or bookmarking the page reproduces the exact view.
 A link without a `view` opens the Summary (older links meant Flame; they now
-need `view=flame`, which is written explicitly). `hot=1` turns on the hot path.
+need `view=flame`, which is written explicitly). `hot=1` turns on the hot path; `tx` holds transforms, `gb` the Groups grouping (`stack` or `site`), and in Diff `layout=side`, `only=regressions|improvements` and `dsort=percent`.
 
 ## 6. Filters
 
