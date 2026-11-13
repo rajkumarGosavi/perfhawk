@@ -16,6 +16,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -65,6 +66,32 @@ func checkLoopback(addr string) error {
 	return nil
 }
 
+// hostIsLoopback reports whether an HTTP Host header names the loopback
+// interface. It stops DNS-rebinding: a web page cannot make a browser send
+// "Host: 127.0.0.1" for an attacker-controlled name.
+func hostIsLoopback(hostport string) bool {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func loopbackHostOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !hostIsLoopback(r.Host) {
+			http.Error(w, "host not allowed", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Start launches the agent's HTTP server.
 func Start(opts Options) (*Agent, error) {
 	addr := opts.Addr
@@ -97,7 +124,7 @@ func Start(opts Options) (*Agent, error) {
 	mux.HandleFunc("/debug/prism/cpu-windows", cpuWindowsHandler)
 
 	a := &Agent{
-		srv: &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second},
+		srv: &http.Server{Handler: loopbackHostOnly(mux), ReadHeaderTimeout: 10 * time.Second},
 		ln:  ln,
 	}
 	go func() { _ = a.srv.Serve(ln) }()

@@ -50,3 +50,26 @@ pub async fn host_origin_guard(
     }
     next.run(req).await
 }
+
+/// Browser hardening headers for every response (UI and API).
+///
+/// The server is local-only; these stop another page from framing the UI
+/// (clickjacking), sniffing types, or leaking the URL, and restrict what the
+/// embedded UI itself may load.
+pub async fn security_headers(req: Request, next: Next) -> Response {
+    use axum::http::{header::HeaderName, HeaderValue};
+    let mut res = next.run(req).await;
+    let h = res.headers_mut();
+    let set = |h: &mut axum::http::HeaderMap, k: &'static str, v: &'static str| {
+        h.insert(HeaderName::from_static(k), HeaderValue::from_static(v));
+    };
+    set(h, "x-frame-options", "DENY");
+    set(h, "x-content-type-options", "nosniff");
+    set(h, "referrer-policy", "no-referrer");
+    set(
+        h,
+        "content-security-policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';          img-src 'self' data: blob:; connect-src 'self'; object-src 'none';          base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+    );
+    res
+}
