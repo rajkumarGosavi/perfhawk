@@ -12,7 +12,7 @@ export function Home({
   onOpenWindow,
   onHistory,
 }: {
-  /** Session to expand (deep link from `prism record --open`). */
+  /** Session to expand (deep link from `perfhawk record --open`). */
   session?: string
   onOpen: (shortId: string) => void
   onOpenWindow?: (shortId: string, range: Range) => void

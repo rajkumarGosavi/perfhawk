@@ -596,7 +596,7 @@ name = "genprof"
 version = "0.1.0"
 dependencies = [
  "clap",
- "prism-import",
+ "perfhawk-import",
  "prost",
 ]
 
@@ -1105,6 +1105,119 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
+name = "perfhawk-analysis"
+version = "0.1.0"
+dependencies = [
+ "perfhawk-model",
+ "regex",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "stacker",
+ "thiserror",
+]
+
+[[package]]
+name = "perfhawk-capture"
+version = "0.1.0"
+dependencies = [
+ "ctrlc",
+ "flate2",
+ "perfhawk-analysis",
+ "perfhawk-import",
+ "perfhawk-model",
+ "perfhawk-store",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tiny_http",
+ "ureq",
+]
+
+[[package]]
+name = "perfhawk-cli"
+version = "0.1.0"
+dependencies = [
+ "assert_cmd",
+ "clap",
+ "open",
+ "perfhawk-analysis",
+ "perfhawk-capture",
+ "perfhawk-import",
+ "perfhawk-model",
+ "perfhawk-server",
+ "perfhawk-store",
+ "predicates",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "perfhawk-import"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "perfhawk-model",
+ "prost",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "perfhawk-model"
+version = "0.1.0"
+dependencies = [
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "perfhawk-server"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "lru",
+ "mime_guess",
+ "perfhawk-analysis",
+ "perfhawk-import",
+ "perfhawk-model",
+ "perfhawk-store",
+ "reqwest",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "perfhawk-store"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "genprof",
+ "getrandom 0.4.3",
+ "hex",
+ "perfhawk-analysis",
+ "perfhawk-import",
+ "perfhawk-model",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror",
+ "zstd",
+]
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1153,119 +1266,6 @@ checksum = "d0de1b847b39c8131db0467e9df1ff60e6d0562ab8e9a16e568ad0fdb372e2f2"
 dependencies = [
  "predicates-core",
  "termtree",
-]
-
-[[package]]
-name = "prism-analysis"
-version = "0.1.0"
-dependencies = [
- "prism-model",
- "regex",
- "rustc-hash",
- "serde",
- "serde_json",
- "stacker",
- "thiserror",
-]
-
-[[package]]
-name = "prism-capture"
-version = "0.1.0"
-dependencies = [
- "ctrlc",
- "flate2",
- "prism-analysis",
- "prism-import",
- "prism-model",
- "prism-store",
- "serde_json",
- "tempfile",
- "thiserror",
- "tiny_http",
- "ureq",
-]
-
-[[package]]
-name = "prism-cli"
-version = "0.1.0"
-dependencies = [
- "assert_cmd",
- "clap",
- "open",
- "predicates",
- "prism-analysis",
- "prism-capture",
- "prism-import",
- "prism-model",
- "prism-server",
- "prism-store",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "prism-import"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "prism-model",
- "prost",
- "rustc-hash",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "prism-model"
-version = "0.1.0"
-dependencies = [
- "rustc-hash",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "prism-server"
-version = "0.1.0"
-dependencies = [
- "axum",
- "lru",
- "mime_guess",
- "prism-analysis",
- "prism-import",
- "prism-model",
- "prism-store",
- "reqwest",
- "rust-embed",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "prism-store"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "genprof",
- "getrandom 0.4.3",
- "hex",
- "prism-analysis",
- "prism-import",
- "prism-model",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "thiserror",
- "zstd",
 ]
 
 [[package]]

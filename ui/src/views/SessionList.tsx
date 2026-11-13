@@ -78,7 +78,7 @@ export function SessionList({
         !error && <p className="muted">Loading...</p>
       ) : sessions.length === 0 ? (
         <p className="muted">
-          No sessions yet. Record one with <code>prism record --pid &lt;pid&gt;</code>.
+          No sessions yet. Record one with <code>perfhawk record --pid &lt;pid&gt;</code>.
         </p>
       ) : (
         <div className="table-wrap">

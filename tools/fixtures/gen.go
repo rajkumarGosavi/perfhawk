@@ -1,4 +1,4 @@
-// Generates the Go pprof fixtures used by prism-import tests.
+// Generates the Go pprof fixtures used by perfhawk-import tests.
 // Usage: go run . <out-dir>
 package main
 

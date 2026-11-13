@@ -17,7 +17,7 @@ import { toFlameNodes, type DiffFlameNode } from './diffTree'
 import { TransformBar } from './TransformBar'
 import { FidelityBadge } from './FidelityBadge'
 
-const PALETTE_KEY = 'prism.palette'
+const PALETTE_KEY = 'perfhawk.palette'
 
 function readPalette(): boolean {
   try {

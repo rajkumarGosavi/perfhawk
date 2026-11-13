@@ -1,0 +1,495 @@
+use perfhawk_analysis::{diagnose, Confidence, DoctorConfig, DoctorInput, DoctorProfile, Verdict};
+use perfhawk_model::{
+    Fidelity, Profile, ProfileBuilder, ProfileKind, ProfileMeta, SampleType, SourceFormat, Unit,
+};
+
+const WINDOW: u64 = 10_000_000_000;
+
+fn prof(
+    kind: ProfileKind,
+    types: &[(&str, Unit)],
+    rows: &[(&[&str], i64)],
+    fidelity: Fidelity,
+) -> Profile {
+    let st: Vec<SampleType> = types
+        .iter()
+        .map(|(n, u)| SampleType {
+            name: (*n).into(),
+            unit: u.clone(),
+        })
+        .collect();
+    let n = st.len();
+    let mut b = ProfileBuilder::new(
+        st,
+        ProfileMeta {
+            kind,
+            source_format: SourceFormat::Pprof,
+            fidelity,
+            duration_ns: None,
+            captured_at_unix_ns: None,
+            period: None,
+        },
+    );
+    b.set_default_sample_type(n - 1);
+    for (stack, v) in rows {
+        let frames: Vec<_> = stack
+            .iter()
+            .map(|name| {
+                let f = b.function(name, "", 0);
+                b.frame(f, 0, 0)
+            })
+            .collect();
+        let s = b.stack(&frames);
+        // Every value slot gets `v`; only the default one is read.
+        b.add_sample(s, &vec![*v; n], vec![]).unwrap();
+    }
+    b.finish()
+}
+
+fn ns(kind: ProfileKind, rows: &[(&[&str], i64)]) -> Profile {
+    prof(kind, &[("time", Unit::Nanoseconds)], rows, Fidelity::Native)
+}
+
+type Entry<'a> = (ProfileKind, &'a str, &'a Profile, Fidelity);
+
+fn run(profiles: &[Entry], target: Option<&str>) -> perfhawk_analysis::Diagnosis {
+    let input = DoctorInput {
+        window_ns: WINDOW,
+        profiles: profiles
+            .iter()
+            .map(|(k, id, p, f)| DoctorProfile {
+                kind: *k,
+                short_id: id,
+                profile: p,
+                fidelity: f.clone(),
+            })
+            .collect(),
+        record_target: target.map(String::from),
+    };
+    diagnose(&input, &DoctorConfig::default())
+}
+
+fn cpu_bound_set() -> (Profile, Profile) {
+    let wall = ns(
+        ProfileKind::Wall,
+        &[
+            (&["main", "work"], 8_000_000_000),
+            (&["main", "runtime.gopark"], 1_000_000_000),
+        ],
+    );
+    let cpu = ns(ProfileKind::Cpu, &[(&["main", "work"], 7_500_000_000)]);
+    (wall, cpu)
+}
+
+#[test]
+fn cpu_bound() {
+    let (wall, cpu) = cpu_bound_set();
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w1", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c1", &cpu, Fidelity::Native),
+        ],
+        Some("--pid 4242"),
+    );
+    assert_eq!(d.verdict, Verdict::CpuBound);
+    assert!(
+        (d.findings[0].share_pct - 93.75).abs() < 0.1,
+        "{}",
+        d.findings[0].share_pct
+    );
+    assert!((d.busy_threads - 0.8).abs() < 0.01);
+    assert_eq!(d.findings[0].next[0].open_profile.as_deref(), Some("c1"));
+    assert_eq!(
+        d.findings[0].next[0].command.as_deref(),
+        Some("perfhawk show c1 --top 20")
+    );
+}
+
+#[test]
+fn blocking_profile_is_not_lock_evidence() {
+    // Go's block profile is dominated by idle channel waits (including the capture
+    // agent's own handlers), so only the mutex profile counts as lock evidence.
+    let lock_stack: &[&str] = &["main", "reserve", "sync.(*Mutex).Lock"];
+    let wall = ns(
+        ProfileKind::Wall,
+        &[
+            (lock_stack, 6_000_000_000),
+            (&["main", "work"], 2_000_000_000),
+        ],
+    );
+    let cpu = ns(ProfileKind::Cpu, &[(&["main", "work"], 2_000_000_000)]);
+    let lock = ns(ProfileKind::Lock, &[(lock_stack, 5_500_000_000)]);
+    let blocking = ns(ProfileKind::Blocking, &[(&["runtime.selectgo"], 9_000_000_000)]);
+    let with_lock = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+            (ProfileKind::Lock, "l", &lock, Fidelity::Native),
+            (ProfileKind::Blocking, "b", &blocking, Fidelity::Native),
+        ],
+        None,
+    );
+    assert_eq!(with_lock.verdict, Verdict::LockBound);
+    let f = with_lock
+        .findings
+        .iter()
+        .find(|f| f.rule == "lock_bound")
+        .unwrap();
+    assert!((f.share_pct - 68.75).abs() < 0.1, "{}", f.share_pct);
+    assert!(f.next[0]
+        .command
+        .as_deref()
+        .unwrap()
+        .ends_with("--sort total"));
+
+    let only_blocking = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+            (ProfileKind::Blocking, "b", &blocking, Fidelity::Native),
+        ],
+        None,
+    );
+    assert!(only_blocking.findings.iter().all(|f| f.rule != "lock_bound"));
+}
+
+#[test]
+fn mutex_waiters_parked_in_gopark_count_as_busy() {
+    let parked_on_mutex: &[&str] = &[
+        "main",
+        "reserve",
+        "sync.(*Mutex).Lock",
+        "sync.(*Mutex).lockSlow",
+        "sync.runtime_SemacquireMutex",
+        "runtime.gopark",
+    ];
+    let wall = ns(
+        ProfileKind::Wall,
+        &[
+            (parked_on_mutex, 6_000_000_000),
+            (&["main", "work"], 2_000_000_000),
+            (&["worker", "runtime.chanrecv", "runtime.gopark"], 9_000_000_000),
+        ],
+    );
+    let d = run(&[(ProfileKind::Wall, "w", &wall, Fidelity::Derived)], None);
+    // 6 s of mutex waiting plus 2 s of work are busy; the idle channel worker is not.
+    assert!((d.busy_threads - 0.8).abs() < 0.01, "{}", d.busy_threads);
+}
+
+#[test]
+fn runtime_internal_lock_contention_is_ignored() {
+    // Go 1.22+ reports the runtime's own locks (scheduler, GC) in the mutex profile.
+    let (wall, cpu) = cpu_bound_set();
+    let internal: &[&str] = &["runtime.schedule", "runtime.unlock"];
+    let user: &[&str] = &["main", "reserve", "sync.(*Mutex).Unlock"];
+    let only_internal = ns(ProfileKind::Lock, &[(internal, 9_000_000_000)]);
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+            (ProfileKind::Lock, "l", &only_internal, Fidelity::Native),
+        ],
+        None,
+    );
+    assert_eq!(d.verdict, Verdict::CpuBound);
+    assert!(d.findings.iter().all(|f| f.rule != "lock_bound"));
+
+    let mixed = ns(
+        ProfileKind::Lock,
+        &[(internal, 9_000_000_000), (user, 5_000_000_000)],
+    );
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+            (ProfileKind::Lock, "l", &mixed, Fidelity::Native),
+        ],
+        None,
+    );
+    let f = d.findings.iter().find(|f| f.rule == "lock_bound").unwrap();
+    // 5 s of user-level waiting over 8 s busy; the runtime's 9 s do not count.
+    assert!((f.share_pct - 62.5).abs() < 0.1, "{}", f.share_pct);
+}
+
+#[test]
+fn idle_dotnet_threads_are_not_busy() {
+    // The .NET helper samples every managed thread every tick, waiting or not.
+    let idle: &[&str] = &[
+        "System.Threading.Thread.StartCallback",
+        "System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart",
+        "System.Threading.LowLevelLifoSemaphore.WaitForSignal",
+    ];
+    let hot: &[&str] = &["Program.Main", "Program.Work"];
+    let wall = ns(ProfileKind::Wall, &[(idle, 11_000_000_000), (hot, 1_000_000_000)]);
+    let cpu = ns(ProfileKind::Cpu, &[(hot, 900_000_000)]);
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+        ],
+        None,
+    );
+    assert!((d.busy_threads - 0.1).abs() < 0.01, "{}", d.busy_threads);
+    assert_eq!(d.verdict, Verdict::CpuBound);
+
+    let only_idle = ns(ProfileKind::Wall, &[(idle, 12_000_000_000)]);
+    let d = run(&[(ProfileKind::Wall, "w", &only_idle, Fidelity::Derived)], None);
+    assert_eq!(d.verdict, Verdict::Idle);
+}
+
+#[test]
+fn idle_go_service_with_waitgroup_and_sleep_is_idle() {
+    // main in wg.Wait, a flusher sleeping between ticks: neither is work.
+    let wall = ns(
+        ProfileKind::Wall,
+        &[
+            (
+                &["main", "sync.(*WaitGroup).Wait", "sync.runtime_SemacquireWaitGroup", "runtime.gopark"],
+                9_900_000_000,
+            ),
+            (&["main", "flush", "time.Sleep", "runtime.timeSleep", "runtime.gopark"], 9_900_000_000),
+            (&["main", "work"], 10_000_000),
+        ],
+    );
+    let d = run(&[(ProfileKind::Wall, "w", &wall, Fidelity::Derived)], None);
+    assert_eq!(d.verdict, Verdict::Idle, "{:?}", d.summary);
+}
+
+#[test]
+fn cpu_saturated_service_with_more_goroutines_than_cores_is_cpu_bound() {
+    // 16 runnable goroutines on 4 cores: goroutine-seconds in user code are 4x the CPU time.
+    let wall = ns(ProfileKind::Wall, &[(&["main", "handler", "checksum"], 16_000_000_000)]);
+    let cpu = ns(ProfileKind::Cpu, &[(&["main", "handler", "checksum"], 4_000_000_000)]);
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+        ],
+        Some("--pid 1"),
+    );
+    assert_eq!(d.verdict, Verdict::CpuBound, "{}", d.summary);
+    assert!(d.findings.iter().all(|f| f.rule != "waiting_unknown"));
+}
+
+#[test]
+fn fsync_waits_count_as_io() {
+    let wall = ns(
+        ProfileKind::Wall,
+        &[
+            (&["main", "save", "os.(*File).Sync", "syscall.FlushFileBuffers"], 6_000_000_000),
+            (&["main", "work"], 2_000_000_000),
+        ],
+    );
+    let cpu = ns(ProfileKind::Cpu, &[(&["main", "work"], 2_000_000_000)]);
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+        ],
+        Some("--pid 1"),
+    );
+    assert_eq!(d.verdict, Verdict::IoBound);
+}
+
+fn io_wall() -> Profile {
+    ns(
+        ProfileKind::Wall,
+        &[
+            (
+                &["main", "load", "os.(*File).Read", "syscall.Read"],
+                6_000_000_000,
+            ),
+            (&["main", "work"], 2_000_000_000),
+        ],
+    )
+}
+
+fn block_io(t: i64) -> Profile {
+    prof(
+        ProfileKind::BlockIo,
+        &[("io_bytes", Unit::Bytes), ("io_time", Unit::Nanoseconds)],
+        &[(&["main", "load", "os.(*File).Read", "[file: /data/x.db]"], t)],
+        Fidelity::Native,
+    )
+}
+
+#[test]
+fn io_likely_without_block_io() {
+    let wall = io_wall();
+    let cpu = ns(ProfileKind::Cpu, &[(&["main", "work"], 2_000_000_000)]);
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+        ],
+        Some("--pid 4242"),
+    );
+    assert_eq!(d.verdict, Verdict::IoBound);
+    let f = &d.findings[0];
+    assert_eq!(f.rule, "io_bound");
+    assert_eq!(f.confidence, Confidence::Low);
+    let fu = f.next[0].follow_up.as_ref().expect("follow up");
+    assert_eq!(fu.kinds, vec![ProfileKind::BlockIo, ProfileKind::OffCpu]);
+    assert!(fu.needs_privilege);
+    assert_eq!(fu.duration_secs, 30);
+    let cmd = f.next[0].command.as_deref().unwrap();
+    assert!(
+        cmd.contains("--kinds block_io,off_cpu") && cmd.contains("--pid 4242"),
+        "{cmd}"
+    );
+}
+
+#[test]
+fn io_firm_with_block_io() {
+    let wall = io_wall();
+    let cpu = ns(ProfileKind::Cpu, &[(&["main", "work"], 2_000_000_000)]);
+    let io = block_io(5_500_000_000);
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+            (ProfileKind::BlockIo, "io1", &io, Fidelity::Native),
+        ],
+        Some("--pid 4242"),
+    );
+    assert_eq!(d.verdict, Verdict::IoBound);
+    let f = &d.findings[0];
+    assert_eq!(f.confidence, Confidence::High);
+    assert_eq!(f.next[0].open_profile.as_deref(), Some("io1"));
+}
+
+#[test]
+fn idle_target() {
+    let wall = ns(
+        ProfileKind::Wall,
+        &[
+            (&["runtime.gopark"], 9_900_000_000),
+            (&["main", "work"], 10_000_000),
+        ],
+    );
+    let d = run(&[(ProfileKind::Wall, "w", &wall, Fidelity::Derived)], None);
+    assert_eq!(d.verdict, Verdict::Idle);
+    assert!(d.summary.contains("under load"), "{}", d.summary);
+}
+
+#[test]
+fn waiting_unknown() {
+    let wall = ns(
+        ProfileKind::Wall,
+        &[
+            (&["main", "handle", "time.Sleep"], 6_000_000_000),
+            (&["main", "work"], 2_000_000_000),
+        ],
+    );
+    let cpu = ns(ProfileKind::Cpu, &[(&["main", "work"], 2_000_000_000)]);
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+        ],
+        Some("--pid 1"),
+    );
+    assert_eq!(d.verdict, Verdict::WaitingUnknown);
+    assert!(d.findings[0].next[0].follow_up.is_some());
+}
+
+#[test]
+fn scheduler_finding() {
+    let (wall, cpu) = cpu_bound_set();
+    let sched = ns(ProfileKind::SchedDelay, &[(&["main"], 3_000_000_000)]);
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+            (ProfileKind::SchedDelay, "s", &sched, Fidelity::Native),
+        ],
+        None,
+    );
+    assert_eq!(d.verdict, Verdict::CpuBound);
+    let f = d
+        .findings
+        .iter()
+        .find(|f| f.rule == "scheduler_starved")
+        .unwrap();
+    assert!((f.share_pct - 37.5).abs() < 0.1, "{}", f.share_pct);
+}
+
+#[test]
+fn no_wall_profile_is_inconclusive() {
+    let (_, cpu) = cpu_bound_set();
+    let d = run(&[(ProfileKind::Cpu, "c", &cpu, Fidelity::Native)], None);
+    assert_eq!(d.verdict, Verdict::Inconclusive);
+    assert!(
+        d.notes.iter().any(|n| n.contains("wall-clock")),
+        "{:?}",
+        d.notes
+    );
+}
+
+#[test]
+fn empty_profiles_are_finite() {
+    let wall = ns(ProfileKind::Wall, &[]);
+    let cpu = ns(ProfileKind::Cpu, &[]);
+    for window in [WINDOW, 0] {
+        let input = DoctorInput {
+            window_ns: window,
+            profiles: vec![
+                DoctorProfile {
+                    kind: ProfileKind::Wall,
+                    short_id: "w",
+                    profile: &wall,
+                    fidelity: Fidelity::Derived,
+                },
+                DoctorProfile {
+                    kind: ProfileKind::Cpu,
+                    short_id: "c",
+                    profile: &cpu,
+                    fidelity: Fidelity::Native,
+                },
+            ],
+            record_target: None,
+        };
+        let d = diagnose(&input, &DoctorConfig::default());
+        assert_eq!(d.verdict, Verdict::Idle);
+        let json = serde_json::to_string(&d).unwrap();
+        assert!(!json.contains("NaN") && !json.contains("inf"), "{json}");
+    }
+}
+
+#[test]
+fn non_time_unit_is_skipped() {
+    let wall = io_wall();
+    let cpu = prof(
+        ProfileKind::Cpu,
+        &[("samples", Unit::Count)],
+        &[(&["main", "work"], 5)],
+        Fidelity::Native,
+    );
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+        ],
+        None,
+    );
+    assert!(d.notes.iter().any(|n| n.contains("cpu")), "{:?}", d.notes);
+    assert_eq!(d.verdict, Verdict::IoBound);
+}
+
+#[test]
+fn diagnosis_serialises_camel_case() {
+    let (wall, cpu) = cpu_bound_set();
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+        ],
+        None,
+    );
+    let v = serde_json::to_value(&d).unwrap();
+    assert_eq!(v["verdict"], "cpuBound");
+    // The busy base comes from the derived wall-clock profile, so not "high".
+    assert_eq!(v["findings"][0]["confidence"], "medium");
+    assert!(v["busyThreads"].is_number());
+    assert!(v["findings"][0]["sharePct"].is_number());
+}

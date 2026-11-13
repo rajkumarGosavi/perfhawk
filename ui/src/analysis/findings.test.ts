@@ -39,11 +39,11 @@ describe('disabled rules', () => {
   it('missing, corrupt and valid values', () => {
     stubStorage({})
     expect(loadDisabled().size).toBe(0)
-    stubStorage({ 'prism.findings.disabled': '{' })
+    stubStorage({ 'perfhawk.findings.disabled': '{' })
     expect(loadDisabled().size).toBe(0)
-    stubStorage({ 'prism.findings.disabled': '["a","b"]' })
+    stubStorage({ 'perfhawk.findings.disabled': '["a","b"]' })
     expect([...loadDisabled()].sort()).toEqual(['a', 'b'])
-    stubStorage({ 'prism.findings.disabled': '{"a":1}' })
+    stubStorage({ 'perfhawk.findings.disabled': '{"a":1}' })
     expect(loadDisabled().size).toBe(0)
   })
   it('never throws when storage is blocked', () => {

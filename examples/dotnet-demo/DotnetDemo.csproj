@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- prism's MVP floor is .NET 8; RollForward lets it run on newer runtimes too. -->
+    <!-- perfhawk's MVP floor is .NET 8; RollForward lets it run on newer runtimes too. -->
     <TargetFramework>net8.0</TargetFramework>
     <RollForward>Major</RollForward>
     <Nullable>enable</Nullable>

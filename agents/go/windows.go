@@ -11,8 +11,8 @@ import (
 )
 
 // BucketLabel is the numeric sample label that carries a window's index; the
-// prism client turns it into a timeline whose bucket is one window wide.
-const BucketLabel = "prism.bucket"
+// perfhawk client turns it into a timeline whose bucket is one window wide.
+const BucketLabel = "perfhawk.bucket"
 
 const (
 	defaultWindowMs = 250
@@ -20,7 +20,7 @@ const (
 	maxWindowMs     = 5000
 )
 
-// cpuWindowsHandler serves /debug/prism/cpu-windows?seconds=N&window_ms=W: it
+// cpuWindowsHandler serves /debug/perfhawk/cpu-windows?seconds=N&window_ms=W: it
 // takes back-to-back short CPU profiles, labels every sample with the index of
 // its window, and returns them merged into one pprof (samples from different
 // windows stay separate because their labels differ). A cancelled request

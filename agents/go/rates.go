@@ -19,7 +19,7 @@ import (
 var blockRate atomic.Int64
 
 // SetBlockProfileRate is runtime.SetBlockProfileRate that also records the
-// value, so a temporary prism capture restores it afterwards. Applications
+// value, so a temporary perfhawk capture restores it afterwards. Applications
 // that enable block profiling themselves should call this instead.
 func SetBlockProfileRate(rate int) {
 	blockRate.Store(int64(rate))
@@ -60,7 +60,7 @@ func snapshot(name string) (*profile.Profile, error) {
 	return profile.Parse(&buf)
 }
 
-// contentionHandler serves /debug/prism/contention?seconds=N&kind=mutex|block:
+// contentionHandler serves /debug/perfhawk/contention?seconds=N&kind=mutex|block:
 // it raises the sampling rate, waits, and returns the profile delta. The
 // previous rate is restored on every exit path, including a cancelled request.
 func contentionHandler(w http.ResponseWriter, r *http.Request) {

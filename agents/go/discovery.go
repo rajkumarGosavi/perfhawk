@@ -10,7 +10,7 @@ import (
 	"syscall"
 )
 
-func discoveryDir() string { return filepath.Join(os.TempDir(), "prism-agents") }
+func discoveryDir() string { return filepath.Join(os.TempDir(), "perfhawk-agents") }
 
 func (a *Agent) writeDiscovery() error {
 	if err := os.MkdirAll(discoveryDir(), 0o700); err != nil {
@@ -36,11 +36,11 @@ func (a *Agent) removeDiscovery() {
 }
 
 // watchSignals removes the discovery file on SIGINT/SIGTERM, but only when
-// PRISM_AGENT_SIGNALS=1 so the agent never takes over the application's own
+// PERFHAWK_AGENT_SIGNALS=1 so the agent never takes over the application's own
 // signal handling by default. After cleaning up it restores default handling
 // and re-raises the signal so the process still terminates.
 func watchSignals(a *Agent) {
-	if os.Getenv("PRISM_AGENT_SIGNALS") != "1" {
+	if os.Getenv("PERFHAWK_AGENT_SIGNALS") != "1" {
 		return
 	}
 	ch := make(chan os.Signal, 1)

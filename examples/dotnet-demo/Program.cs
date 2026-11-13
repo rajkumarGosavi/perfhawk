@@ -1,5 +1,5 @@
 // dotnet-demo: a small "order service" simulation with deliberate hot spots,
-// meant to be profiled with dotnet-trace and opened in prism.
+// meant to be profiled with dotnet-trace and opened in perfhawk.
 //
 //   dotnet run -c Release -- [cpu|alloc|lock|io|all] [seconds]
 //

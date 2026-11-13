@@ -1,11 +1,11 @@
 # Captures one speedscope profile per workload of dotnet-demo with dotnet-trace,
-# then imports them into prism.
+# then imports them into perfhawk.
 #
 #   ./profile.ps1                 # all modes, 10 s each
 #   ./profile.ps1 -Modes cpu,lock -Seconds 5
 #
 # Requires: .NET SDK 8+, dotnet-trace (dotnet tool install --global dotnet-trace),
-# and a built prism (cargo build -p prism-cli) or prism on PATH.
+# and a built perfhawk (cargo build -p perfhawk-cli) or perfhawk on PATH.
 param(
     [string[]]$Modes = @("cpu", "alloc", "lock", "io"),
     [int]$Seconds = 10,
@@ -18,11 +18,11 @@ if (-not (Get-Command dotnet-trace -ErrorAction SilentlyContinue)) {
     Write-Error "dotnet-trace not found. Install it with:  dotnet tool install --global dotnet-trace"
 }
 
-$prism = (Get-Command prism -ErrorAction SilentlyContinue).Source
-if (-not $prism) {
+$perfhawk = (Get-Command perfhawk -ErrorAction SilentlyContinue).Source
+if (-not $perfhawk) {
     foreach ($profile in "release", "debug") {
-        $candidate = Join-Path $PSScriptRoot "..\..\target\$profile\prism.exe"
-        if (Test-Path $candidate) { $prism = (Resolve-Path $candidate).Path; break }
+        $candidate = Join-Path $PSScriptRoot "..\..\target\$profile\perfhawk.exe"
+        if (Test-Path $candidate) { $perfhawk = (Resolve-Path $candidate).Path; break }
     }
 }
 
@@ -38,10 +38,10 @@ foreach ($mode in $Modes) {
     $files += (Join-Path $Out "dotnet-$mode.speedscope.json")
 }
 
-if ($prism) {
-    foreach ($f in $files) { & $prism import $f --kind wall --tag dotnet-demo }
-    Write-Host "`nOpen the UI with:  $prism ui"
+if ($perfhawk) {
+    foreach ($f in $files) { & $perfhawk import $f --kind wall --tag dotnet-demo }
+    Write-Host "`nOpen the UI with:  $perfhawk ui"
 } else {
-    Write-Host "`nprism not found; import manually:"
-    foreach ($f in $files) { Write-Host "  prism import `"$f`" --kind wall" }
+    Write-Host "`nperfhawk not found; import manually:"
+    foreach ($f in $files) { Write-Host "  perfhawk import `"$f`" --kind wall" }
 }

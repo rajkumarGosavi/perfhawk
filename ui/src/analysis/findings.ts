@@ -2,7 +2,7 @@ import type { Finding, FindingAction } from '../api'
 import type { ViewName, ViewState } from '../url'
 
 const VIEWS: ViewName[] = ['summary', 'flame', 'icicle', 'tree', 'top', 'both', 'sandwich', 'diff', 'groups']
-const STORAGE_KEY = 'prism.findings.disabled'
+const STORAGE_KEY = 'perfhawk.findings.disabled'
 
 /** Turns a finding's action into a URL-state patch; omitted fields stay absent. */
 export function actionToPatch(a: FindingAction): Partial<ViewState> {

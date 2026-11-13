@@ -1,6 +1,6 @@
-# Launching Prism v0.1
+# Launching Perfhawk v0.1
 
-> Working name: **Prism**. The name is not yet cleared (see [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) §1 #6). Replace it everywhere below if it changes. Anything in `[brackets]` is a placeholder to fill in before publishing.
+> Product name: **Perfhawk**. Trademark and domain checks are still open (see [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) §1 #6). Anything in `[brackets]` is a placeholder to fill in before publishing.
 
 This is the launch plan and the copy bank. Pair it with the engineering checklist in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 
@@ -8,7 +8,7 @@ This is the launch plan and the copy bank. Pair it with the engineering checklis
 
 ## 1. The product in one page
 
-**Prism is a local-first profiling workbench for Go and .NET.**
+**Perfhawk is a local-first profiling workbench for Go and .NET.**
 Attach to a running process (or import a profile), and get flame graphs, a call graph, a time heat map, before/after diffs and plain-language findings in your browser. Nothing leaves your machine.
 
 | | |
@@ -24,18 +24,18 @@ Attach to a running process (or import a profile), and get flame graphs, a call 
 
 Profiling is a tool tax. Each language has its own profiler, its own file format and its own viewer. You collect a `.pb.gz` here and a `.nettrace` there, then convert, then squint at a flame graph with no context. Most developers never do it, and guess instead.
 
-### What Prism does differently
+### What Perfhawk does differently
 
 1. **One workflow for several languages.** Go and .NET record into the same model and open in the same UI. Imports from pprof, collapsed stacks, speedscope and `.nettrace` too.
-2. **Zero-config recording.** `prism record --pid <pid>` for .NET. For Go, add one import line, or point it at an existing `net/http/pprof` endpoint.
+2. **Zero-config recording.** `perfhawk record --pid <pid>` for .NET. For Go, add one import line, or point it at an existing `net/http/pprof` endpoint.
 3. **Answers, not just pictures.** Flame graph, Top, sandwich, call graph and a heat map over time, plus a Findings panel that says where to look and why.
-4. **Compare anything.** Diff two profiles or two time windows. Run `prism check` in CI to fail a build on a performance regression.
+4. **Compare anything.** Diff two profiles or two time windows. Run `perfhawk check` in CI to fail a build on a performance regression.
 5. **Private by design.** Local store, server bound to `127.0.0.1`, no telemetry, no account.
 6. **Honest numbers.** Every profile carries a fidelity badge (native, approximate, derived) so you know how far to trust it.
 
 ### Proof points to collect before launch (don't launch without 2–3)
 
-- [ ] A real open-source Go or .NET project where Prism found a real hotspot, with before/after numbers: `[project, fix, % improvement]`
+- [ ] A real open-source Go or .NET project where Perfhawk found a real hotspot, with before/after numbers: `[project, fix, % improvement]`
 - [ ] Time from install to first flame graph on a clean Windows machine: `[N minutes]`
 - [ ] A 60–90 s screen recording of record → flame graph → finding → diff
 - [ ] 3–5 beta-tester quotes (with permission)
@@ -49,17 +49,17 @@ Profiling is a tool tax. Each language has its own profiler, its own file format
 | **.NET developers on Windows** (primary at launch) | PerfView is powerful but dense; `dotnet-trace` output needs another tool; Visual Studio profiler is heavyweight and VS-only | "A friendly, modern profiler that attaches to your running .NET app with one command" |
 | **Go developers on Windows** | pprof's web UI needs Graphviz and manual steps; heap, mutex and block profiles are separate files | "All Go profile kinds in one place, no Graphviz, no juggling files" |
 | **Teams shipping both** | Two toolchains, two habits | "One tool, one workflow" |
-| **CI-minded engineers** | Perf regressions slip in unnoticed | "`prism check` fails the PR when a function got slower" |
+| **CI-minded engineers** | Perf regressions slip in unnoticed | "`perfhawk check` fails the PR when a function got slower" |
 
 **Competitive frame (be fair; people check):**
 
-| Tool | Where it wins | Where Prism fits |
+| Tool | Where it wins | Where Perfhawk fits |
 |---|---|---|
-| `go tool pprof` | Ubiquitous, scriptable | Prism adds a UI that needs no Graphviz, sessions, diffs, heat map |
-| PerfView, VS Profiler, dotTrace | Deep .NET detail | Prism is lighter, cross-language, browser-based, free |
-| Speedscope, FlameGraph | Great viewers | Prism records too, and adds findings, diffs, history |
-| Pyroscope, Parca, Grafana Profiles | Continuous production profiling | Different job; Prism is on-demand on a dev machine |
-| JetBrains dotTrace/Rider | Polished IDE integration | Paid, IDE-bound; Prism is standalone and open source |
+| `go tool pprof` | Ubiquitous, scriptable | Perfhawk adds a UI that needs no Graphviz, sessions, diffs, heat map |
+| PerfView, VS Profiler, dotTrace | Deep .NET detail | Perfhawk is lighter, cross-language, browser-based, free |
+| Speedscope, FlameGraph | Great viewers | Perfhawk records too, and adds findings, diffs, history |
+| Pyroscope, Parca, Grafana Profiles | Continuous production profiling | Different job; Perfhawk is on-demand on a dev machine |
+| JetBrains dotTrace/Rider | Polished IDE integration | Paid, IDE-bound; Perfhawk is standalone and open source |
 
 Rule: never claim "faster than" or "more accurate than" without a benchmark we can publish.
 
@@ -125,7 +125,7 @@ Rule: never claim "faster than" or "more accurate than" without a benchmark we c
 **Hero**
 
 > # Find out why your code is slow.
-> Prism is a local-first profiler for Go and .NET. Attach to a running process, see a flame graph in seconds, and get a plain-language list of what to fix. Free and open source. Nothing leaves your machine.
+> Perfhawk is a local-first profiler for Go and .NET. Attach to a running process, see a flame graph in seconds, and get a plain-language list of what to fix. Free and open source. Nothing leaves your machine.
 >
 > **[Download for Windows]**  ·  [View on GitHub]  ·  [Watch the 90-second demo]
 
@@ -133,18 +133,18 @@ Rule: never claim "faster than" or "more accurate than" without a benchmark we c
 
 ```powershell
 irm https://[domain]/install.ps1 | iex
-prism demo
+perfhawk demo
 ```
 ```powershell
-scoop bucket add prism https://github.com/[org]/scoop-prism; scoop install prism
-winget install [Org].Prism
+scoop bucket add perfhawk https://github.com/[org]/scoop-perfhawk; scoop install perfhawk
+winget install [Org].Perfhawk
 ```
 
 **Three-step section**
 
-1. **Record.** `prism record --pid 1234` attaches to a live .NET or Go process. No restart for .NET. One import line for Go.
+1. **Record.** `perfhawk record --pid 1234` attaches to a live .NET or Go process. No restart for .NET. One import line for Go.
 2. **See.** Flame graph, Top, call graph and a heat map of when the time went. Switch between CPU, wall-clock, memory, locks and threads.
-3. **Fix and compare.** Findings point at the hot path. Run again, diff the two, and prove it got faster. Put `prism check` in CI to keep it that way.
+3. **Fix and compare.** Findings point at the hot path. Run again, diff the two, and prove it got faster. Put `perfhawk check` in CI to keep it that way.
 
 **Feature grid**
 
@@ -152,15 +152,15 @@ winget install [Org].Prism
 - *Findings*: plain-language explanations of where time and memory go.
 - *Time heat map*: see bursts and stalls, then select a window and zoom in.
 - *Diff*: compare two profiles or two time windows, with colours for better and worse.
-- *CI regression check*: `prism check` exits non-zero when a function slows down.
+- *CI regression check*: `perfhawk check` exits non-zero when a function slows down.
 - *Private*: runs on `127.0.0.1`, stores data locally, no telemetry, no account.
 - *Honest*: every profile shows how trustworthy its numbers are.
 
-**Comparison note** (small print, factual): "Prism is for on-demand profiling on a developer machine. For always-on production profiling, see Pyroscope, Parca or Grafana Cloud Profiles."
+**Comparison note** (small print, factual): "Perfhawk is for on-demand profiling on a developer machine. For always-on production profiling, see Pyroscope, Parca or Grafana Cloud Profiles."
 
 **FAQ**
 
-- *Does it send my data anywhere?* No. The server listens on `127.0.0.1` only and Prism has no telemetry.
+- *Does it send my data anywhere?* No. The server listens on `127.0.0.1` only and Perfhawk has no telemetry.
 - *What do I need installed?* Nothing to browse and import. To record Go, a Go 1.22+ project (one import line or an existing `net/http/pprof` endpoint). To record .NET, a running .NET 8+ app.
 - *Why does Windows warn me?* [Signed? Say so. If not: explain SmartScreen and how to verify the SHA-256.]
 - *Linux and macOS?* Coming next. [Link to roadmap.]
@@ -174,14 +174,14 @@ winget install [Org].Prism
 ### Show HN
 
 **Title options** (pick one; no hype words):
-- `Show HN: Prism – a local profiler for Go and .NET with flame graphs and diffs`
-- `Show HN: Prism – record a running Go/.NET process and see why it's slow`
+- `Show HN: Perfhawk – a local profiler for Go and .NET with flame graphs and diffs`
+- `Show HN: Perfhawk – record a running Go/.NET process and see why it's slow`
 
 **Body**
 
-> Hi HN. I built Prism because profiling Go and .NET meant juggling different tools and file formats, and most of the time I just guessed instead.
+> Hi HN. I built Perfhawk because profiling Go and .NET meant juggling different tools and file formats, and most of the time I just guessed instead.
 >
-> Prism attaches to a running process (or imports pprof, collapsed stacks, speedscope, .nettrace) and opens a browser UI: flame graph, top functions, call graph, a heat map over time, before/after diffs, and a findings panel that points at likely hotspots. `prism check` returns a non-zero exit code when a function regresses, for CI.
+> Perfhawk attaches to a running process (or imports pprof, collapsed stacks, speedscope, .nettrace) and opens a browser UI: flame graph, top functions, call graph, a heat map over time, before/after diffs, and a findings panel that points at likely hotspots. `perfhawk check` returns a non-zero exit code when a function regresses, for CI.
 >
 > It's local-first: the server binds to 127.0.0.1, data stays on your machine, no telemetry, no account. It's written in Rust (core, CLI, embedded UI server) with a small Go agent and a .NET helper for capture. Apache-2.0.
 >
@@ -189,7 +189,7 @@ winget install [Org].Prism
 >
 > Known limits: [list 3 honestly: e.g. .NET CPU numbers are approximate; Go wall-clock has no time axis; no Linux/macOS yet].
 >
-> Try it without any setup: `prism demo`. Repo: [link]. I'd love to hear where the install or the first run tripped you up.
+> Try it without any setup: `perfhawk demo`. Repo: [link]. I'd love to hear where the install or the first run tripped you up.
 
 Tips: reply to every comment; thank critics; never argue; fix a reported bug within the thread and say so.
 
@@ -203,7 +203,7 @@ Tailor each. Lead with the problem in that ecosystem, not the product.
 
 ### X / Bluesky / LinkedIn
 
-> I've open-sourced Prism: a local-first profiler for Go and .NET.
+> I've open-sourced Perfhawk: a local-first profiler for Go and .NET.
 > Attach to a process → flame graph in seconds → findings → diff after your fix.
 > Free, private, Windows today; Linux/macOS next.
 > [GIF] [link]
@@ -221,24 +221,24 @@ Tailor each. Lead with the problem in that ecosystem, not the product.
 ### v0.1.0 release notes template
 
 ```markdown
-# Prism v0.1.0 (Windows)
+# Perfhawk v0.1.0 (Windows)
 
 First public release.
 
 ## Highlights
 - Record live Go and .NET processes, or import pprof / collapsed / speedscope / .nettrace
 - Flame graph, Top, sandwich, call graph, heat map, history, findings
-- Diff profiles or time windows; `prism check` for CI
+- Diff profiles or time windows; `perfhawk check` for CI
 - Local-only: binds to 127.0.0.1, no telemetry
 
 ## Install
-- winget: `winget install [Org].Prism`
-- Scoop: `scoop bucket add prism … ; scoop install prism`
+- winget: `winget install [Org].Perfhawk`
+- Scoop: `scoop bucket add perfhawk … ; scoop install perfhawk`
 - PowerShell: `irm https://[domain]/install.ps1 | iex`
 - Or download the zip below and verify the SHA-256
 
 ## Try it
-`prism demo`
+`perfhawk demo`
 
 ## Known limitations
 - Windows x64 only (Linux and macOS next)
@@ -267,9 +267,9 @@ First public release.
 | Launch | Show HN, Reddit, social, release notes | HN, Reddit, X |
 | 1 | "Find a hot loop in a Go service in 5 minutes" | Blog, r/golang |
 | 1–2 | "Profile a running .NET app without restarting it" | Blog, r/dotnet |
-| 2 | "Fail your CI when a function gets slower (`prism check`)" | Blog, dev.to |
+| 2 | "Fail your CI when a function gets slower (`perfhawk check`)" | Blog, dev.to |
 | 3 | "Heat maps: seeing *when* your app is slow" | Blog, short video |
-| 4 | "How Prism normalises Go and .NET profiles" (technical deep dive) | Blog, HN |
+| 4 | "How Perfhawk normalises Go and .NET profiles" (technical deep dive) | Blog, HN |
 | 5 | Case study from a beta tester | Blog |
 | 6 | Linux/macOS preview and roadmap post | Blog, community |
 
@@ -292,7 +292,7 @@ No telemetry, so use public signals. Set your own targets; these are starting po
 | Contributors (non-author) | GitHub | [5] |
 | "Would recommend" from beta users | Survey (1 question) | ≥ 8/10 |
 
-**Decision rule:** if install friction (not features) dominates feedback, spend v0.1.x on the installer and `prism doctor` before adding anything new.
+**Decision rule:** if install friction (not features) dominates feedback, spend v0.1.x on the installer and `perfhawk doctor` before adding anything new.
 
 ---
 
@@ -306,7 +306,7 @@ No telemetry, so use public signals. Set your own targets; these are starting po
 | Name conflict | Resolve before launch (checklist §1 #6) |
 | Launch-day install bug | Clean-VM test, RC phase, same-day `v0.1.1` path ready |
 | Low attention | Lean on proof points (real project, real numbers), not feature lists; target the ecosystems' newsletters |
-| Support overload | Templates, FAQ, `prism doctor` output in every bug report, label `good first issue` |
+| Support overload | Templates, FAQ, `perfhawk doctor` output in every bug report, label `good first issue` |
 | Comparison to Pyroscope/Parca | Clear "on-demand vs continuous" framing in the first screen of the README |
 
 ---
@@ -316,7 +316,7 @@ No telemetry, so use public signals. Set your own targets; these are starting po
 - [ ] v0.1.0 tagged; zip, checksums and signatures published
 - [ ] Installed the **published** artifacts on a clean Windows machine
 - [ ] winget/Scoop/install script work
-- [ ] `prism demo` works offline
+- [ ] `perfhawk demo` works offline
 - [ ] README, docs, landing page live; links checked
 - [ ] Demo video and GIFs embedded
 - [ ] Discussions and issue templates enabled

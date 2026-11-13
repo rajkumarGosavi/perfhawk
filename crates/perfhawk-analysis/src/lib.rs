@@ -1,0 +1,36 @@
+//! Analysis engine: flame graph, inverted flame graph, top table and sandwich
+//! views over a [`perfhawk_model::Profile`], with pprof-compatible filters.
+
+mod diff;
+mod doctor;
+mod filter;
+mod findings;
+mod graph;
+mod groups;
+mod heatmap;
+mod history;
+mod pivot;
+mod sandwich;
+mod top;
+mod transform;
+mod tree;
+
+pub use diff::{
+    diff_flame, diff_flame_sides, diff_top, diff_top_sorted, diff_top_sorted_sides,
+    match_sample_type, DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow, DiffSort,
+};
+pub use doctor::{
+    diagnose, Confidence, Diagnosis, DoctorConfig, DoctorFinding, DoctorInput, DoctorProfile,
+    FollowUp, NextStep, Verdict,
+};
+pub use filter::{Filter, Window};
+pub use findings::{findings, Evidence, Finding, FindingAction, RuleConfig, Severity};
+pub use graph::{call_graph, CallGraph, GraphEdge, GraphNode};
+pub use groups::{groups, GroupBy, GroupRow};
+pub use heatmap::{heatmap, HeatCell, Heatmap};
+pub use history::{history_point, series_key, HistoryValue};
+pub use pivot::function_stats;
+pub use sandwich::{sandwich, Sandwich};
+pub use top::{filtered_total, top, TopRow, TopSort};
+pub use transform::{package_of, parse_transforms, Transform, TransformError};
+pub use tree::{flame, flame_with, inverted_flame, inverted_flame_with, FlameNode, FlameOptions};

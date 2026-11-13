@@ -1,0 +1,30 @@
+[package]
+name = "perfhawk-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "perfhawk"
+path = "src/main.rs"
+
+[dependencies]
+perfhawk-model = { path = "../perfhawk-model" }
+perfhawk-store = { path = "../perfhawk-store" }
+perfhawk-capture = { path = "../perfhawk-capture" }
+perfhawk-analysis = { path = "../perfhawk-analysis" }
+perfhawk-server = { path = "../perfhawk-server" }
+clap = { version = "4", features = ["derive"] }
+open = "5"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile.workspace = true
+serde_json.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json"] }
+perfhawk-import = { path = "../perfhawk-import" }
