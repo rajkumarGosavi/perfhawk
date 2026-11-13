@@ -125,6 +125,7 @@ pub fn record(
             tags: req.tags.clone(),
             fidelity_override: Some(a.fidelity.clone()),
             session_id: Some(session.id.clone()),
+            timeline: None,
         };
         if let Err(e) = store.import(&a.bytes, opts) {
             warnings.push(format!("could not import {} profile: {e}", a.kind));

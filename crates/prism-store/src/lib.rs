@@ -27,6 +27,8 @@ pub enum StoreError {
     Io(#[from] std::io::Error),
     #[error("corrupt store data: {0}")]
     Corrupt(String),
+    #[error("invalid timeline: {0}")]
+    InvalidTimeline(String),
 }
 
 /// UTC `YYYY-MM-DD HH:MM` from unix milliseconds.
@@ -67,6 +69,8 @@ pub struct ImportOptions {
     pub tags: Vec<String>,
     pub fidelity_override: Option<Fidelity>,
     pub session_id: Option<String>,
+    /// Per-sample time; saved beside the profile when valid.
+    pub timeline: Option<prism_model::Timeline>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
@@ -323,6 +327,71 @@ impl Store {
             .join(format!("{id}.bin.zst"))
     }
 
+    fn timeline_path(&self, id: &str) -> PathBuf {
+        self.root
+            .join("blobs")
+            .join(&id[..2])
+            .join(format!("{id}.timeline.zst"))
+    }
+
+    /// Writes the timeline sidecar next to the profile blob (atomic rename).
+    pub fn save_timeline(&self, id: &str, t: &prism_model::Timeline) -> Result<(), StoreError> {
+        if id.len() < 2 || !id.is_ascii() {
+            return Err(StoreError::NotFound(id.to_string()));
+        }
+        let samples = self.load(id)?.samples.len();
+        if !t.validate(samples) {
+            return Err(StoreError::InvalidTimeline(format!(
+                "timeline has {} entries for {samples} samples",
+                t.sample_bucket.len()
+            )));
+        }
+        let raw = bincode::serialize(t).map_err(|e| StoreError::Corrupt(e.to_string()))?;
+        let packed = zstd::encode_all(&raw[..], 3)?;
+        let path = self.timeline_path(id);
+        let dir = path.parent().expect("timeline path has parent");
+        std::fs::create_dir_all(dir)?;
+        let tmp = dir.join(format!("{id}.timeline.tmp-{}", std::process::id()));
+        {
+            use std::io::Write;
+            let mut f = std::fs::File::create(&tmp)?;
+            f.write_all(&packed)?;
+            f.sync_all()?;
+        }
+        if let Err(e) = std::fs::rename(&tmp, &path) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e.into());
+        }
+        Ok(())
+    }
+
+    /// `Ok(None)` when there is no sidecar, or it is unreadable, truncated or
+    /// does not match the profile (a warning is logged; the profile still works).
+    pub fn load_timeline(&self, id: &str) -> Result<Option<prism_model::Timeline>, StoreError> {
+        if id.len() < 2 || !id.is_ascii() {
+            return Ok(None);
+        }
+        let packed = match std::fs::read(self.timeline_path(id)) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+        let decoded = zstd::decode_all(&packed[..])
+            .ok()
+            .and_then(|raw| bincode::deserialize::<prism_model::Timeline>(&raw).ok());
+        let Some(t) = decoded else {
+            eprintln!("prism-store: ignoring unreadable timeline for {id}");
+            return Ok(None);
+        };
+        match self.load(id) {
+            Ok(p) if t.validate(p.samples.len()) => Ok(Some(t)),
+            _ => {
+                eprintln!("prism-store: ignoring timeline that does not match profile {id}");
+                Ok(None)
+            }
+        }
+    }
+
     fn get(&self, id: &str) -> Result<Option<ProfileRecord>, StoreError> {
         let conn = self.conn();
         Ok(conn
@@ -353,6 +422,11 @@ impl Store {
                 profile.meta.fidelity = rec.fidelity.clone();
                 self.write_blob(&id, &profile, true)?;
             }
+            if let Some(t) = &opts.timeline {
+                if self.load_timeline(&id)?.is_none() {
+                    self.save_timeline(&id, t)?;
+                }
+            }
             return Ok((rec, false));
         }
         let mut profile = import_bytes(
@@ -365,7 +439,19 @@ impl Store {
         if let Some(f) = opts.fidelity_override.clone() {
             profile.meta.fidelity = f;
         }
+        if let Some(t) = &opts.timeline {
+            if !t.validate(profile.samples.len()) {
+                return Err(StoreError::InvalidTimeline(format!(
+                    "timeline has {} entries for {} samples",
+                    t.sample_bucket.len(),
+                    profile.samples.len()
+                )));
+            }
+        }
         self.write_blob(&id, &profile, false)?;
+        if let Some(t) = &opts.timeline {
+            self.save_timeline(&id, t)?;
+        }
 
         let short_id = id[..12].to_string();
         let name = opts
@@ -507,10 +593,12 @@ impl Store {
             return Err(StoreError::NotFound(id.to_string()));
         }
         if id.len() >= 2 && id.is_ascii() {
-            match std::fs::remove_file(self.blob_path(id)) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(e.into()),
+            for path in [self.blob_path(id), self.timeline_path(id)] {
+                match std::fs::remove_file(path) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e.into()),
+                }
             }
         }
         Ok(())

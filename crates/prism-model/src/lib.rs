@@ -1,5 +1,8 @@
 //! Unified profile model shared by importers, analysis, store and server.
 
+mod timeline;
+pub use timeline::Timeline;
+
 use rustc_hash::FxHashMap as HashMap;
 use serde::{Deserialize, Serialize};
 
