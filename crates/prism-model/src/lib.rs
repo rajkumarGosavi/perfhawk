@@ -157,9 +157,9 @@ impl Profile {
 
     pub fn total(&self, sample_type: usize) -> i64 {
         let n = self.sample_types.len();
-        (0..self.samples.len())
-            .map(|i| self.values[i * n + sample_type])
-            .sum()
+        (0..self.samples.len()).fold(0i64, |acc, i| {
+            acc.saturating_add(self.values[i * n + sample_type])
+        })
     }
 
     pub fn sample_type_index(&self, name: &str) -> Option<usize> {
@@ -384,6 +384,15 @@ mod tests {
         assert_eq!(chain(&mut b, &["c"]), c);
         assert_ne!(ab, ac);
         assert_eq!(b.finish().stacks.len(), 4);
+    }
+
+    #[test]
+    fn total_saturates_instead_of_overflowing() {
+        let mut b = ProfileBuilder::new(vec![st("samples")], meta());
+        let s0 = chain(&mut b, &["main"]);
+        b.add_sample(s0, &[i64::MAX / 2 + 1], vec![]).unwrap();
+        b.add_sample(s0, &[i64::MAX / 2 + 1], vec![]).unwrap();
+        assert_eq!(b.finish().total(0), i64::MAX);
     }
 
     #[test]

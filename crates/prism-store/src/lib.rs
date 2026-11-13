@@ -15,14 +15,48 @@ pub enum StoreError {
     Import(#[from] ImportError),
     #[error("no profile matches '{0}'")]
     NotFound(String),
-    #[error("'{reference}' is ambiguous ({matches} matches)")]
-    Ambiguous { reference: String, matches: usize },
+    #[error("'{reference}' is ambiguous ({} matches: {})", .matches.len(), fmt_matches(.matches))]
+    Ambiguous {
+        reference: String,
+        /// `(short_id, imported_at_unix_ms)` of every candidate.
+        matches: Vec<(String, i64)>,
+    },
     #[error("database error: {0}")]
     Db(#[from] rusqlite::Error),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("corrupt store data: {0}")]
     Corrupt(String),
+}
+
+/// UTC `YYYY-MM-DD HH:MM` from unix milliseconds.
+pub fn format_utc_minute(ms: i64) -> String {
+    let secs = ms.div_euclid(1000);
+    let days = secs.div_euclid(86400);
+    let rem = secs.rem_euclid(86400);
+    // civil-from-days (Howard Hinnant)
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!(
+        "{y:04}-{m:02}-{d:02} {:02}:{:02}",
+        rem / 3600,
+        rem % 3600 / 60
+    )
+}
+
+fn fmt_matches(m: &[(String, i64)]) -> String {
+    m.iter()
+        .map(|(id, ms)| format!("{id} {}", format_utc_minute(*ms)))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[derive(Debug, Clone, Default)]
@@ -327,10 +361,10 @@ impl Store {
             match hits.len() {
                 0 => {}
                 1 => return Ok(hits.remove(0).clone()),
-                n => {
+                _ => {
                     return Err(StoreError::Ambiguous {
                         reference: reference.to_string(),
-                        matches: n,
+                        matches: candidates(&hits),
                     })
                 }
             }
@@ -339,9 +373,9 @@ impl Store {
         match hits.len() {
             0 => Err(not_found()),
             1 => Ok(hits.remove(0).clone()),
-            n => Err(StoreError::Ambiguous {
+            _ => Err(StoreError::Ambiguous {
                 reference: reference.to_string(),
-                matches: n,
+                matches: candidates(&hits),
             }),
         }
     }
@@ -363,4 +397,10 @@ impl Store {
         bincode::deserialize(&raw)
             .map_err(|e| StoreError::Corrupt(format!("bincode decode of {id}: {e}")))
     }
+}
+
+fn candidates(hits: &[&ProfileRecord]) -> Vec<(String, i64)> {
+    hits.iter()
+        .map(|r| (r.short_id.clone(), r.imported_at_unix_ms))
+        .collect()
 }

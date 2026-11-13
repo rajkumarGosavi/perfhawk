@@ -16,21 +16,27 @@ export function ProfileList({ onOpen }: { onOpen: (shortId: string) => void }) {
   const upload = async (files: FileList | File[]) => {
     setBusy(true)
     setError(null)
+    const errors: string[] = []
+    let last: ProfileRecord | null = null
     try {
-      let last: ProfileRecord | null = null
-      for (const f of Array.from(files)) last = (await uploadProfile(f)).record
-      load()
-      if (last && files.length === 1) onOpen(last.short_id)
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e))
+      for (const f of Array.from(files)) {
+        try {
+          last = (await uploadProfile(f)).record
+        } catch (e) {
+          errors.push(`${f.name}: ${e instanceof ApiError ? e.message : String(e)}`)
+        }
+      }
+      if (errors.length) setError(errors.join('\n'))
+      if (last && files.length === 1 && !errors.length) onOpen(last.short_id)
     } finally {
+      load()
       setBusy(false)
     }
   }
 
   return (
     <section aria-label="Profiles">
-      {error && <div className="banner" role="alert">{error}</div>}
+      {error && <div className="banner" role="alert" style={{ whiteSpace: 'pre-line' }}>{error}</div>}
       <div
         className={`dropzone${over ? ' over' : ''}`}
         onDragOver={(e) => { e.preventDefault(); setOver(true) }}

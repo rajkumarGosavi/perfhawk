@@ -77,6 +77,15 @@ fn speedscope_mismatched_close_is_malformed() {
 }
 
 #[test]
+fn speedscope_with_utf8_bom_detects_and_imports() {
+    let mut bytes = vec![0xEF, 0xBB, 0xBF];
+    bytes.extend_from_slice(&fixture("sample.speedscope.json"));
+    assert_eq!(detect_format(&bytes, None), Some(SourceFormat::Speedscope));
+    let p = import_speedscope(&bytes, &ImportHints::default()).unwrap();
+    assert!(!p.samples.is_empty());
+}
+
+#[test]
 fn detect_format_each_fixture() {
     assert_eq!(
         detect_format(&fixture("sample.folded"), None),

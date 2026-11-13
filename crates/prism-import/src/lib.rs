@@ -57,11 +57,17 @@ pub fn detect_format(bytes: &[u8], file_name: Option<&str>) -> Option<SourceForm
     }
 }
 
+/// Strips a leading UTF-8 byte-order mark.
+pub(crate) fn strip_bom(bytes: &[u8]) -> &[u8] {
+    bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes)
+}
+
 fn detect_cheap(bytes: &[u8], file_name: Option<&str>) -> Cheap {
     if bytes.starts_with(&[0x1f, 0x8b]) {
         return Cheap::Found(SourceFormat::Pprof);
     }
-    let Some(&first) = bytes.iter().find(|b| !b.is_ascii_whitespace()) else {
+    let json = strip_bom(bytes);
+    let Some(&first) = json.iter().find(|b| !b.is_ascii_whitespace()) else {
         let ext_ok = file_name
             .and_then(|f| f.rsplit('.').next())
             .map(str::to_ascii_lowercase)
@@ -72,7 +78,7 @@ fn detect_cheap(bytes: &[u8], file_name: Option<&str>) -> Cheap {
             Cheap::NotFound
         };
     };
-    if first == b'{' && is_speedscope(bytes) {
+    if first == b'{' && is_speedscope(json) {
         return Cheap::Found(SourceFormat::Speedscope);
     }
     if looks_collapsed(bytes) {

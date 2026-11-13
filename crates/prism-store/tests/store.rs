@@ -80,10 +80,11 @@ fn resolve_ambiguous_and_missing() {
     let store = Store::open(tmp.path()).unwrap();
     let (a, _) = store.import(CPU, opts("svc")).unwrap();
     store.import(HEAP, opts("svc")).unwrap();
-    assert!(matches!(
-        store.resolve("svc"),
-        Err(StoreError::Ambiguous { matches: 2, .. })
-    ));
+    let err = store.resolve("svc").unwrap_err();
+    assert!(matches!(&err, StoreError::Ambiguous { matches, .. } if matches.len() == 2));
+    let msg = err.to_string();
+    assert!(msg.starts_with("'svc' is ambiguous (2 matches: "), "{msg}");
+    assert!(msg.contains(&a.short_id), "{msg}");
     assert!(matches!(
         store.resolve(&a.id[..3]),
         Err(StoreError::NotFound(_))

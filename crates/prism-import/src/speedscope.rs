@@ -111,7 +111,8 @@ fn category(prof: &Prof) -> String {
 /// `dotnet-trace` writes one profile per thread, so taking only the first
 /// would often show an idle thread.
 pub fn import_speedscope(bytes: &[u8], hints: &ImportHints) -> Result<Profile, ImportError> {
-    let file: File = serde_json::from_slice(bytes).map_err(|e| malformed(e.to_string()))?;
+    let file: File =
+        serde_json::from_slice(crate::strip_bom(bytes)).map_err(|e| malformed(e.to_string()))?;
 
     let mut cats: Vec<String> = Vec::new();
     for prof in &file.profiles {

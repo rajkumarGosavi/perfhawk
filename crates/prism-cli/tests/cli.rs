@@ -84,11 +84,11 @@ fn ls_table_has_header() {
         .arg(fixture("go-cpu.pb.gz"))
         .assert()
         .success();
-    prism(home.path())
-        .arg("ls")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("ID  ").and(predicate::str::contains("go-cpu")));
+    prism(home.path()).arg("ls").assert().success().stdout(
+        predicate::str::contains("ID  ")
+            .and(predicate::str::contains("IMPORTED (UTC)"))
+            .and(predicate::str::contains("go-cpu")),
+    );
 }
 
 #[test]
@@ -103,7 +103,7 @@ fn show_top_lists_hot_function() {
         .args(["show", "last", "--top", "5"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("main.burn").and(predicate::str::contains("SELF%")));
+        .stdout(predicate::str::contains(r"main.burn").and(predicate::str::contains("SELF%")));
 }
 
 #[test]
@@ -194,4 +194,37 @@ fn open_no_browser_serves() {
         .unwrap();
     let r = client.get(format!("{base}/api/profiles")).send().unwrap();
     assert_eq!(r.status().as_u16(), 200);
+}
+
+#[test]
+fn show_header_total_reflects_filters_and_sort_flag() {
+    let home = tempfile::tempdir().unwrap();
+    prism(home.path())
+        .arg("import")
+        .arg(fixture("go-cpu.pb.gz"))
+        .assert()
+        .success();
+    prism(home.path())
+        .args(["show", "last", "--top", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("(of ").not());
+    prism(home.path())
+        .args([
+            "show",
+            "last",
+            "--top",
+            "3",
+            "--focus",
+            "main.burn",
+            "--sort",
+            "total",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("total: ").and(predicate::str::contains("(of ")));
+    prism(home.path())
+        .args(["show", "last", "--sort", "bogus"])
+        .assert()
+        .code(2);
 }
