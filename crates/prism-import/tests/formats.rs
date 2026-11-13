@@ -42,10 +42,12 @@ fn collapsed_crlf_and_bad_line() {
 #[test]
 fn speedscope_sampled_fixture() {
     let p = import_speedscope(&fixture("sample.speedscope.json"), &ImportHints::default()).unwrap();
-    assert_eq!(p.samples.len(), 3);
+    // Fixture has a sampled (3 samples) and an evented (3 samples) profile; both are merged.
+    assert_eq!(p.samples.len(), 6);
     assert_eq!(p.sample_types[0].unit, Unit::Nanoseconds);
-    assert_eq!(p.total(0), 600_000);
+    assert_eq!(p.total(0), 600_040);
     assert_eq!(stack_names(&p, 1), ["main", "a", "b"]);
+    assert_eq!(thread_labels(&p), ["evented", "sampled"]);
     assert_eq!(p.meta.duration_ns, Some(600_000));
 }
 
@@ -137,4 +139,60 @@ fn empty_collapsed_file_gives_zero_sample_profile() {
 fn non_utf8_function_name_is_lossy() {
     let p = import_bytes(b"main;fo\xffo 2\n", &ImportHints::default()).unwrap();
     assert!(stack_names(&p, 0)[1].contains('\u{FFFD}'));
+}
+
+fn thread_labels(p: &Profile) -> Vec<String> {
+    let key = p.strings.iter().position(|s| s == "thread");
+    let mut out: Vec<String> = p
+        .samples
+        .iter()
+        .flat_map(|s| s.labels.iter())
+        .filter(|l| Some(l.key.0 as usize) == key)
+        .filter_map(|l| match &l.value {
+            prism_model::LabelValue::Str(v) => Some(p.str(*v).to_string()),
+            _ => None,
+        })
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+#[test]
+fn speedscope_merges_all_thread_profiles() {
+    let json = br#"{"$schema":"https://www.speedscope.app/file-format-schema.json",
+      "shared":{"frames":[{"name":"a"},{"name":"b"}]},
+      "profiles":[
+        {"type":"sampled","name":"Thread (1)","unit":"milliseconds","startValue":0,"endValue":5,
+         "samples":[[0],[0,1]],"weights":[2,3]},
+        {"type":"sampled","name":"Thread (2)","unit":"milliseconds","startValue":0,"endValue":9,
+         "samples":[[1]],"weights":[4]}]}"#;
+    let p = import_speedscope(json, &ImportHints::default()).unwrap();
+    assert_eq!(p.samples.len(), 3);
+    assert_eq!(p.total(0), 9_000_000);
+    assert_eq!(p.meta.duration_ns, Some(9_000_000));
+    assert_eq!(thread_labels(&p), ["Thread (1)", "Thread (2)"]);
+}
+
+#[test]
+fn speedscope_mixed_units_is_malformed() {
+    let json = br#"{"shared":{"frames":[{"name":"a"}]},
+      "profiles":[
+        {"type":"sampled","name":"m","unit":"bytes","startValue":0,"endValue":1,"samples":[[0]],"weights":[8]},
+        {"type":"sampled","name":"t","unit":"seconds","startValue":0,"endValue":1,"samples":[[0]],"weights":[1]}]}"#;
+    let e = import_speedscope(json, &ImportHints::default()).unwrap_err();
+    assert!(matches!(e, ImportError::Malformed { .. }), "{e}");
+    assert!(e.to_string().contains("mixed units"), "{e}");
+}
+
+#[test]
+fn speedscope_empty_profiles_ok() {
+    let p = import_speedscope(
+        br#"{"shared":{"frames":[]},"profiles":[]}"#,
+        &ImportHints::default(),
+    )
+    .unwrap();
+    assert!(p.samples.is_empty());
+    assert_eq!(p.sample_types[0].name, "samples");
+    assert_eq!(p.sample_types[0].unit, Unit::Count);
 }
