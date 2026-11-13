@@ -105,7 +105,7 @@ D1 **Query tab** (filter DSL from PLAN §205, then SQL over timelines via embedd
 | **V3 "Explain"** (≈ 3 wk) **— delivered** | B1 findings engine (start with 8–10 rules), export (D4) | Phase 2 |
 | **V4 "Graph"** (≈ 3 wk) **— delivered** | A4 call graph | Phase 2/3 |
 | **V5 "Time"** (≈ 6–8 wk) **— delivered** | timestamps in the model, C1 heat map, C2 timeline, C3 session timeline | Phase 2 (timeline already scheduled) |
-| **V6 "Trend"** (≈ 3 wk) | C4 history, CI regression views | Phase 3 / CI gating |
+| **V6 "Trend"** (≈ 3 wk) **— delivered** | C4 history, CI regression views | Phase 3 / CI gating |
 | later | D1 query tab, D2 source annotate, IDE hooks | Phase 3+ |
 
 **Implementation plans:** [V1 Orient](superpowers/plans/2026-11-13-v1-orient.md) (delivered) · [V2 Reduce](superpowers/plans/2026-11-13-v2-reduce.md) · [V3 Explain](superpowers/plans/2026-11-13-v3-explain.md) · [V4 Graph](superpowers/plans/2026-11-13-v4-graph.md) · [V5 Time](superpowers/plans/2026-11-13-v5-time.md) · [V6 Trend](superpowers/plans/2026-11-13-v6-trend.md).
@@ -133,6 +133,8 @@ D1 **Query tab** (filter DSL from PLAN §205, then SQL over timelines via embedd
 **V4 rulings:** in-house layered layout instead of a library (closes §9 Q1; the layout module is isolated so a library could replace it); nodes are the top N by total, so a small-total high-self function can be hidden (the slider is the escape hatch); no differential graph; no node dragging or clustering.
 
 **V5 rulings:** C2 (per-thread tracks) deferred to the Phase 2 event timeline; time data is a sidecar file beside the profile blob (no model or store migration); buckets are decided at capture time (Q2): 20 ms for .NET, one pprof window (250 ms, from the spike in [perf/timestamps.md](perf/timestamps.md)) for Go; samples carry a `prism.bucket` label that the capture client turns into the sidecar; Go wall-clock (fgprof) has no windowed route so it has no time data; windows are in ms from capture start; the heat map ignores the current window; the session timeline aligns profiles by start time.
+
+**V6 rulings:** series come from `series:<name>` tags or a key derived from the target (program basename, or URL), with no schema change; a function is identified by its exact name (a rename is one improvement and one regression); History points for sessions where the function is absent are gaps, not zeros; Enter or Open from a History point opens the profile's flame with the function highlighted (history has no per-profile function id); `prism check` reads the local store only and does no PR commenting (a later phase); see [CI.md](CI.md).
 
 Order rationale: V1–V3 need no new capture data and give the largest "time to first insight" win; V4 is the one "pprof web" gap users will notice; V5 is the largest build and unlocks the transient-problem class that aggregate graphs cannot show.
 

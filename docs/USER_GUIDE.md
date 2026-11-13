@@ -356,6 +356,25 @@ child), **Left** collapses (or moves to the parent), **Home/End** jump, and
 **Enter** opens the function in Sandwich. A node shows its first 200 children
 and a "… N more" row; use Focus to narrow.
 
+### History
+**History** (a button on the home page) shows how one function changes across the
+sessions of a series. A series is a group of sessions: tag recordings with
+`--tag series:<name>`, or leave them untagged and sessions of the same program are
+grouped for you. Pick the series, the kind and a function (the list suggests the
+latest session's hottest functions). The chart plots one point per session with a
+table of the same numbers underneath, including the change from the previous
+session. **Value** shows the function's own cost, **% of total** its share, which
+is fairer when runs have different lengths. A cross marks a session where the
+function does not appear. Arrow keys move between points and Enter opens that
+session; **Diff with previous** compares the session with the one before it. At
+most the 200 most recent sessions are shown. In the URL: `series`, `kind`, `fn`.
+
+### Regression checks
+`prism check <profile> --baseline <profile>` exits 0 when nothing regressed, 1 when
+a function did, and 2 for bad input, so it can gate a CI job. See
+[CI.md](CI.md) for what counts as a regression, the options and a GitHub Actions
+example.
+
 ### Time
 Profiles recorded with time data show a **Time** tab (key `9`). The heat map is
 one column per second (wider for long captures) with the offset inside the second
@@ -461,7 +480,7 @@ field.
 The URL holds everything: profile, view, sample type, filters, search and the
 selected function. Reloading or bookmarking the page reproduces the exact view.
 A link without a `view` opens the Summary (older links meant Flame; they now
-need `view=flame`, which is written explicitly). `hot=1` turns on the hot path; `tx` holds transforms, `gb` the Groups grouping (`stack` or `site`), and in Diff `layout=side`, `only=regressions|improvements` and `dsort=percent`; `view=graph&gn=N` sets the call-graph node count; `t0`/`t1` and `b0`/`b1` hold the time window and baseline in milliseconds.
+need `view=flame`, which is written explicitly). `hot=1` turns on the hot path; `tx` holds transforms, `gb` the Groups grouping (`stack` or `site`), and in Diff `layout=side`, `only=regressions|improvements` and `dsort=percent`; `view=graph&gn=N` sets the call-graph node count; `t0`/`t1` and `b0`/`b1` hold the time window and baseline in milliseconds; `view=history` uses `series`, `kind` and `fn`.
 
 ## 6. Filters
 
