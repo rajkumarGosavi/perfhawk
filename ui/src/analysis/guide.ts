@@ -5,6 +5,7 @@ import type { ViewState } from '../url'
 export type GuideAction = { label: string; patch: Partial<ViewState> }
 export type Guide = { title: string; questions: string[]; actions: GuideAction[] }
 
+const GRAPH: GuideAction = { label: 'Call graph', patch: { view: 'graph' } }
 const FLAME: GuideAction = { label: 'Flame graph', patch: { view: 'flame' } }
 const TREE: GuideAction = { label: 'Call tree', patch: { view: 'tree' } }
 const TOP: GuideAction = { label: 'Top functions', patch: { view: 'top' } }
@@ -21,12 +22,12 @@ const GUIDES: Record<string, Guide> = {
       'Which call path leads there?',
       'What changed since a baseline? Use Diff.',
     ],
-    actions: [HOT, FLAME, TREE, TOP],
+    actions: [HOT, FLAME, TREE, GRAPH, TOP],
   },
   wall: {
     title: 'Wall-clock profile',
     questions: ['Where do threads wait?', 'Is the time spent running or sleeping on this path?'],
-    actions: [HOT, FLAME, TREE, TOP],
+    actions: [HOT, FLAME, TREE, GRAPH, TOP],
   },
   memory: {
     title: 'Memory profile',
@@ -40,12 +41,12 @@ const GUIDES: Record<string, Guide> = {
   lock: {
     title: 'Lock contention',
     questions: ['Which lock or call site has the longest total wait?', 'Who is waiting on it?'],
-    actions: [WAITS, TOP_TOTAL, FLAME, TREE],
+    actions: [WAITS, TOP_TOTAL, FLAME, TREE, GRAPH],
   },
   blocking: {
     title: 'Blocking profile',
     questions: ['What are goroutines blocked on (channels, select, sync)?', 'Which call sites wait the longest?'],
-    actions: [WAITS, TOP_TOTAL, FLAME, TREE],
+    actions: [WAITS, TOP_TOTAL, FLAME, TREE, GRAPH],
   },
   threads: {
     title: 'Thread / goroutine dump',
@@ -57,7 +58,7 @@ const GUIDES: Record<string, Guide> = {
 const GENERIC: Guide = {
   title: 'Profile',
   questions: ['Which function holds the most self time?', 'Which call path leads there?'],
-  actions: [FLAME, TREE, TOP],
+  actions: [FLAME, TREE, GRAPH, TOP],
 }
 
 export function kindGuide(kind: string): Guide {

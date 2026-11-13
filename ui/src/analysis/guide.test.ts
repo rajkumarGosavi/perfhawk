@@ -38,6 +38,11 @@ describe('kindGuide', () => {
       hot: true,
     })
   })
+  it('cpu, wall, lock, blocking and the generic guide offer the call graph', () => {
+    for (const k of ['cpu', 'wall', 'lock', 'blocking', 'weird']) {
+      expect(kindGuide(k).actions.find((a) => a.label === 'Call graph')?.patch).toEqual({ view: 'graph' })
+    }
+  })
   it('unknown kinds get a generic guide', () => {
     for (const k of ['weird', '']) {
       const g = kindGuide(k)

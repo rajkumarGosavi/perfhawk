@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  ApiError, getFlame, getGroups, getProfile, getSandwich, getTop, listProfiles,
-  type FlameNode, type GroupRow, type ProfileRecord, type Sandwich as SandwichData, type TopRow,
+  ApiError, getFlame, getGraph, getGroups, getProfile, getSandwich, getTop, listProfiles,
+  type CallGraph, type FlameNode, type GroupRow, type ProfileRecord, type Sandwich as SandwichData, type TopRow,
 } from '../api'
 import { hotPath } from '../analysis/hotPath'
 import { SHORTCUTS, keyAction } from '../analysis/keys'
@@ -14,6 +14,7 @@ import { flameToSvg } from '../export/svg'
 import { ExportMenu, type ExportItem } from './ExportMenu'
 import type { ViewName, ViewState } from '../url'
 import { CallTree } from './CallTree'
+import { GraphView } from './GraphView'
 import { Groups } from './Groups'
 import { PivotPanel } from './PivotPanel'
 import { Sandwich } from './Sandwich'
@@ -29,10 +30,11 @@ type Data =
   | { kind: 'both'; tree: FlameNode; rows: TopRow[] }
   | { kind: 'sandwich'; data: SandwichData }
   | { kind: 'groups'; rows: GroupRow[] }
+  | { kind: 'graph'; graph: CallGraph }
 
 const VIEW_LABELS: [ViewName, string][] = [
   ['summary', 'Summary'], ['flame', 'Flame'], ['icicle', 'Icicle'], ['tree', 'Call tree'],
-  ['top', 'Top'], ['both', 'Both'], ['sandwich', 'Sandwich'], ['groups', 'Groups'],
+  ['top', 'Top'], ['both', 'Both'], ['sandwich', 'Sandwich'], ['groups', 'Groups'], ['graph', 'Graph'],
 ]
 const defaultGroupBy = (kind: string): 'stack' | 'site' => (kind === 'lock' || kind === 'blocking' ? 'site' : 'stack')
 const HOT_VIEWS: ViewName[] = ['flame', 'icicle', 'tree', 'both']
@@ -98,7 +100,9 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
     setLoading(true)
     const q = { st, focus: qf, exclude: qe, hide: qh, depth, tx }
     const p: Promise<Data> =
-      view === 'groups'
+      view === 'graph'
+        ? getGraph(ref, { ...q, nodes: state.graphNodes ?? 80 }).then((graph) => ({ kind: 'graph', graph }))
+        : view === 'groups'
         ? getGroups(ref, { ...q, by: groupBy, limit: 500 }).then((rows) => ({ kind: 'groups', rows }))
         : view === 'top'
         ? getTop(ref, { ...q, limit: 500, sort }).then((rows) => ({ kind: 'top', rows }))
@@ -114,7 +118,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       (e: ApiError) => { if (!stale) { setData(null); setError(e.message); setLoading(false) } },
     )
     return () => { stale = true }
-  }, [record, ref, view, func, st, qf, qe, qh, sort, depth, tx, groupBy])
+  }, [record, ref, view, func, st, qf, qe, qh, sort, depth, tx, groupBy, state.graphNodes])
 
   const pushView = (patch: Partial<ViewState>) => navigate(patch, 'push')
   const hot = !!state.hot
@@ -326,6 +330,16 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       )}
       {data?.kind === 'groups' && view === 'groups' && (
         <Groups rows={data.rows} unit={unit} by={groupBy} onBy={(by) => pushView({ groupBy: by })} />
+      )}
+      {data?.kind === 'graph' && view === 'graph' && (
+        <GraphView
+          graph={data.graph}
+          unit={unit}
+          nodes={state.graphNodes ?? 80}
+          onNodes={(n) => replace({ graphNodes: n })}
+          onOpenFunc={(f) => pushView({ view: 'sandwich', func: f })}
+          onTransform={onTransform}
+        />
       )}
       </div>
       {helpOpen && (

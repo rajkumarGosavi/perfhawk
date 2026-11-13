@@ -187,3 +187,10 @@ td.down { color: var(--diff-down-3); }
 .export-menu { position: relative; display: inline-block; }
 .export-list { position: absolute; z-index: 20; top: 100%; left: 0; display: flex; flex-direction: column; gap: 2px; min-width: 200px; padding: 4px; background: var(--bg, Canvas); border: 1px solid currentColor; border-radius: 4px; }
 .export-list button { text-align: left; }
+.graph-box { height: 560px; overflow: hidden; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius: 4px; cursor: grab; touch-action: none; }
+.graph-node { cursor: pointer; }
+.graph-node text { fill: #111; font-size: 11px; font-family: ui-monospace, Consolas, monospace; pointer-events: none; }
+.graph-node .graph-nums { font-size: 10px; }
+.graph-node:focus { outline: none; }
+.graph-node:focus-visible rect, .graph-node.selected rect { stroke: var(--accent); stroke-width: 3; }
+.graph-side ul { list-style: none; margin: 2px 0 8px; padding: 0; }

@@ -356,6 +356,19 @@ child), **Left** collapses (or moves to the parent), **Home/End** jump, and
 **Enter** opens the function in Sandwich. A node shows its first 200 children
 and a "… N more" row; use Focus to narrow.
 
+### Call graph
+The Graph view (key `8`) draws the profile as a graph of functions: each box is a
+function (taller and darker means more self cost), each arrow a caller-to-callee
+relationship, and thicker arrows carry more of the profile. A **dotted** arrow
+means functions that are not shown lie between the two (so the call is indirect).
+It shows only the top functions by total cost (default 80, set with the **Nodes**
+slider, up to 300; the count is in the URL as `gn`), and says how many more are
+hidden. Pan by dragging, zoom with the wheel or the + / − buttons, **Fit** resets.
+Keyboard: arrow keys move between callers, callees and neighbours, **Enter** opens
+the function in Sandwich, `f` adds a Focus-subtree chip. The side panel lists the
+selected function's callers and callees. Self-recursion is not drawn as an arrow
+(it is already in the box's totals); mutual recursion shows an arrow each way.
+
 ### Findings
 The Summary opens with **Findings**: plain sentences produced by fixed rules, each
 with the numbers it rests on and a button that opens the evidence. Severity is
@@ -408,7 +421,7 @@ field.
 
 | Key | Action |
 |---|---|
-| `1` `2` `3` `4` `5` `6` `7` | Summary, Flame, Icicle, Call tree, Top, Both, Groups |
+| `1` `2` `3` `4` `5` `6` `7` `8` | Summary, Flame, Icicle, Call tree, Top, Both, Groups, Graph |
 | `f` `m` `x` | Focus subtree / Merge / Drop the selected call-tree node |
 | `h` | Toggle hot path |
 | `/` | Focus Search |
@@ -419,7 +432,7 @@ field.
 The URL holds everything: profile, view, sample type, filters, search and the
 selected function. Reloading or bookmarking the page reproduces the exact view.
 A link without a `view` opens the Summary (older links meant Flame; they now
-need `view=flame`, which is written explicitly). `hot=1` turns on the hot path; `tx` holds transforms, `gb` the Groups grouping (`stack` or `site`), and in Diff `layout=side`, `only=regressions|improvements` and `dsort=percent`.
+need `view=flame`, which is written explicitly). `hot=1` turns on the hot path; `tx` holds transforms, `gb` the Groups grouping (`stack` or `site`), and in Diff `layout=side`, `only=regressions|improvements` and `dsort=percent`; `view=graph&gn=N` sets the call-graph node count.
 
 ## 6. Filters
 

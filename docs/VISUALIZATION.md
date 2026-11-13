@@ -103,7 +103,7 @@ D1 **Query tab** (filter DSL from PLAN §205, then SQL over timelines via embedd
 | **V1 "Orient"** (≈ 3–4 wk) **— delivered** | A1 summary, A2 hot path, A3 call tree, A6, A8 keyboard, B2 per-kind defaults | before/alongside Phase 2 (no capture work) |
 | **V2 "Reduce"** (≈ 3–4 wk) **— delivered** | A5 transforms-as-chips, A7 diff upgrades, A9 groupings, B3 cross-kind pivot | Phase 2 |
 | **V3 "Explain"** (≈ 3 wk) **— delivered** | B1 findings engine (start with 8–10 rules), export (D4) | Phase 2 |
-| **V4 "Graph"** (≈ 3 wk) | A4 call graph | Phase 2/3 |
+| **V4 "Graph"** (≈ 3 wk) **— delivered** | A4 call graph | Phase 2/3 |
 | **V5 "Time"** (≈ 6–8 wk) | timestamps in the model, C1 heat map, C2 timeline, C3 session timeline | Phase 2 (timeline already scheduled) |
 | **V6 "Trend"** (≈ 3 wk) | C4 history, CI regression views | Phase 3 / CI gating |
 | later | D1 query tab, D2 source annotate, IDE hooks | Phase 3+ |
@@ -129,6 +129,8 @@ D1 **Query tab** (filter DSL from PLAN §205, then SQL over timelines via embedd
 - B3: pivot compares each profile's default sample type by function name; shown in Sandwich and on the Summary.
 
 **V3 rulings:** thresholds are fixed defaults in `RuleConfig` (no per-user tuning yet); rules target Go and .NET runtime frame names, other runtimes get only the language-neutral rules; disabled rules are per-browser; findings are computed per request; PNG captures the current canvas only; diff export is the flame only; the "mutex profiling disabled" finding is not repeated because capture warnings already show it.
+
+**V4 rulings:** in-house layered layout instead of a library (closes §9 Q1; the layout module is isolated so a library could replace it); nodes are the top N by total, so a small-total high-self function can be hidden (the slider is the escape hatch); no differential graph; no node dragging or clustering.
 
 Order rationale: V1–V3 need no new capture data and give the largest "time to first insight" win; V4 is the one "pprof web" gap users will notice; V5 is the largest build and unlocks the transient-problem class that aggregate graphs cannot show.
 
