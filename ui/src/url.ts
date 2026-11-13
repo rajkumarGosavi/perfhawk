@@ -48,3 +48,12 @@ export function writeViewState(s: ViewState): string {
   const q = p.toString()
   return q ? `?${q}` : ''
 }
+
+/** Merges a patch into the current state; keys patched to undefined are removed. */
+export function mergeViewState(current: ViewState, patch: Partial<ViewState>): ViewState {
+  const next: ViewState = { ...current, ...patch }
+  for (const k of Object.keys(next) as (keyof ViewState)[]) {
+    if (next[k] === undefined) delete next[k]
+  }
+  return next
+}

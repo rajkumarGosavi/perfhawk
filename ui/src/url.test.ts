@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readViewState, writeViewState } from './url'
+import { mergeViewState, readViewState, writeViewState, type ViewState } from './url'
 
 describe('url state', () => {
   it('roundtrips', () => {
@@ -15,5 +15,19 @@ describe('url state', () => {
     const s = { view: 'sandwich' as const, func: 3, search: 'a b', exclude: 'x', hide: 'y' }
     expect(readViewState(writeViewState(s))).toEqual(s)
     expect(readViewState('?view=nope').view).toBe('flame')
+  })
+})
+
+describe('mergeViewState', () => {
+  it('two patches built from the same stale base both survive when applied sequentially', () => {
+    const base: ViewState = { profile: 'ab12', view: 'flame' }
+    let cur: ViewState = base
+    cur = mergeViewState(cur, { focus: 'json' }) // patch from stale base
+    cur = mergeViewState(cur, { exclude: 'gc' }) // second patch, same stale base
+    expect(cur).toEqual({ profile: 'ab12', view: 'flame', focus: 'json', exclude: 'gc' })
+    expect(mergeViewState(cur, { view: 'top' }).focus).toBe('json')
+  })
+  it('removes keys patched to undefined', () => {
+    expect(mergeViewState({ view: 'flame', focus: 'x' }, { focus: undefined })).toEqual({ view: 'flame' })
   })
 })

@@ -17,7 +17,7 @@ export function Sandwich({
   return (
     <div>
       <div className="section-title">Callers</div>
-      <FlameGraph root={data.callers} unit={unit} inverted search={search} onSelectFunc={onSelectFunc} />
+      <FlameGraph root={data.callers} unit={unit} inverted={false} search={search} onSelectFunc={onSelectFunc} />
       <div className="sandwich-mid">
         {name}{' '}
         <span className="muted">
@@ -25,7 +25,7 @@ export function Sandwich({
         </span>
       </div>
       <div className="section-title">Callees</div>
-      <FlameGraph root={data.callees} unit={unit} inverted={false} search={search} onSelectFunc={onSelectFunc} />
+      <FlameGraph root={data.callees} unit={unit} inverted search={search} onSelectFunc={onSelectFunc} />
       <p className="muted">Right-click a frame to re-center the sandwich on it.</p>
     </div>
   )

@@ -1,19 +1,28 @@
-import { useCallback, useEffect, useState } from 'react'
-import { readViewState, writeViewState, type ViewState } from './url'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { mergeViewState, readViewState, writeViewState, type ViewState } from './url'
 import { ProfileList } from './views/ProfileList'
 import { ProfileView } from './views/ProfileView'
 
 export default function App() {
   const [state, setState] = useState<ViewState>(() => readViewState(window.location.search))
 
+  const ref = useRef(state)
+
   useEffect(() => {
-    const onPop = () => setState(readViewState(window.location.search))
+    const onPop = () => {
+      ref.current = readViewState(window.location.search)
+      setState(ref.current)
+    }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
   // push = new history entry (view/profile changes); replace = filter typing.
-  const navigate = useCallback((next: ViewState, mode: 'push' | 'replace' = 'push') => {
+  // The patch is merged into the *latest* state, so deferred callers (debounce
+  // timers) cannot clobber newer edits. `reset` replaces the state wholesale.
+  const navigate = useCallback((patch: Partial<ViewState>, mode: 'push' | 'replace' = 'push', reset = false) => {
+    const next = reset ? ({ view: 'flame', ...patch } as ViewState) : mergeViewState(ref.current, patch)
+    ref.current = next
     const url = window.location.pathname + writeViewState(next)
     if (mode === 'push') window.history.pushState(null, '', url)
     else window.history.replaceState(null, '', url)
@@ -24,7 +33,7 @@ export default function App() {
     <>
       <header className="app-header">
         <h1>
-          <button className="linklike" onClick={() => navigate({ view: 'flame' })}>
+          <button className="linklike" onClick={() => navigate({}, 'push', true)}>
             PRISM
           </button>
         </h1>
@@ -34,7 +43,7 @@ export default function App() {
         {state.profile ? (
           <ProfileView key={state.profile} state={state} navigate={navigate} />
         ) : (
-          <ProfileList onOpen={(id) => navigate({ view: 'flame', profile: id })} />
+          <ProfileList onOpen={(id) => navigate({ profile: id }, 'push', true)} />
         )}
       </main>
     </>

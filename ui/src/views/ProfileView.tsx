@@ -8,7 +8,7 @@ import type { ViewName, ViewState } from '../url'
 import { Sandwich } from './Sandwich'
 import { TopTable } from './TopTable'
 
-type Nav = (s: ViewState, mode?: 'push' | 'replace') => void
+type Nav = (patch: Partial<ViewState>, mode?: 'push' | 'replace', reset?: boolean) => void
 type Data =
   | { kind: 'flame'; tree: FlameNode }
   | { kind: 'top'; rows: TopRow[] }
@@ -37,8 +37,9 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
   const [record, setRecord] = useState<ProfileRecord | null>(null)
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
-  const replace = (patch: Partial<ViewState>) => navigate({ ...state, ...patch }, 'replace')
+  const replace = (patch: Partial<ViewState>) => navigate(patch, 'replace')
   const [focus, setFocus] = useDebounced(state.focus ?? '', (v) => replace({ focus: v || undefined }))
   const [exclude, setExclude] = useDebounced(state.exclude ?? '', (v) => replace({ exclude: v || undefined }))
   const [hide, setHide] = useDebounced(state.hide ?? '', (v) => replace({ hide: v || undefined }))
@@ -59,6 +60,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       return
     }
     let stale = false
+    setLoading(true)
     const q = { st, focus: qf, exclude: qe, hide: qh }
     const p: Promise<Data> =
       view === 'top'
@@ -67,18 +69,18 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           ? getSandwich(ref, func!, q).then((data) => ({ kind: 'sandwich', data }))
           : getFlame(ref, q).then((tree) => ({ kind: 'flame', tree }))
     p.then(
-      (d) => { if (!stale) { setData(d); setError(null) } },
-      (e: ApiError) => { if (!stale) setError(e.message) },
+      (d) => { if (!stale) { setData(d); setError(null); setLoading(false) } },
+      (e: ApiError) => { if (!stale) { setData(null); setError(e.message); setLoading(false) } },
     )
     return () => { stale = true }
   }, [record, ref, view, func, st, qf, qe, qh])
 
-  const pushView = (patch: Partial<ViewState>) => navigate({ ...state, ...patch }, 'push')
+  const pushView = (patch: Partial<ViewState>) => navigate(patch, 'push')
 
   return (
     <section aria-label="Profile">
       <div className="toolbar">
-        <button onClick={() => navigate({ view: 'flame' })}>&larr; Profiles</button>
+        <button onClick={() => navigate({}, 'push', true)}>&larr; Profiles</button>
         <strong className="mono">{record?.name ?? ref}</strong>
         <div className="tabs" role="group" aria-label="View">
           {VIEW_LABELS.map(([v, label]) => (
@@ -105,9 +107,11 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         <label className="field">Search<input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="highlight" /></label>
       </div>
       {error && <div className="banner" role="alert">{error}</div>}
+      {loading && !error && <p className="muted" role="status">Loading...</p>}
       {view === 'sandwich' && func === undefined && (
         <p className="muted">Pick a function in the Top view to see its callers and callees.</p>
       )}
+      <div style={{ opacity: loading ? 0.5 : 1 }}>
       {data?.kind === 'flame' && (view === 'flame' || view === 'icicle') && (
         <FlameGraph
           root={data.tree}
@@ -123,6 +127,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       {data?.kind === 'sandwich' && view === 'sandwich' && (
         <Sandwich data={data.data} unit={unit} search={state.search} onSelectFunc={(f) => pushView({ func: f })} />
       )}
+      </div>
     </section>
   )
 }

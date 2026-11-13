@@ -54,6 +54,8 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc }: Props
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
       if (e.key === 'Escape') setZoom(undefined)
     }
     window.addEventListener('keydown', onKey)
