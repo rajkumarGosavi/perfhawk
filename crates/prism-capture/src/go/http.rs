@@ -142,6 +142,7 @@ pub(crate) fn capture_http(
                         file_name: format!("{kind}.pb.gz"),
                         bytes,
                         warning,
+                        timeline: None,
                     })
                 }
                 Err(FetchError::Gone(text)) => Msg::Failed {

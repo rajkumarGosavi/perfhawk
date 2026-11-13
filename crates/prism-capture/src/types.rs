@@ -40,6 +40,8 @@ pub struct Capability {
 pub struct CapturePlan {
     pub kinds: Vec<ProfileKind>,
     pub duration: Duration,
+    /// Ask runtimes for per-sample time so the profile gets a timeline.
+    pub timeline: bool,
 }
 
 /// One captured profile, ready to import.
@@ -50,6 +52,8 @@ pub struct Artifact {
     pub file_name: String,
     pub bytes: Vec<u8>,
     pub warning: Option<String>,
+    /// Per-sample time, when the runtime provided it.
+    pub timeline: Option<prism_model::Timeline>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

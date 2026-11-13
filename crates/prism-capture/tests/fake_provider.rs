@@ -30,6 +30,7 @@ fn art(kind: ProfileKind, fidelity: Fidelity, bytes: &[u8]) -> Artifact {
         file_name: format!("{}.pb.gz", kind.as_str()),
         bytes: bytes.to_vec(),
         warning: None,
+        timeline: None,
     }
 }
 
@@ -88,6 +89,7 @@ fn req(kinds: Vec<ProfileKind>) -> RecordRequest {
         plan: CapturePlan {
             kinds,
             duration: Duration::from_secs(1),
+            timeline: false,
         },
         name: None,
         tags: vec!["t".into()],
@@ -315,4 +317,147 @@ fn cancelled_token_wins_over_target_exited() {
     let s = record(&store, &reg, &req(vec![]), &token, &|_| {}).unwrap();
     assert_eq!(s.status, SessionStatus::Cancelled);
     assert_eq!(s.profile_ids.len(), 1);
+}
+
+// ---- V5 timelines ----
+
+fn cpu_samples() -> usize {
+    prism_import::import_bytes(CPU, &prism_import::ImportHints::default())
+        .unwrap()
+        .samples
+        .len()
+}
+
+fn timeline(n: usize) -> prism_model::Timeline {
+    prism_model::Timeline {
+        bucket_ns: 20_000_000,
+        start_unix_ns: 1_700_000_000_000_000_000,
+        sample_bucket: (0..n as u32).map(|i| i * 50).collect(),
+    }
+}
+
+fn cpu_with_timeline(t: Option<prism_model::Timeline>) -> CaptureOutcome {
+    let mut a = art(ProfileKind::Cpu, Fidelity::Native, CPU);
+    a.timeline = t;
+    CaptureOutcome {
+        artifacts: vec![a],
+        end: CaptureEnd::Complete,
+        warnings: vec![],
+    }
+}
+
+fn timeline_req(on: bool) -> RecordRequest {
+    let mut r = req(vec![ProfileKind::Cpu]);
+    r.plan.timeline = on;
+    r
+}
+
+#[test]
+fn artifact_timeline_is_stored_with_the_profile() {
+    let n = cpu_samples();
+    let t = timeline(n);
+    let t2 = t.clone();
+    let (_t, store, reg) = setup(vec![cap(ProfileKind::Cpu, true)], move |_| {
+        Ok(cpu_with_timeline(Some(t2.clone())))
+    });
+    let s = record(
+        &store,
+        &reg,
+        &timeline_req(true),
+        &CancelToken::new(),
+        &|_| {},
+    )
+    .unwrap();
+    assert_eq!(s.status, SessionStatus::Complete);
+    let stored = store.load_timeline(&s.profile_ids[0]).unwrap().unwrap();
+    assert_eq!(stored, t);
+    assert!(stored.validate(n));
+    assert_eq!(*stored.sample_bucket.last().unwrap() as usize, (n - 1) * 50);
+}
+
+#[test]
+fn runtime_without_timestamps_records_a_warning_and_no_timeline() {
+    let (_t, store, reg) = setup(vec![cap(ProfileKind::Cpu, true)], |_| {
+        Ok(cpu_with_timeline(None))
+    });
+    let s = record(
+        &store,
+        &reg,
+        &timeline_req(true),
+        &CancelToken::new(),
+        &|_| {},
+    )
+    .unwrap();
+    assert!(
+        s.warnings
+            .iter()
+            .any(|w| w.contains("no time resolution for cpu")),
+        "{:?}",
+        s.warnings
+    );
+    assert!(store.load_timeline(&s.profile_ids[0]).unwrap().is_none());
+}
+
+#[test]
+fn no_timeline_flag_stores_none_and_warns_nothing() {
+    let n = cpu_samples();
+    let (_t, store, reg) = setup(vec![cap(ProfileKind::Cpu, true)], move |_| {
+        Ok(cpu_with_timeline(Some(timeline(n))))
+    });
+    let s = record(
+        &store,
+        &reg,
+        &timeline_req(false),
+        &CancelToken::new(),
+        &|_| {},
+    )
+    .unwrap();
+    assert!(store.load_timeline(&s.profile_ids[0]).unwrap().is_none());
+    assert!(
+        s.warnings.iter().all(|w| !w.contains("time resolution")),
+        "{:?}",
+        s.warnings
+    );
+}
+
+#[test]
+fn cancelled_capture_still_stores_its_partial_timeline() {
+    let n = cpu_samples();
+    let (_t, store, reg) = setup(vec![cap(ProfileKind::Cpu, true)], move |_| {
+        let mut o = cpu_with_timeline(Some(timeline(n)));
+        o.end = CaptureEnd::Cancelled;
+        Ok(o)
+    });
+    let s = record(
+        &store,
+        &reg,
+        &timeline_req(true),
+        &CancelToken::new(),
+        &|_| {},
+    )
+    .unwrap();
+    assert_eq!(s.status, SessionStatus::Cancelled);
+    assert!(store.load_timeline(&s.profile_ids[0]).unwrap().is_some());
+}
+
+#[test]
+fn a_mismatched_timeline_is_dropped_with_a_warning_but_the_profile_is_kept() {
+    let (_t, store, reg) = setup(vec![cap(ProfileKind::Cpu, true)], |_| {
+        Ok(cpu_with_timeline(Some(timeline(9999))))
+    });
+    let s = record(
+        &store,
+        &reg,
+        &timeline_req(true),
+        &CancelToken::new(),
+        &|_| {},
+    )
+    .unwrap();
+    assert_eq!(s.profile_ids.len(), 1);
+    assert!(
+        s.warnings.iter().any(|w| w.contains("timeline")),
+        "{:?}",
+        s.warnings
+    );
+    assert!(store.load_timeline(&s.profile_ids[0]).unwrap().is_none());
 }

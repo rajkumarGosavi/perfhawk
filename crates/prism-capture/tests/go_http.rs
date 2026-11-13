@@ -118,6 +118,7 @@ fn plan(kinds: Vec<ProfileKind>, secs: u64) -> CapturePlan {
     CapturePlan {
         kinds,
         duration: Duration::from_secs(secs),
+        timeline: false,
     }
 }
 

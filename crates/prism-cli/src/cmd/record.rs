@@ -60,6 +60,7 @@ pub fn run(store: &Store, a: Args, target: Target) -> (u8, Option<String>) {
         plan: CapturePlan {
             kinds: a.kinds,
             duration: a.duration,
+            timeline: false,
         },
         name: a.name,
         tags: a.tags,

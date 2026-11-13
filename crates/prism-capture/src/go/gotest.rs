@@ -99,6 +99,7 @@ pub(crate) fn capture_go_test(
                 file_name: file.to_string(),
                 bytes,
                 warning: None,
+                timeline: None,
             }),
             _ => {}
         }

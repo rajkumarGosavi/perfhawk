@@ -121,6 +121,7 @@ pub fn convert_nettrace_with(h: &HelperPath, path: &Path) -> Result<Vec<Artifact
                         .unwrap_or_default(),
                     bytes,
                     warning: None,
+                    timeline: None,
                 });
             }
         }
@@ -281,6 +282,7 @@ impl Provider for DotnetProvider {
                         .unwrap_or_else(|| format!("{kind}.pb.gz")),
                     bytes,
                     warning: None,
+                    timeline: None,
                 }),
                 Err(e) => read_err = Some(e),
             },

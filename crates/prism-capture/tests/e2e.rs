@@ -98,6 +98,7 @@ fn run(
             plan: CapturePlan {
                 kinds,
                 duration: Duration::from_secs(secs),
+                timeline: false,
             },
             name: Some(name.into()),
             tags: vec![],

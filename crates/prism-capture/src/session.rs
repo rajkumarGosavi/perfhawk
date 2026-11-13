@@ -68,6 +68,7 @@ pub fn record(
     let plan = CapturePlan {
         kinds: kinds.clone(),
         duration: req.plan.duration,
+        timeline: req.plan.timeline,
     };
 
     let name = req
@@ -118,18 +119,41 @@ pub fn record(
         if let Some(w) = &a.warning {
             warnings.push(format!("{}: {w}", a.kind));
         }
-        let opts = ImportOptions {
+        let wants_time = matches!(a.kind, ProfileKind::Cpu | ProfileKind::Wall);
+        if req.plan.timeline && wants_time && a.timeline.is_none() {
+            warnings.push(format!(
+                "no time resolution for {}: the {} provider gave no timestamps",
+                a.kind, rt.provider
+            ));
+        }
+        let timeline = if req.plan.timeline {
+            a.timeline.clone()
+        } else {
+            None
+        };
+        let opts = |timeline| ImportOptions {
             name: Some(format!("{name}-{}", a.kind)),
             file_name: Some(a.file_name.clone()),
             kind_override: Some(a.kind),
             tags: req.tags.clone(),
             fidelity_override: Some(a.fidelity.clone()),
             session_id: Some(session.id.clone()),
-            timeline: None,
+            timeline,
         };
-        if let Err(e) = store.import(&a.bytes, opts) {
-            warnings.push(format!("could not import {} profile: {e}", a.kind));
-            degraded = true;
+        let had_timeline = timeline.is_some();
+        match store.import(&a.bytes, opts(timeline)) {
+            Ok(_) => {}
+            Err(prism_store::StoreError::InvalidTimeline(why)) if had_timeline => {
+                warnings.push(format!("{}: timeline dropped ({why})", a.kind));
+                if let Err(e) = store.import(&a.bytes, opts(None)) {
+                    warnings.push(format!("could not import {} profile: {e}", a.kind));
+                    degraded = true;
+                }
+            }
+            Err(e) => {
+                warnings.push(format!("could not import {} profile: {e}", a.kind));
+                degraded = true;
+            }
         }
     }
     // A terminal Ctrl-C reaches the whole process group, so the target can die at the
