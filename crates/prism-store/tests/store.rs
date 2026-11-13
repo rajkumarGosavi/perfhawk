@@ -193,3 +193,82 @@ fn default_home_respects_prism_home() {
         None => std::env::remove_var("PRISM_HOME"),
     }
 }
+
+mod pick_home {
+    use prism_store::{pick_home, HomeOs};
+    use std::ffi::OsString;
+    use std::path::{Path, PathBuf};
+
+    fn env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<OsString> + 'a {
+        move |k| {
+            pairs
+                .iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| OsString::from(v))
+        }
+    }
+
+    fn p(s: &str) -> PathBuf {
+        PathBuf::from(s)
+    }
+
+    #[test]
+    fn windows_prefers_local_when_nothing_exists() {
+        let e = env(&[("LOCALAPPDATA", "L"), ("APPDATA", "A")]);
+        let got = pick_home(HomeOs::Windows, &e, &|_: &Path| false);
+        assert_eq!(got, p("L").join("prism"));
+    }
+
+    #[test]
+    fn windows_keeps_existing_roaming_home() {
+        let e = env(&[("LOCALAPPDATA", "L"), ("APPDATA", "A")]);
+        let old = p("A").join("prism");
+        let got = pick_home(HomeOs::Windows, &e, &|x: &Path| x == old);
+        assert_eq!(got, old);
+    }
+
+    #[test]
+    fn windows_new_home_wins_when_both_exist() {
+        let e = env(&[("LOCALAPPDATA", "L"), ("APPDATA", "A")]);
+        let got = pick_home(HomeOs::Windows, &e, &|_: &Path| true);
+        assert_eq!(got, p("L").join("prism"));
+    }
+
+    #[test]
+    fn windows_without_localappdata_uses_appdata() {
+        let e = env(&[("APPDATA", "A")]);
+        let got = pick_home(HomeOs::Windows, &e, &|_: &Path| false);
+        assert_eq!(got, p("A").join("prism"));
+    }
+
+    #[test]
+    fn prism_home_wins_everywhere() {
+        let e = env(&[("PRISM_HOME", "/x"), ("LOCALAPPDATA", "L"), ("HOME", "/h")]);
+        for os in [HomeOs::Windows, HomeOs::MacOs, HomeOs::Other] {
+            assert_eq!(pick_home(os, &e, &|_: &Path| false), p("/x"));
+        }
+    }
+
+    #[test]
+    fn macos_and_other_keep_their_layout() {
+        let e = env(&[("HOME", "/h")]);
+        assert_eq!(
+            pick_home(HomeOs::MacOs, &e, &|_: &Path| false),
+            p("/h/Library/Application Support/prism")
+        );
+        assert_eq!(
+            pick_home(HomeOs::Other, &e, &|_: &Path| false),
+            p("/h/.local/share/prism")
+        );
+        let xdg = std::env::temp_dir().join("xdg");
+        let xdg_s = xdg.to_string_lossy().into_owned();
+        let pairs = [("XDG_DATA_HOME", xdg_s.as_str()), ("HOME", "/h")];
+        let e = env(&pairs);
+        assert_eq!(
+            pick_home(HomeOs::Other, &e, &|_: &Path| false),
+            xdg.join("prism")
+        );
+        let e = env(&[]);
+        assert_eq!(pick_home(HomeOs::Other, &e, &|_: &Path| false), p(".prism"));
+    }
+}

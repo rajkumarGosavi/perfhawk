@@ -7,7 +7,7 @@ Items found during reviews and deliberately deferred. ~~Struck through~~ items w
 - **Ungated query paths** (partly done in Phase 2a). The perf gate now covers a focused flame (measured 2.2-3.9 s) and `sandwich` (2.2-3.8 s), both gated at 6 s because timings on the dev machine vary on the 500 MiB benchmark. **`inverted_flame` is still ungated and fails:** on that profile (5 M stack nodes, 50 k functions) it aborts trying to allocate 10 GiB. Extend the trie fast path to the filtered and inverted queries, or cap the allocation.
 - **CI.** (Still open: push a remote and get a green run; Phase 1 added Go, .NET and gated e2e steps that have only run locally on Windows.) The 3-OS matrix and `cargo deny` have only run locally on Windows. Push the branch and get a green run (this also checks that `stacker` builds on Linux and macOS).
 - ~~**`prism rm`.** Pair it with repairing a corrupt or partial blob on re-import, and add an fsync before the blob rename.~~ Done.
-- **Data directory** (moved to Phase 2). Consider `%LOCALAPPDATA%` instead of Roaming `%APPDATA%` on Windows for multi-hundred-MB blobs.
+- ~~**Data directory.** Consider `%LOCALAPPDATA%` instead of Roaming `%APPDATA%` on Windows for multi-hundred-MB blobs.~~ Done in Phase 2a: new homes use `%LOCALAPPDATA%`; an existing `%APPDATA%\prism` keeps being used.
 
 ## Before the first binary release
 - Add a third-party notices file covering the Rust crates (e.g. cargo-about) and the npm production dependencies. The embedded UI bundle currently drops React's MIT notice.

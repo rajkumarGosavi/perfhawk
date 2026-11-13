@@ -119,7 +119,7 @@ Rule thresholds; exact kind names and store schema migration; ETW and eBPF event
 - **Linux CI gate:** creating the git remote and a privileged Linux runner (GitHub-hosted runners may not allow eBPF; a self-hosted runner or VM may be needed) is the user's action. M4 is planned as a gated milestone: it may be written against the shared contract but is reported "unverified" until it passes on real Linux.
 - **`--follow-up`:** if the follow-up needs privilege Prism does not have, it refuses and prints the exact elevated command; it never elevates. The follow-up capture creates a new session tagged as a child of the Doctor session, default 30 s.
 - **Overhead estimate:** a static per-provider range plus the duration cap, shown before the capture. No calibration in Phase 2.
-- **Windows data directory:** read from the old `%APPDATA%` location as a fallback, and migrate (copy) on first write to `%LOCALAPPDATA%`. Old sessions keep working.
+- **Windows data directory:** new homes use `%LOCALAPPDATA%\prism`; an existing `%APPDATA%\prism` keeps being used (no copy), unless the new directory exists too. Changed during planning from "copy on first write".
 
 ## 11. Risks
 
