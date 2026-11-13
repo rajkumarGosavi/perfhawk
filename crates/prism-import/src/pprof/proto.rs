@@ -13,8 +13,8 @@ pub struct Profile {
     pub location: Vec<Location>,
     #[prost(message, repeated, tag = "5")]
     pub function: Vec<Function>,
-    #[prost(string, repeated, tag = "6")]
-    pub string_table: Vec<String>,
+    #[prost(bytes = "vec", repeated, tag = "6")]
+    pub string_table: Vec<Vec<u8>>,
     #[prost(int64, tag = "7")]
     pub drop_frames: i64,
     #[prost(int64, tag = "8")]

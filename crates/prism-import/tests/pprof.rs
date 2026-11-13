@@ -122,7 +122,7 @@ fn build(names: &[&str], locations: &[Vec<u64>], samples: Vec<Vec<u64>>) -> Vec<
             .collect(),
         location: locs,
         function: functions,
-        string_table: strings,
+        string_table: strings.into_iter().map(String::into_bytes).collect(),
         ..Default::default()
     }
     .encode_to_vec()
@@ -156,4 +156,16 @@ fn truncated_pprof_is_malformed_error() {
             ..
         })
     ));
+}
+
+#[test]
+fn invalid_utf8_function_name_is_lossy() {
+    let mut p = proto::Profile::decode(
+        build(&["bad", "main"], &[vec![1], vec![2]], vec![vec![1, 2]]).as_slice(),
+    )
+    .unwrap();
+    // string_table[3] is the name of function 1.
+    p.string_table[3] = vec![b'b', 0xff, b'd'];
+    let imported = import_pprof(&p.encode_to_vec(), &ImportHints::default()).unwrap();
+    assert!(func_names(&imported).iter().any(|n| n.contains('\u{FFFD}')));
 }

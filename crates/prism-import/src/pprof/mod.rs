@@ -9,6 +9,7 @@ use prism_model::{
     SourceFormat, Unit,
 };
 use prost::Message;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::Read;
 
@@ -19,11 +20,12 @@ fn malformed(reason: impl Into<String>) -> ImportError {
     }
 }
 
-fn string(table: &[String], idx: i64) -> Result<&str, ImportError> {
+/// String-table lookup; invalid UTF-8 is replaced with U+FFFD.
+fn string(table: &[Vec<u8>], idx: i64) -> Result<Cow<'_, str>, ImportError> {
     usize::try_from(idx)
         .ok()
         .and_then(|i| table.get(i))
-        .map(String::as_str)
+        .map(|b| String::from_utf8_lossy(b))
         .ok_or_else(|| malformed(format!("string index {idx} out of range")))
 }
 
@@ -55,7 +57,7 @@ fn convert(p: proto::Profile, hints: &ImportHints) -> Result<Profile, ImportErro
         .map(|v| {
             Ok(SampleType {
                 name: string(st, v.r#type)?.to_string(),
-                unit: Unit::parse(string(st, v.unit)?),
+                unit: Unit::parse(&string(st, v.unit)?),
             })
         })
         .collect::<Result<Vec<_>, ImportError>>()?;
@@ -67,7 +69,7 @@ fn convert(p: proto::Profile, hints: &ImportHints) -> Result<Profile, ImportErro
         Some(pt) if p.period != 0 || pt.r#type != 0 => Some((
             SampleType {
                 name: string(st, pt.r#type)?.to_string(),
-                unit: Unit::parse(string(st, pt.unit)?),
+                unit: Unit::parse(&string(st, pt.unit)?),
             },
             p.period,
         )),
@@ -98,9 +100,9 @@ fn convert(p: proto::Profile, hints: &ImportHints) -> Result<Profile, ImportErro
     // pprof function id -> model function.
     let mut funcs = HashMap::with_capacity(p.function.len());
     for f in &p.function {
-        let name = String::from_utf8_lossy(string(st, f.name)?.as_bytes()).into_owned();
+        let name = string(st, f.name)?;
         let file = string(st, f.filename)?;
-        let id = b.function(&name, file, f.start_line.max(0) as u32);
+        let id = b.function(&name, &file, f.start_line.max(0) as u32);
         funcs.insert(f.id, id);
     }
 
@@ -137,12 +139,12 @@ fn convert(p: proto::Profile, hints: &ImportHints) -> Result<Profile, ImportErro
             .label
             .iter()
             .map(|l| {
-                let key = b.intern(string(st, l.key)?);
+                let key = b.intern(&string(st, l.key)?);
                 let value = if l.str != 0 {
-                    LabelValue::Str(b.intern(string(st, l.str)?))
+                    LabelValue::Str(b.intern(&string(st, l.str)?))
                 } else {
                     let unit = if l.num_unit != 0 {
-                        Some(b.intern(string(st, l.num_unit)?))
+                        Some(b.intern(&string(st, l.num_unit)?))
                     } else {
                         None
                     };
