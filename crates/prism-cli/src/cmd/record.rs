@@ -15,6 +15,7 @@ pub struct Args {
     pub duration: Duration,
     pub name: Option<String>,
     pub tags: Vec<String>,
+    pub timeline: bool,
 }
 
 pub const ONE_TARGET: &str = "choose one target: --pid, --url, --go-test or -- <program>";
@@ -60,7 +61,7 @@ pub fn run(store: &Store, a: Args, target: Target) -> (u8, Option<String>) {
         plan: CapturePlan {
             kinds: a.kinds,
             duration: a.duration,
-            timeline: false,
+            timeline: a.timeline,
         },
         name: a.name,
         tags: a.tags,

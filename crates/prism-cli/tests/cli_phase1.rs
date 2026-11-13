@@ -495,3 +495,18 @@ fn record_ctrl_c_exit_130() {
     );
     assert!(String::from_utf8_lossy(&out.stdout).contains("cancelled"));
 }
+
+#[test]
+fn record_timeline_flags_conflict_and_are_documented() {
+    let home = tempfile::tempdir().unwrap();
+    prism(home.path())
+        .args(["record", "--pid", "1", "--timeline", "--no-timeline"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("cannot be used with"));
+    prism(home.path())
+        .args(["record", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--no-timeline"));
+}

@@ -93,6 +93,12 @@ enum Command {
         /// Tag to attach (repeatable)
         #[arg(long = "tag")]
         tags: Vec<String>,
+        /// Capture per-sample time for the heat map (the default where the runtime supports it)
+        #[arg(long, conflicts_with = "no_timeline")]
+        timeline: bool,
+        /// Do not capture per-sample time
+        #[arg(long)]
+        no_timeline: bool,
         /// Open the UI on the new session afterwards
         #[arg(long)]
         open: bool,
@@ -207,6 +213,7 @@ async fn main() -> ExitCode {
             duration: Duration::from_secs(1),
             name: None,
             tags: vec![],
+            timeline: true,
         };
         if let Err(m) = cmd::record::build_target(&probe) {
             let _ = Cli::command()
@@ -297,6 +304,8 @@ async fn main() -> ExitCode {
             duration,
             name,
             tags,
+            timeline: _,
+            no_timeline,
             open,
             port,
             program,
@@ -310,6 +319,7 @@ async fn main() -> ExitCode {
                 duration,
                 name,
                 tags,
+                timeline: !no_timeline,
             };
             let target = match cmd::record::build_target(&args) {
                 Ok(t) => t,
