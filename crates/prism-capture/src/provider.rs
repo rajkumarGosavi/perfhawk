@@ -30,7 +30,9 @@ pub struct ProviderRegistry {
 impl ProviderRegistry {
     /// Go and .NET providers (added as they are implemented).
     pub fn with_defaults() -> Self {
-        ProviderRegistry::default()
+        let mut r = ProviderRegistry::default();
+        r.register(Box::new(crate::go::GoProvider::new()));
+        r
     }
 
     pub fn register(&mut self, p: Box<dyn Provider>) {
