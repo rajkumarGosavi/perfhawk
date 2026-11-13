@@ -2,6 +2,7 @@
 
 mod api;
 mod assets;
+pub mod doctor;
 mod guard;
 
 use axum::Router;

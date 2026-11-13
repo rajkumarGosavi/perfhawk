@@ -87,10 +87,10 @@ impl Default for RuleConfig {
 const MAX_FINDINGS: usize = 20;
 
 /// Runtime frames that mean the garbage collector is running.
-const GC_PATTERN: &str = r"^runtime\.(gcBgMarkWorker|gcDrain|gcAssistAlloc|scanobject|greyobject|markroot|bgsweep|bgscavenge)|^(Gen[012] GC|GC_)";
+pub(crate) const GC_PATTERN: &str = r"^runtime\.(gcBgMarkWorker|gcDrain|gcAssistAlloc|scanobject|greyobject|markroot|bgsweep|bgscavenge)|^(Gen[012] GC|GC_)";
 /// Runtime frames that mean memory is being allocated.
 const ALLOC_PATTERN: &str = r"^runtime\.(mallocgc|newobject|makeslice|growslice|makemap)|^JIT_New";
-const IDLE_NAMES: [&str; 7] = [
+pub(crate) const IDLE_NAMES: [&str; 7] = [
     "runtime.gopark",
     "runtime.notesleep",
     "runtime.futexsleep",

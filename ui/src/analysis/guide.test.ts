@@ -73,3 +73,22 @@ describe('concentration', () => {
     expect(concentration([])).toBe('spread')
   })
 })
+
+describe('OS-level kind guides', () => {
+  it('block_io offers slowest files and top by total', () => {
+    const g = kindGuide('block_io')
+    expect(g.title).toBe('Block I/O')
+    expect(g.actions.find((a) => a.label === 'Slowest files')?.patch).toEqual({ view: 'top' })
+    expect(g.actions.some((a) => a.label === 'Top by total')).toBe(true)
+  })
+  it('off_cpu and sched_delay have their own titles', () => {
+    expect(kindGuide('off_cpu').title).toBe('Off-CPU time')
+    expect(kindGuide('sched_delay').title).toBe('Scheduler delay')
+  })
+  it.each(['cpu', 'wall', 'memory', 'lock', 'blocking', 'threads', 'block_io', 'off_cpu', 'sched_delay', 'nope'])(
+    '%s says how it was measured',
+    (k) => {
+      expect(kindGuide(k).measured.length).toBeGreaterThan(10)
+    },
+  )
+})

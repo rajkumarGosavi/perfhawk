@@ -74,7 +74,7 @@ perfhawk ui
 | Term | Meaning |
 |---|---|
 | **Profile** | One imported file. It is identified by the SHA-256 of its bytes, so importing the same file twice is a no-op. The short id is the first 12 hex characters. |
-| **Kind** | What the profile measures: `cpu`, `wall`, `memory`, `lock`, `blocking`, `block_io`, `threads`, or `unknown`. Kind is detected from the data and can be overridden with `--kind`. |
+| **Kind** | What the profile measures: `cpu`, `wall`, `memory`, `lock`, `blocking`, `block_io`, `off_cpu`, `sched_delay`, `threads`, or `unknown`. Kind is detected from the data and can be overridden with `--kind`. |
 | **Sample type** | One measured value per sample. A Go heap profile has four: `alloc_objects`, `alloc_space`, `inuse_objects` and `inuse_space`. Each has a unit (`nanoseconds`, `bytes` or `count`). |
 | **Self / Total** | *Self* is the cost spent in the function itself. *Total* also includes everything it calls. A recursive function is counted once per sample in Total. |
 | **Session** | One `perfhawk record` run. It groups the profiles captured together (one per kind), plus the target, status (`complete`, `partial`, `cancelled`, `failed`), duration and any warnings. |
@@ -93,7 +93,11 @@ perfhawk ui
 | Collapsed stacks, speedscope | `unknown`: pass `--kind` (e.g. `--kind wall` for `dotnet-trace` exports) |
 
 "Blocking" means waiting on channels, `select` or sync primitives. It is not
-disk I/O; that is `block_io`, which arrives with Phase 2.
+disk I/O; that is `block_io`. The OS-level kinds `block_io` (time and bytes per
+stack, with the file as the last frame), `off_cpu` and `sched_delay` need an OS
+tracing provider (ETW on Windows, eBPF on Linux). Those providers are not built
+yet: the profile model, import, timelines and views for them are, and
+`perfhawk doctor` says what it could not see.
 
 ## 4. CLI reference
 
@@ -241,6 +245,39 @@ the `perfhawk-dotnet` helper, which uses EventPipe. Perfhawk looks for it in the
 ```bash
 dotnet publish helpers/perfhawk-dotnet -c Release -o <dir>
 ```
+
+### `perfhawk doctor [TARGET | --session REF] [--duration 60s] [--name N] [--json] [--check] [--follow-up]`
+
+Answers "my service is slow; is it disk, locks or CPU?" in about a minute. With a
+target (`--pid`, `--url`, `--go-test`, or `-- <program>`) it records CPU, wall-clock,
+lock, blocking and thread profiles (plus OS-level kinds when an OS provider is
+available) as one session, then prints a verdict, the evidence, the exact command
+to run next and short likely-fix hints:
+
+```
+Verdict: I/O-bound: 57% of busy time waits on I/O (estimated from wall-clock stacks)
+  I/O-bound: 57% of busy time waits on I/O (estimated from wall-clock stacks)  [low, 57%]
+    next: perfhawk record --pid 4242 --kinds block_io,off_cpu --duration 30s
+    hint: Cache or batch reads on the top files; check disk or volume latency.
+```
+
+- Verdicts: CPU-bound, I/O-bound, lock-bound, scheduler-starved, waiting (cause
+  unknown), idle, inconclusive. Every finding carries a confidence and the fidelity
+  of its evidence; an I/O verdict estimated from wall-clock stacks is `low`.
+- Shares are thread-seconds over the capture window, without threads parked in the
+  runtime's idle frames. If the target was idle, Doctor says so; rerun under load.
+- Only the Go mutex profile counts as lock evidence (the block profile is mostly idle
+  channel waits), and the runtime's own internal locks are ignored.
+- `--session REF` diagnoses an existing session without capturing. `--json` prints
+  the diagnosis only. `--check` lists what can be captured for the target and what
+  is missing (for example administrator rights) without capturing.
+- `--follow-up` runs the first recommended capture (30 s, a new session tagged
+  `doctor-follow-up-of:<session>`). It never elevates: if the capture needs rights
+  or an OS provider that is missing, it prints why and the exact command, and exits 1.
+- The same verdict card appears on each session in the UI (Home, Sessions).
+
+To try it, run the Go demo in a single-purpose mode (`-mode cpu`, `lock` or `disk`),
+see [examples](../examples/README.md).
 
 ### `perfhawk targets [--json]`
 

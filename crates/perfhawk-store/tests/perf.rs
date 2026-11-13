@@ -1,7 +1,7 @@
 //! Phase-0 performance gate on a 500 MiB synthetic pprof. Run explicitly:
 //! `cargo test -p perfhawk-store --release --test perf -- --ignored --nocapture`
 
-use perfhawk_analysis::{flame, top, Filter, TopSort};
+use perfhawk_analysis::{flame, sandwich, top, Filter, TopSort};
 use perfhawk_store::{ImportOptions, Store};
 use std::time::{Duration, Instant};
 
@@ -60,6 +60,25 @@ fn perf_500mb_gate() {
     let (rows, top_t) = timed("top(100)", || top(&p, st, &filter, 100, TopSort::SelfValue));
     assert_eq!(rows.len(), 100);
 
+    // Filtered queries walk every sample; gate them too (measured 2.2-3.9 s, so the
+    // budgets are 6 s, not the 1 s of the unfiltered paths). `inverted_flame`
+    // is not gated: on this profile it aborts allocating 10 GiB (see FOLLOWUPS).
+    let hot = &rows[0];
+    let escaped: String = hot
+        .name
+        .chars()
+        .flat_map(|c| {
+            let plain = c.is_alphanumeric() || c == '_';
+            [(!plain).then_some('\\'), Some(c)]
+        })
+        .flatten()
+        .collect();
+    let focus = Filter::parse(Some(&escaped), None, None).unwrap();
+    let (_, focus_t) = timed("flame(focus)", || flame(&p, st, &focus, 0.0005));
+    let (_, sand_t) = timed("sandwich", || {
+        sandwich(&p, st, &filter, perfhawk_model::FuncId(hot.func_id), 0.0005)
+    });
+
     assert!(
         import_t <= Duration::from_secs(20),
         "import took {import_t:?}"
@@ -72,4 +91,12 @@ fn perf_500mb_gate() {
         json.len()
     );
     assert!(top_t <= Duration::from_secs(1), "top took {top_t:?}");
+    assert!(
+        focus_t <= Duration::from_secs(6),
+        "focused flame took {focus_t:?}"
+    );
+    assert!(
+        sand_t <= Duration::from_secs(6),
+        "sandwich took {sand_t:?}"
+    );
 }

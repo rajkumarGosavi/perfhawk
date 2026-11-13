@@ -145,6 +145,7 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
               <section className="card" aria-label="What to look at">
                 <h2>What to look at: {guide.title}</h2>
                 <ul>{guide.questions.map((q) => <li key={q}>{q}</li>)}</ul>
+                <p className="muted">How this was measured: {guide.measured}</p>
                 <div className="summary-actions">
                   {guide.actions.map((a) => (
                     <button key={a.label} onClick={() => navigate(a.patch)}>{a.label}</button>

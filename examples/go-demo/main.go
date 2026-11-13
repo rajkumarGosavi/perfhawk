@@ -61,6 +61,7 @@ func main() {
 	pprofAddr := flag.String("pprof", "127.0.0.1:6060", "net/http/pprof listen address (empty to disable)")
 	useAgent := flag.Bool("agent", true, "start the perfhawk agent so `perfhawk record --pid` can attach")
 	files := flag.Bool("files", true, "write profile files at the end (holds the CPU profiler while running)")
+	mode := flag.String("mode", "mixed", "workload: mixed (everything), or cpu, lock, disk (a slow-read stand-in): known-answer runs for `perfhawk doctor`")
 	flag.Parse()
 
 	if *files {
@@ -104,24 +105,47 @@ func main() {
 	var wg sync.WaitGroup
 	svc := newService()
 
+	on := func(m string) bool { return *mode == "mixed" || *mode == m }
+	if !on("cpu") && !on("lock") && !on("disk") {
+		log.Fatalf("unknown -mode %q (want mixed, cpu, lock or disk)", *mode)
+	}
+
 	// CPU-heavy request handlers.
-	for i := 0; i < runtime.NumCPU()/2+1; i++ {
-		wg.Add(1)
-		go func(seed int64) { defer wg.Done(); svc.handleRequests(stop, seed) }(int64(i))
+	if on("cpu") {
+		for i := 0; i < runtime.NumCPU()/2+1; i++ {
+			wg.Add(1)
+			go func(seed int64) { defer wg.Done(); svc.handleRequests(stop, seed) }(int64(i))
+		}
 	}
-	// Workers fighting over one inventory lock (mutex profile).
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go func() { defer wg.Done(); svc.reserveInventory(stop) }()
+	// Workers fighting over one inventory lock (mutex profile). In lock mode the lock
+	// is held ten times longer, so waiting on it dominates.
+	if on("lock") {
+		hold := 20 * time.Microsecond
+		if *mode == "lock" {
+			hold = 200 * time.Microsecond
+		}
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() { defer wg.Done(); svc.reserveInventory(stop, hold) }()
+		}
 	}
-	// Fast producer, slow consumer (block profile).
-	events := make(chan Order)
-	wg.Add(2)
-	go func() { defer wg.Done(); svc.publishEvents(stop, events) }()
-	go func() { defer wg.Done(); svc.auditLog(stop, events) }()
-	// Idle goroutines parked forever, so the goroutine dump has variety.
-	for i := 0; i < 20; i++ {
-		go parkedListener(i)
+	// Workers blocked in file reads of a slow source: most of their time is I/O wait.
+	if *mode == "disk" {
+		for i := 0; i < 4; i++ {
+			wg.Add(1)
+			go func(n int) { defer wg.Done(); svc.diskWorker(stop, n) }(i)
+		}
+	}
+	if *mode == "mixed" {
+		// Fast producer, slow consumer (block profile).
+		events := make(chan Order)
+		wg.Add(2)
+		go func() { defer wg.Done(); svc.publishEvents(stop, events) }()
+		go func() { defer wg.Done(); svc.auditLog(stop, events) }()
+		// Idle goroutines parked forever, so the goroutine dump has variety.
+		for i := 0; i < 20; i++ {
+			go parkedListener(i)
+		}
 	}
 
 	time.Sleep(*duration)
@@ -228,7 +252,7 @@ func (s *service) remember(id int, body []byte, sum [32]byte) {
 	s.cacheMu.Unlock()
 }
 
-func (s *service) reserveInventory(stop <-chan struct{}) {
+func (s *service) reserveInventory(stop <-chan struct{}, hold time.Duration) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for {
 		select {
@@ -239,8 +263,40 @@ func (s *service) reserveInventory(stop <-chan struct{}) {
 		sku := fmt.Sprintf("sku-%04d", rng.Intn(1000))
 		s.mu.Lock()
 		s.inventory[sku]--
-		spin(20 * time.Microsecond) // holding the lock while "talking to the DB"
+		spin(hold) // holding the lock while "talking to the DB"
 		s.mu.Unlock()
+	}
+}
+
+// diskWorker stands in for a slow disk: it blocks in os.File reads of a pipe that a
+// writer feeds every 10 ms. (A real disk is too fast on a developer machine to be a
+// known answer; this spends its time waiting in file reads, not computing.)
+func (s *service) diskWorker(stop <-chan struct{}, n int) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		log.Printf("disk worker %d: %v", n, err)
+		return
+	}
+	defer r.Close()
+	go func() {
+		defer w.Close()
+		chunk := make([]byte, 4096)
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(10 * time.Millisecond):
+			}
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+		}
+	}()
+	buf := make([]byte, 4096)
+	for {
+		if _, err := r.Read(buf); err != nil {
+			return // the writer closed the pipe: we are stopping
+		}
 	}
 }
 

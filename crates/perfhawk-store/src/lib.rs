@@ -136,27 +136,68 @@ pub struct Store {
     conn: Mutex<Connection>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HomeOs {
+    Windows,
+    MacOs,
+    Other,
+}
+
 /// `PERFHAWK_HOME` if set and non-empty, else the platform data dir joined with `perfhawk`,
 /// else `./.perfhawk` when the needed environment variables are missing.
-pub fn default_home() -> PathBuf {
-    let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
+///
+/// On Windows new homes live under `%LOCALAPPDATA%` (blobs are large and need not
+/// roam); an existing `%APPDATA%\perfhawk` keeps being used unless the new one exists too.
+pub fn pick_home(
+    os: HomeOs,
+    env: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+    exists: &dyn Fn(&std::path::Path) -> bool,
+) -> PathBuf {
+    let env = |k: &str| env(k).filter(|v| !v.is_empty());
     if let Some(v) = env("PERFHAWK_HOME") {
         return PathBuf::from(v);
     }
-    let base = if cfg!(target_os = "windows") {
-        env("APPDATA").map(PathBuf::from)
-    } else if cfg!(target_os = "macos") {
-        env("HOME").map(|h| PathBuf::from(h).join("Library").join("Application Support"))
-    } else {
-        env("XDG_DATA_HOME")
+    let base = match os {
+        HomeOs::Windows => {
+            let local = env("LOCALAPPDATA").map(|b| PathBuf::from(b).join("perfhawk"));
+            let roaming = env("APPDATA").map(|b| PathBuf::from(b).join("perfhawk"));
+            return match (local, roaming) {
+                (Some(l), Some(r)) => {
+                    if !exists(&l) && exists(&r) {
+                        r
+                    } else {
+                        l
+                    }
+                }
+                (Some(l), None) => l,
+                (None, Some(r)) => r,
+                (None, None) => PathBuf::from(".perfhawk"),
+            };
+        }
+        HomeOs::MacOs => {
+            env("HOME").map(|h| PathBuf::from(h).join("Library").join("Application Support"))
+        }
+        HomeOs::Other => env("XDG_DATA_HOME")
             .map(PathBuf::from)
             .filter(|p| p.is_absolute())
-            .or_else(|| env("HOME").map(|h| PathBuf::from(h).join(".local").join("share")))
+            .or_else(|| env("HOME").map(|h| PathBuf::from(h).join(".local").join("share"))),
     };
     match base {
         Some(b) => b.join("perfhawk"),
         None => PathBuf::from(".perfhawk"),
     }
+}
+
+/// [`pick_home`] for this machine.
+pub fn default_home() -> PathBuf {
+    let os = if cfg!(target_os = "windows") {
+        HomeOs::Windows
+    } else if cfg!(target_os = "macos") {
+        HomeOs::MacOs
+    } else {
+        HomeOs::Other
+    };
+    pick_home(os, &|k| std::env::var_os(k), &|p| p.exists())
 }
 
 const COLUMNS: &str = "id, short_id, name, kind, source_format, sample_types, \

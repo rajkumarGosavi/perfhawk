@@ -32,6 +32,11 @@ perfhawk ui
 Or let perfhawk launch a built binary: `go build -o go-demo . && perfhawk record -- ./go-demo -files=false`.
 Profile its tests with `perfhawk record --go-test . --kinds cpu,memory`.
 
+For `perfhawk doctor`, run a single-purpose workload with a known answer:
+`go run . -files=false -duration 90s -mode cpu` (or `lock`, or `disk`, a stand-in for a
+slow disk that blocks in file reads), then `perfhawk doctor --pid <pid>`. The default,
+`-mode mixed`, is everything at once.
+
 ## .NET with `perfhawk record` (needs .NET SDK 8+)
 
 Build the demo and the perfhawk helper once, then record. No `dotnet-trace` needed:

@@ -5,6 +5,7 @@ import {
 import { formatValue } from '../format'
 import type { Range } from '../time/range'
 import { FidelityBadge } from './FidelityBadge'
+import { Doctor } from './Doctor'
 import { SessionTimeline } from './SessionTimeline'
 
 function target(s: SessionRecord): string {
@@ -150,6 +151,7 @@ export function SessionList({
                             })}
                           </ul>
                         )}
+                        <Doctor sessionId={s.id} onOpenProfile={onOpenProfile} />
                         {onOpenWindow && <SessionTimeline sessionId={s.id} onOpenWindow={onOpenWindow} />}
                         {s.warnings.map((w, i) => (
                           <div key={i} className="muted">⚠ {w}</div>

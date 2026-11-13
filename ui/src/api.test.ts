@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  ApiError, deleteProfile, deleteSession, getDiffFlame, getDiffTop, getFlame, getFindings, getGraph, getHeatmap, getHistory, getSeries, getGroups, getPivot, listSessions,
+  ApiError, deleteProfile, deleteSession, getDiffFlame, getDiffTop, getFlame, getFindings, getGraph, getHeatmap, getHistory, getSeries, getGroups, getPivot, getDoctor, listSessions,
 } from './api'
 
 function stub(status: number, body?: unknown) {
@@ -160,5 +160,11 @@ describe('heatmap cell format', () => {
     stub(200, { bucketNs: 1, startUnixNs: 0, cols: 2, rows: 2, colBuckets: 1, rowBuckets: 1, cells: [[1, 0, 5], [0, 1, 7]], max: 7, totalBuckets: 2 })
     const h = await getHeatmap('p1')
     expect(h.cells).toEqual([{ col: 1, row: 0, value: 5 }, { col: 0, row: 1, value: 7 }])
+  })
+
+  it('getDoctor encodes the session reference', async () => {
+    const f = stub(200, { verdict: 'idle', summary: '', busyThreads: 0, findings: [], notes: [] })
+    await getDoctor('a b')
+    expect((f.mock.calls[0] as unknown as [string])[0]).toBe('/api/sessions/a%20b/doctor')
   })
 })

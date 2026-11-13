@@ -24,18 +24,22 @@ pub enum ProfileKind {
     Lock,
     Blocking,
     BlockIo,
+    OffCpu,
+    SchedDelay,
     Threads,
     Unknown,
 }
 
 impl ProfileKind {
-    pub const ALL: [ProfileKind; 8] = [
+    pub const ALL: [ProfileKind; 10] = [
         ProfileKind::Cpu,
         ProfileKind::Wall,
         ProfileKind::Memory,
         ProfileKind::Lock,
         ProfileKind::Blocking,
         ProfileKind::BlockIo,
+        ProfileKind::OffCpu,
+        ProfileKind::SchedDelay,
         ProfileKind::Threads,
         ProfileKind::Unknown,
     ];
@@ -49,6 +53,8 @@ impl ProfileKind {
             ProfileKind::Lock => "lock",
             ProfileKind::Blocking => "blocking",
             ProfileKind::BlockIo => "block_io",
+            ProfileKind::OffCpu => "off_cpu",
+            ProfileKind::SchedDelay => "sched_delay",
             ProfileKind::Threads => "threads",
             ProfileKind::Unknown => "unknown",
         }
@@ -57,6 +63,19 @@ impl ProfileKind {
     pub fn parse(s: &str) -> Option<ProfileKind> {
         Self::ALL.into_iter().find(|k| k.as_str() == s)
     }
+}
+
+/// Sample-type names used by OS-level profiles.
+pub mod sample_types {
+    pub const IO_TIME: &str = "io_time";
+    pub const IO_BYTES: &str = "io_bytes";
+    pub const OFFCPU: &str = "offcpu";
+    pub const SCHED_DELAY: &str = "sched_delay";
+}
+
+/// The synthetic leaf frame that names the file of a Block I/O stack.
+pub fn file_leaf(path: &str) -> String {
+    format!("[file: {path}]")
 }
 
 impl std::fmt::Display for ProfileKind {

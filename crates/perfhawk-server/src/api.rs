@@ -125,6 +125,7 @@ pub fn routes() -> Router<St> {
             get(get_session).delete(delete_session),
         )
         .route("/api/sessions/{reference}/pivot", get(pivot_h))
+        .route("/api/sessions/{reference}/doctor", get(doctor_h))
         .route(
             "/api/sessions/{reference}/timeline",
             get(session_timeline_h),
@@ -791,6 +792,16 @@ struct PivotRow {
     total: i64,
     self_pct: f64,
     total_pct: f64,
+}
+
+async fn doctor_h(State(s): State<St>, Path(r): Path<String>) -> ApiResult<Response> {
+    let store = s.store.clone();
+    let d = blocking(move || {
+        let sess = store.resolve_session(&r)?;
+        crate::doctor::diagnose_session(&store, &sess)
+    })
+    .await?;
+    Ok(Json(d).into_response())
 }
 
 async fn pivot_h(
