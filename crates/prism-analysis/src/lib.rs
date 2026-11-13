@@ -5,6 +5,7 @@ mod diff;
 mod filter;
 mod sandwich;
 mod top;
+mod transform;
 mod tree;
 
 pub use diff::{
@@ -13,4 +14,5 @@ pub use diff::{
 pub use filter::Filter;
 pub use sandwich::{sandwich, Sandwich};
 pub use top::{filtered_total, top, TopRow, TopSort};
+pub use transform::{package_of, parse_transforms, Transform, TransformError};
 pub use tree::{flame, flame_with, inverted_flame, inverted_flame_with, FlameNode, FlameOptions};

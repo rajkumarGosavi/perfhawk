@@ -1,3 +1,4 @@
+use crate::transform::{apply, Transform};
 use prism_model::{FuncId, Profile};
 use regex::Regex;
 
@@ -10,6 +11,8 @@ pub struct Filter {
     pub exclude: Option<Regex>,
     /// Remove matching frames from stacks, keeping the sample.
     pub hide: Option<Regex>,
+    /// Stack transforms applied after exclude, focus and hide, in order.
+    pub transforms: Vec<Transform>,
 }
 
 impl Filter {
@@ -23,12 +26,21 @@ impl Filter {
             focus: c(focus)?,
             exclude: c(exclude)?,
             hide: c(hide)?,
+            transforms: Vec::new(),
         })
+    }
+
+    pub fn with_transforms(mut self, t: Vec<Transform>) -> Filter {
+        self.transforms = t;
+        self
     }
 
     /// True when no filter is set (every sample and frame is kept).
     pub fn is_empty(&self) -> bool {
-        self.focus.is_none() && self.exclude.is_none() && self.hide.is_none()
+        self.focus.is_none()
+            && self.exclude.is_none()
+            && self.hide.is_none()
+            && self.transforms.is_empty()
     }
 }
 
@@ -86,6 +98,9 @@ pub(crate) fn for_each_sample(
         }
         if hide.re.is_some() {
             funcs.retain(|&f| !hide.matches(p, f));
+        }
+        if !filter.transforms.iter().all(|t| apply(t, p, &mut funcs)) {
+            continue;
         }
         visit(&funcs, p.value(i, sample_type));
     }

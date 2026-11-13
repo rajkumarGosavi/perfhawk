@@ -350,3 +350,120 @@ fn max_depth_fast_and_slow_paths_agree() {
         );
     }
 }
+
+// ---- V2 transforms ----
+
+fn tx(s: &str) -> Filter {
+    none().with_transforms(parse_transforms(s).unwrap())
+}
+
+#[test]
+fn package_of_pinned() {
+    for (n, want) in [
+        ("net/http.(*Server).Serve", "net/http"),
+        ("github.com/a/b.Func", "github.com/a/b"),
+        ("main.main", "main"),
+        ("runtime.mallocgc", "runtime"),
+        ("runtime.(*mheap).alloc", "runtime"),
+        ("System.Text.Json.Serializer.Serialize", "System.Text.Json"),
+        ("gzip", "gzip"),
+    ] {
+        assert_eq!(package_of(n), want, "{n}");
+    }
+}
+
+#[test]
+fn parse_transforms_cases() {
+    let t = parse_transforms("sub:main.a,rec,pkg,merge:x%2Cy%3Az,drop:d").unwrap();
+    assert_eq!(
+        t,
+        vec![
+            Transform::FocusSubtree("main.a".into()),
+            Transform::CollapseRecursion,
+            Transform::CollapsePackage,
+            Transform::Merge("x,y:z".into()),
+            Transform::Drop("d".into()),
+        ]
+    );
+    assert!(parse_transforms("").unwrap().is_empty());
+    for bad in ["bogus", "sub", "sub:", "rec:x", "merge:%zz"] {
+        assert!(parse_transforms(bad).is_err(), "{bad}");
+    }
+    let many = vec!["rec"; 33].join(",");
+    assert!(parse_transforms(&many).is_err());
+}
+
+#[test]
+fn transform_focus_subtree() {
+    let p = std_profile();
+    let r = flame(&p, 0, &tx("sub:a"), 0.0);
+    assert_eq!(r.total, 5);
+    assert_eq!(names(&r), ["a"]);
+    assert_eq!(names(&r.children[0]), ["b"]);
+    let r = flame(&p, 0, &tx("sub:zzz"), 0.0);
+    assert_eq!(r.total, 0);
+    assert!(r.children.is_empty());
+}
+
+#[test]
+fn transform_merge_and_drop() {
+    let p = std_profile();
+    let r = flame(&p, 0, &tx("merge:a"), 0.0);
+    let main = &r.children[0];
+    assert_eq!(names(main), ["c", "b"]);
+    assert_eq!(main.self_value, 2);
+    let r = flame(&p, 0, &tx("drop:a"), 0.0);
+    assert_eq!(r.total, 5);
+    assert_eq!(names(&r.children[0]), ["c"]);
+}
+
+#[test]
+fn transform_collapse_recursion() {
+    let p = build(&[(&["main", "f", "f", "f", "g"], 4)]);
+    let r = flame(&p, 0, &tx("rec"), 0.0);
+    let f = &r.children[0].children[0];
+    assert_eq!((f.name.as_str(), names(f)), ("f", vec!["g"]));
+    assert_eq!(f.children[0].total, 4);
+    let p = build(&[(&["f", "g", "f"], 1)]);
+    let r = flame(&p, 0, &tx("rec"), 0.0);
+    assert_eq!(r.children[0].children[0].children[0].name, "f");
+}
+
+#[test]
+fn transform_collapse_package() {
+    let p = build(&[(
+        &["main.run", "net/http.Serve", "net/http.read", "main.done"],
+        1,
+    )]);
+    let r = flame(&p, 0, &tx("pkg"), 0.0);
+    let mut n = &r;
+    let mut got = vec![];
+    while let Some(c) = n.children.first() {
+        got.push(c.name.clone());
+        n = c;
+    }
+    assert_eq!(got, ["main.run", "net/http.Serve", "main.done"]);
+}
+
+#[test]
+fn transforms_compose_in_order() {
+    let p = std_profile();
+    let r = flame(&p, 0, &tx("sub:a,merge:b"), 0.0);
+    assert_eq!(r.total, 5);
+    assert_eq!(names(&r), ["a"]);
+    assert!(r.children[0].children.is_empty());
+    assert_eq!(r.children[0].self_value, 5);
+}
+
+#[test]
+fn transform_only_filter_applies_to_top_and_sandwich() {
+    let p = std_profile();
+    let f = tx("sub:a");
+    assert!(!f.is_empty());
+    let rows = top(&p, 0, &f, 10, TopSort::Total);
+    assert!(rows.iter().all(|r| r.name != "c"));
+    assert_eq!(rows[0].total, 5);
+    let s = sandwich(&p, 0, &f, fid(&p, "a"), 0.0);
+    assert_eq!(s.callees.total, 5);
+    assert!(s.callers.children.is_empty());
+}
