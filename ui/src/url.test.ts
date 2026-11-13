@@ -8,13 +8,36 @@ describe('url state', () => {
     expect(readViewState(w)).toEqual(s)
   })
   it('default state writes empty string', () => {
-    expect(writeViewState({ view: 'flame' })).toBe('')
-    expect(readViewState('')).toEqual({ view: 'flame' })
+    expect(writeViewState({ view: 'summary' })).toBe('')
+    expect(readViewState('')).toEqual({ view: 'summary' })
   })
   it('roundtrips sandwich with func and search, ignores bad view', () => {
     const s = { view: 'sandwich' as const, func: 3, search: 'a b', exclude: 'x', hide: 'y' }
     expect(readViewState(writeViewState(s))).toEqual(s)
-    expect(readViewState('?view=nope').view).toBe('flame')
+    expect(readViewState('?view=nope').view).toBe('summary')
+  })
+})
+
+describe('summary default and hot flag', () => {
+  it('defaults missing or unknown view to summary', () => {
+    expect(readViewState('?profile=ab').view).toBe('summary')
+    expect(readViewState('?profile=ab&view=bogus').view).toBe('summary')
+  })
+  it('writes flame explicitly and omits summary', () => {
+    expect(writeViewState({ profile: 'ab', view: 'flame' })).toBe('?profile=ab&view=flame')
+    expect(writeViewState({ profile: 'ab', view: 'summary' })).toBe('?profile=ab')
+  })
+  it('roundtrips new views', () => {
+    for (const view of ['tree', 'both', 'summary', 'flame', 'icicle'] as const) {
+      const s = { profile: 'ab', view }
+      expect(readViewState(writeViewState(s))).toEqual(s)
+    }
+  })
+  it('roundtrips hot', () => {
+    const s = { profile: 'ab', view: 'tree' as const, hot: true as const }
+    expect(writeViewState(s)).toContain('hot=1')
+    expect(readViewState(writeViewState(s)).hot).toBe(true)
+    expect(readViewState('?hot=0').hot).toBeUndefined()
   })
 })
 
