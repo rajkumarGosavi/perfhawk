@@ -40,28 +40,45 @@ fn format_name(f: &SourceFormat) -> &'static str {
     }
 }
 
+/// Outcome of the cheap detection checks.
+enum Cheap {
+    Found(SourceFormat),
+    NotFound,
+    /// Only a raw-protobuf decode can tell.
+    TryPprof,
+}
+
 /// Detects the format of `bytes`; `file_name` only matters for empty input.
 pub fn detect_format(bytes: &[u8], file_name: Option<&str>) -> Option<SourceFormat> {
+    match detect_cheap(bytes, file_name) {
+        Cheap::Found(f) => Some(f),
+        Cheap::NotFound => None,
+        Cheap::TryPprof => pprof::decode_plausible(bytes).map(|_| SourceFormat::Pprof),
+    }
+}
+
+fn detect_cheap(bytes: &[u8], file_name: Option<&str>) -> Cheap {
     if bytes.starts_with(&[0x1f, 0x8b]) {
-        return Some(SourceFormat::Pprof);
+        return Cheap::Found(SourceFormat::Pprof);
     }
     let Some(&first) = bytes.iter().find(|b| !b.is_ascii_whitespace()) else {
         let ext_ok = file_name
             .and_then(|f| f.rsplit('.').next())
             .map(str::to_ascii_lowercase)
             .is_some_and(|e| matches!(e.as_str(), "folded" | "collapsed" | "txt"));
-        return ext_ok.then_some(SourceFormat::Collapsed);
+        return if ext_ok {
+            Cheap::Found(SourceFormat::Collapsed)
+        } else {
+            Cheap::NotFound
+        };
     };
     if first == b'{' && is_speedscope(bytes) {
-        return Some(SourceFormat::Speedscope);
+        return Cheap::Found(SourceFormat::Speedscope);
     }
     if looks_collapsed(bytes) {
-        return Some(SourceFormat::Collapsed);
+        return Cheap::Found(SourceFormat::Collapsed);
     }
-    if is_pprof(bytes) {
-        return Some(SourceFormat::Pprof);
-    }
-    None
+    Cheap::TryPprof
 }
 
 fn is_speedscope(bytes: &[u8]) -> bool {
@@ -94,19 +111,16 @@ fn looks_collapsed(bytes: &[u8]) -> bool {
     seen > 0
 }
 
-fn is_pprof(bytes: &[u8]) -> bool {
-    use prost::Message;
-    pprof::proto::Profile::decode(bytes).is_ok_and(|p| {
-        !p.sample_type.is_empty() && p.string_table.first().is_some_and(|s| s.is_empty())
-    })
-}
-
 /// Detects the format and imports; `UnknownFormat` if nothing matches.
 pub fn import_bytes(bytes: &[u8], hints: &ImportHints) -> Result<Profile, ImportError> {
-    match detect_format(bytes, hints.file_name) {
-        Some(SourceFormat::Pprof) => import_pprof(bytes, hints),
-        Some(SourceFormat::Collapsed) => import_collapsed(bytes, hints),
-        Some(SourceFormat::Speedscope) => import_speedscope(bytes, hints),
-        None => Err(ImportError::UnknownFormat),
+    match detect_cheap(bytes, hints.file_name) {
+        Cheap::Found(SourceFormat::Pprof) => import_pprof(bytes, hints),
+        Cheap::Found(SourceFormat::Collapsed) => import_collapsed(bytes, hints),
+        Cheap::Found(SourceFormat::Speedscope) => import_speedscope(bytes, hints),
+        Cheap::NotFound => Err(ImportError::UnknownFormat),
+        Cheap::TryPprof => match pprof::decode_plausible(bytes) {
+            Some(p) => pprof::convert(p, hints),
+            None => Err(ImportError::UnknownFormat),
+        },
     }
 }

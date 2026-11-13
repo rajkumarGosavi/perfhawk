@@ -9,8 +9,8 @@ use prism_model::{
     SourceFormat, Unit,
 };
 use prost::Message;
+use rustc_hash::FxHashMap as HashMap;
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::io::Read;
 
 fn malformed(reason: impl Into<String>) -> ImportError {
@@ -46,7 +46,54 @@ pub fn import_pprof(bytes: &[u8], hints: &ImportHints) -> Result<Profile, Import
     convert(p, hints)
 }
 
-fn convert(p: proto::Profile, hints: &ImportHints) -> Result<Profile, ImportError> {
+/// pprof location id -> slot in the flattened frame table. Dense when ids
+/// are compact (the common case), hashed otherwise.
+enum LocIndex {
+    Dense(Vec<u32>),
+    Sparse(HashMap<u64, u32>),
+}
+
+impl LocIndex {
+    fn new(locs: &[proto::Location]) -> Self {
+        let max = locs.iter().map(|l| l.id).max().unwrap_or(0);
+        if max <= 4 * locs.len() as u64 + 1024 {
+            LocIndex::Dense(vec![u32::MAX; max as usize + 1])
+        } else {
+            LocIndex::Sparse(HashMap::with_capacity_and_hasher(
+                locs.len(),
+                Default::default(),
+            ))
+        }
+    }
+
+    fn insert(&mut self, id: u64, slot: u32) {
+        match self {
+            LocIndex::Dense(v) => v[id as usize] = slot,
+            LocIndex::Sparse(m) => {
+                m.insert(id, slot);
+            }
+        }
+    }
+
+    fn get(&self, id: u64) -> Option<usize> {
+        let slot = match self {
+            LocIndex::Dense(v) => *v.get(usize::try_from(id).ok()?)?,
+            LocIndex::Sparse(m) => *m.get(&id)?,
+        };
+        (slot != u32::MAX).then_some(slot as usize)
+    }
+}
+
+/// Decodes raw protobuf if it plausibly is a pprof profile (has sample types
+/// and a string table starting with ""). Shared by detection and import so
+/// a raw profile is decoded only once.
+pub(crate) fn decode_plausible(raw: &[u8]) -> Option<proto::Profile> {
+    proto::Profile::decode(raw).ok().filter(|p| {
+        !p.sample_type.is_empty() && p.string_table.first().is_some_and(|s| s.is_empty())
+    })
+}
+
+pub(crate) fn convert(p: proto::Profile, hints: &ImportHints) -> Result<Profile, ImportError> {
     let st = &p.string_table;
     if p.sample_type.is_empty() {
         return Err(malformed("profile has no sample types"));
@@ -98,7 +145,7 @@ fn convert(p: proto::Profile, hints: &ImportHints) -> Result<Profile, ImportErro
     b.set_default_sample_type(default_idx);
 
     // pprof function id -> model function.
-    let mut funcs = HashMap::with_capacity(p.function.len());
+    let mut funcs = HashMap::with_capacity_and_hasher(p.function.len(), Default::default());
     for f in &p.function {
         let name = string(st, f.name)?;
         let file = string(st, f.filename)?;
@@ -107,9 +154,11 @@ fn convert(p: proto::Profile, hints: &ImportHints) -> Result<Profile, ImportErro
     }
 
     // pprof location id -> frames, caller-first (line[0] is the innermost).
-    let mut locs: HashMap<u64, Vec<FrameId>> = HashMap::with_capacity(p.location.len());
+    let mut locs = LocIndex::new(&p.location);
+    let mut spans: Vec<(usize, usize)> = Vec::with_capacity(p.location.len());
+    let mut frames: Vec<FrameId> = Vec::with_capacity(p.location.len());
     for l in &p.location {
-        let mut frames = Vec::with_capacity(l.line.len().max(1));
+        let start = frames.len();
         if l.line.is_empty() {
             let name = format!("0x{:x}", l.address);
             let f = b.function(&name, "", 0);
@@ -121,7 +170,8 @@ fn convert(p: proto::Profile, hints: &ImportHints) -> Result<Profile, ImportErro
                 .ok_or_else(|| malformed(format!("unknown function id {}", line.function_id)))?;
             frames.push(b.frame(f, line.line.max(0) as u32, l.address));
         }
-        locs.insert(l.id, frames);
+        locs.insert(l.id, spans.len() as u32);
+        spans.push((start, frames.len()));
     }
 
     let mut stack_buf: Vec<FrameId> = Vec::new();
@@ -129,10 +179,11 @@ fn convert(p: proto::Profile, hints: &ImportHints) -> Result<Profile, ImportErro
         stack_buf.clear();
         // location_id is leaf-first; walk reversed for root-first.
         for id in s.location_id.iter().rev() {
-            let frames = locs
-                .get(id)
+            let (start, end) = locs
+                .get(*id)
+                .map(|slot| spans[slot])
                 .ok_or_else(|| malformed(format!("unknown location id {id}")))?;
-            stack_buf.extend_from_slice(frames);
+            stack_buf.extend_from_slice(&frames[start..end]);
         }
         let stack = b.stack(&stack_buf);
         let labels = s
