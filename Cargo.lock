@@ -542,6 +542,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "genprof"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "prism-import",
+ "prost",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1131,7 +1140,9 @@ name = "prism-store"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "genprof",
  "hex",
+ "prism-analysis",
  "prism-import",
  "prism-model",
  "rusqlite",

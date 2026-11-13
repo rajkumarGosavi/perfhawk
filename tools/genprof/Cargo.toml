@@ -1,0 +1,12 @@
+[package]
+name = "genprof"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+prism-import = { path = "../../crates/prism-import" }
+prost.workspace = true
+clap = { version = "4", features = ["derive"] }
