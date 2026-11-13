@@ -8,9 +8,9 @@ use axum::{
     Json, Router,
 };
 use prism_analysis::{
-    diff_flame, diff_top, flame_with, function_stats, groups, inverted_flame_with,
+    diff_flame, diff_top_sorted, flame_with, function_stats, groups, inverted_flame_with,
     match_sample_type, parse_transforms, sandwich, top, DiffError, DiffInput, DiffNode,
-    DiffNormalize, DiffRow, Filter, FlameOptions, GroupBy, TopSort,
+    DiffNormalize, DiffRow, DiffSort, Filter, FlameOptions, GroupBy, TopSort,
 };
 use prism_model::{FuncId, Profile, ProfileKind};
 use prism_store::{ImportOptions, ProfileRecord, SampleTypeInfo, StoreError};
@@ -446,6 +446,7 @@ struct DiffQuery {
     exclude: Option<String>,
     hide: Option<String>,
     tx: Option<String>,
+    sort: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -514,6 +515,15 @@ async fn diff_h(State(s): State<St>, Q(q): Q<DiffQuery>) -> ApiResult<Response> 
         }
         m
     };
+    let sort = match q.sort.as_deref() {
+        None | Some("delta") => DiffSort::Delta,
+        Some("percent") => DiffSort::Percent,
+        Some(o) => {
+            return Err(ApiError::bad(format!(
+                "unknown sort '{o}' (expected delta or percent)"
+            )))
+        }
+    };
     let depth = check_depth(q.depth)?;
     let limit = q.limit.unwrap_or(100).min(10_000);
     let filter = build_filter(
@@ -550,7 +560,7 @@ async fn diff_h(State(s): State<St>, Q(q): Q<DiffQuery>) -> ApiResult<Response> 
             sample_type: hi,
         };
         if top_view {
-            let rows = diff_top(base, head, &filter, normalize, limit);
+            let rows = diff_top_sorted(base, head, &filter, normalize, limit, sort);
             json_bytes(&DiffTopOut {
                 base: &brec,
                 head: &hrec,

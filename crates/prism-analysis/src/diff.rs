@@ -377,12 +377,33 @@ fn collect_totals(
     (root, out)
 }
 
+/// Row ordering for [`diff_top_sorted`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DiffSort {
+    /// Absolute self delta, then absolute total delta.
+    #[default]
+    Delta,
+    /// Relative total change; rows absent from the base come first.
+    Percent,
+}
+
 pub fn diff_top(
     base: DiffInput,
     head: DiffInput,
     filter: &Filter,
     normalize: DiffNormalize,
     limit: usize,
+) -> Vec<DiffRow> {
+    diff_top_sorted(base, head, filter, normalize, limit, DiffSort::Delta)
+}
+
+pub fn diff_top_sorted(
+    base: DiffInput,
+    head: DiffInput,
+    filter: &Filter,
+    normalize: DiffNormalize,
+    limit: usize,
+    sort: DiffSort,
 ) -> Vec<DiffRow> {
     let mut keys = Keys::default();
     let bmap = keys.map_profile(base.profile);
@@ -423,9 +444,14 @@ pub fn diff_top(
         })
         .collect();
     rows.sort_by(|a, b| {
-        b.delta_self
-            .unsigned_abs()
-            .cmp(&a.delta_self.unsigned_abs())
+        let primary = match sort {
+            DiffSort::Delta => b
+                .delta_self
+                .unsigned_abs()
+                .cmp(&a.delta_self.unsigned_abs()),
+            DiffSort::Percent => percent_order(a, b),
+        };
+        primary
             .then_with(|| {
                 b.delta_total
                     .unsigned_abs()
@@ -436,4 +462,22 @@ pub fn diff_top(
     });
     rows.truncate(limit);
     rows
+}
+
+/// Descending by |delta_total| / base_total, compared by cross-multiplication
+/// (no floats); rows with `base_total == 0` sort before all others.
+fn percent_order(a: &DiffRow, b: &DiffRow) -> std::cmp::Ordering {
+    let (ab, bb) = (a.base_total.max(0) as u128, b.base_total.max(0) as u128);
+    match (ab == 0, bb == 0) {
+        (true, true) => std::cmp::Ordering::Equal,
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        (false, false) => {
+            let (da, db) = (
+                a.delta_total.unsigned_abs() as u128,
+                b.delta_total.unsigned_abs() as u128,
+            );
+            (db * ab).cmp(&(da * bb))
+        }
+    }
 }

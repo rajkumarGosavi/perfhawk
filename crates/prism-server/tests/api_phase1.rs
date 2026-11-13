@@ -298,3 +298,18 @@ async fn pivot_lists_each_profile_in_session() {
     let (st, _) = get(addr, "/api/sessions/nope/pivot?name=x").await;
     assert_eq!(st, 404);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn diff_top_sort_param() {
+    let (_d, store, addr) = start().await;
+    let id = import(&store, CPU);
+    let q = format!("/api/diff?base={id}&head={id}&view=top");
+    for ok in ["delta", "percent"] {
+        let (st, v) = get(addr, &format!("{q}&sort={ok}")).await;
+        assert_eq!(st, 200, "{v}");
+        assert!(v["rows"].is_array());
+    }
+    let (st, v) = get(addr, &format!("{q}&sort=bogus")).await;
+    assert_eq!(st, 400);
+    assert_eq!(v["error"]["code"], "bad_request");
+}

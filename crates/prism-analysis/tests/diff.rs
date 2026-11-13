@@ -243,3 +243,49 @@ fn deep_diff_serializes() {
     assert_eq!(capped.children[0].children[0].children[0].children.len(), 0);
     assert_eq!(capped.children[0].children[0].children[0].head_self, 2);
 }
+
+#[test]
+fn diff_top_percent_sort_puts_new_first_and_applies_limit_after() {
+    let base = build(&[(&["main", "a"], 100), (&["main", "b"], 10)]);
+    let head = build(&[
+        (&["main", "a"], 200),
+        (&["main", "b"], 11),
+        (&["main", "c"], 5),
+    ]);
+    let rows = diff_top_sorted(
+        inp(&base),
+        inp(&head),
+        &none(),
+        DiffNormalize::None,
+        10,
+        DiffSort::Percent,
+    );
+    let order: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(order, ["c", "a", "main", "b"]);
+    let delta = diff_top(inp(&base), inp(&head), &none(), DiffNormalize::None, 10);
+    assert_eq!(delta[0].name, "a");
+    let top2 = diff_top_sorted(
+        inp(&base),
+        inp(&head),
+        &none(),
+        DiffNormalize::None,
+        2,
+        DiffSort::Percent,
+    );
+    let order: Vec<&str> = top2.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(order, ["c", "a"]);
+}
+
+#[test]
+fn diff_top_percent_sort_on_empty_profiles_is_empty() {
+    let e = build(&[]);
+    let rows = diff_top_sorted(
+        inp(&e),
+        inp(&e),
+        &none(),
+        DiffNormalize::None,
+        10,
+        DiffSort::Percent,
+    );
+    assert!(rows.is_empty());
+}

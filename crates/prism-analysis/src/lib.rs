@@ -11,7 +11,8 @@ mod transform;
 mod tree;
 
 pub use diff::{
-    diff_flame, diff_top, match_sample_type, DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow,
+    diff_flame, diff_top, diff_top_sorted, match_sample_type, DiffError, DiffInput, DiffNode,
+    DiffNormalize, DiffRow, DiffSort,
 };
 pub use filter::Filter;
 pub use groups::{groups, GroupBy, GroupRow};
