@@ -103,7 +103,7 @@ fn run_inner(store: &Store, a: &Args) -> Result<u8, String> {
                 Some(g) => g > a.threshold && delta_points >= a.min_value,
                 None => r.head_self > 0 && pct(r.head_self, ht) >= a.min_value,
             };
-            regressed.then(|| Regression {
+            regressed.then_some(Regression {
                 name: r.name,
                 base_self: r.base_self,
                 head_self: r.head_self,
