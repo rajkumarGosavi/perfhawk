@@ -7,7 +7,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use prism_analysis::{flame, inverted_flame, sandwich, top, Filter};
+use prism_analysis::{flame, inverted_flame, sandwich, top, Filter, TopSort};
 use prism_model::{FuncId, Profile, ProfileKind};
 use prism_store::{ImportOptions, StoreError};
 use serde::Deserialize;
@@ -185,6 +185,7 @@ struct AnalysisQuery {
     inverted: Option<bool>,
     limit: Option<usize>,
     func: Option<u32>,
+    sort: Option<String>,
 }
 
 impl AnalysisQuery {
@@ -195,6 +196,15 @@ impl AnalysisQuery {
             self.hide.as_deref(),
         )
         .map_err(|e| ApiError::bad(e.to_string()))
+    }
+    fn sort(&self) -> ApiResult<TopSort> {
+        match self.sort.as_deref() {
+            None | Some("self") => Ok(TopSort::SelfValue),
+            Some("total") => Ok(TopSort::Total),
+            Some(o) => Err(ApiError::bad(format!(
+                "unknown sort '{o}' (expected self or total)"
+            ))),
+        }
     }
     fn min(&self) -> ApiResult<f64> {
         let m = self.min.unwrap_or(0.0005);
@@ -263,9 +273,10 @@ async fn top_h(
 ) -> ApiResult<Response> {
     let filter = q.filter()?;
     let limit = q.limit.unwrap_or(100).min(10_000);
+    let sort = q.sort()?;
     let p = load_profile(&s, r).await?;
     let st = q.sample_type(&p)?;
-    tokio::task::spawn_blocking(move || json_bytes(&top(&p, st, &filter, limit)))
+    tokio::task::spawn_blocking(move || json_bytes(&top(&p, st, &filter, limit, sort)))
         .await
         .map_err(ApiError::internal)?
 }

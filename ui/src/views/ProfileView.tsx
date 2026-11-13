@@ -52,6 +52,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
   const st = state.st ?? record?.default_sample_type
   const unit = record && st !== undefined ? record.sample_types[st]?.unit ?? 'count' : 'count'
   const { view, func, focus: qf, exclude: qe, hide: qh } = state
+  const sort = state.sort ?? 'self'
 
   useEffect(() => {
     if (!record) return
@@ -65,7 +66,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
     const q = { st, focus: qf, exclude: qe, hide: qh }
     const p: Promise<Data> =
       view === 'top'
-        ? getTop(ref, { ...q, limit: 500 }).then((rows) => ({ kind: 'top', rows }))
+        ? getTop(ref, { ...q, limit: 500, sort }).then((rows) => ({ kind: 'top', rows }))
         : view === 'sandwich'
           ? getSandwich(ref, func!, q).then((data) => ({ kind: 'sandwich', data }))
           : getFlame(ref, q).then((tree) => ({ kind: 'flame', tree }))
@@ -74,7 +75,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       (e: ApiError) => { if (!stale) { setData(null); setError(e.message); setLoading(false) } },
     )
     return () => { stale = true }
-  }, [record, ref, view, func, st, qf, qe, qh])
+  }, [record, ref, view, func, st, qf, qe, qh, sort])
 
   const pushView = (patch: Partial<ViewState>) => navigate(patch, 'push')
 
@@ -123,7 +124,11 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         />
       )}
       {data?.kind === 'top' && view === 'top' && (
-        <TopTable rows={data.rows} unit={unit} onSelect={(f) => pushView({ view: 'sandwich', func: f })} />
+        <TopTable
+          rows={data.rows}
+          unit={unit}
+          sort={sort}
+          onSort={(s) => pushView({ sort: s === 'self' ? undefined : s })} onSelect={(f) => pushView({ view: 'sandwich', func: f })} />
       )}
       {data?.kind === 'sandwich' && view === 'sandwich' && (
         <Sandwich data={data.data} unit={unit} search={state.search} onSelectFunc={(f) => pushView({ func: f })} />

@@ -1,5 +1,5 @@
 use crate::format::format_value;
-use prism_analysis::{top, Filter};
+use prism_analysis::{filtered_total, top, Filter, TopSort};
 use prism_store::Store;
 
 pub struct Args {
@@ -9,6 +9,7 @@ pub struct Args {
     pub focus: Option<String>,
     pub exclude: Option<String>,
     pub hide: Option<String>,
+    pub sort: TopSort,
 }
 
 pub fn run(store: &Store, a: Args) -> Result<(), String> {
@@ -41,19 +42,28 @@ pub fn run(store: &Store, a: Args) -> Result<(), String> {
         .unwrap_or_else(|| "count".into());
     let filter = Filter::parse(a.focus.as_deref(), a.exclude.as_deref(), a.hide.as_deref())
         .map_err(|e| format!("invalid regex: {e}"))?;
-    let rows = top(&profile, st, &filter, a.top);
+    let rows = top(&profile, st, &filter, a.top, a.sort);
     let n = profile.sample_types.len();
-    let total = profile
+    let unfiltered = profile
         .values
         .chunks(n)
         .fold(0i64, |acc, c| acc.saturating_add(c[st]));
+    let total = if filter.is_empty() {
+        format_value(unfiltered as f64, &unit)
+    } else {
+        format!(
+            "{} (of {})",
+            format_value(filtered_total(&profile, st, &filter) as f64, &unit),
+            format_value(unfiltered as f64, &unit)
+        )
+    };
 
     println!("{}", rec.name);
     println!(
         "kind: {}  sample type: {}  total: {}",
         super::kind_str(&rec.kind),
         profile.sample_types[st].name,
-        format_value(total as f64, &unit)
+        total
     );
     println!();
     let mut table = vec![[

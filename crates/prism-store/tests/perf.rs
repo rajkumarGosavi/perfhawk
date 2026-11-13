@@ -1,7 +1,7 @@
 //! Phase-0 performance gate on a 500 MiB synthetic pprof. Run explicitly:
 //! `cargo test -p prism-store --release --test perf -- --ignored --nocapture`
 
-use prism_analysis::{flame, top, Filter};
+use prism_analysis::{flame, top, Filter, TopSort};
 use prism_store::{ImportOptions, Store};
 use std::time::{Duration, Instant};
 
@@ -57,7 +57,7 @@ fn perf_500mb_gate() {
         "flame json               {:>8.2} MiB",
         json.len() as f64 / (1 << 20) as f64
     );
-    let (rows, top_t) = timed("top(100)", || top(&p, st, &filter, 100));
+    let (rows, top_t) = timed("top(100)", || top(&p, st, &filter, 100, TopSort::SelfValue));
     assert_eq!(rows.len(), 100);
 
     assert!(

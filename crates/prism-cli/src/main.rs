@@ -56,6 +56,9 @@ enum Command {
         exclude: Option<String>,
         #[arg(long, value_name = "RE")]
         hide: Option<String>,
+        /// Sort by self or total value
+        #[arg(long, value_enum, default_value_t = SortArg::SelfValue)]
+        sort: SortArg,
     },
     /// Serve the UI for a profile (an existing file is imported first)
     Open {
@@ -73,6 +76,13 @@ enum Command {
         #[arg(long)]
         no_browser: bool,
     },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum SortArg {
+    #[value(name = "self")]
+    SelfValue,
+    Total,
 }
 
 fn parse_kind(s: &str) -> Result<ProfileKind, String> {
@@ -125,6 +135,7 @@ async fn main() -> ExitCode {
             focus,
             exclude,
             hide,
+            sort,
         } => done(cmd::show::run(
             &store,
             cmd::show::Args {
@@ -134,6 +145,10 @@ async fn main() -> ExitCode {
                 focus,
                 exclude,
                 hide,
+                sort: match sort {
+                    SortArg::SelfValue => prism_analysis::TopSort::SelfValue,
+                    SortArg::Total => prism_analysis::TopSort::Total,
+                },
             },
         )),
         Command::Open {
@@ -141,7 +156,7 @@ async fn main() -> ExitCode {
             port,
             no_browser,
         } => {
-            let short = if Path::new(&target).exists() {
+            let short = if Path::new(&target).is_file() {
                 std::fs::read(&target)
                     .map_err(|e| format!("{target}: {e}"))
                     .and_then(|bytes| {

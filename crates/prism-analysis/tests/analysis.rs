@@ -102,10 +102,40 @@ fn focus_exclude_hide() {
 #[test]
 fn top_recursion_counted_once() {
     let p = build(&[(&["main", "f", "f", "f"], 7)]);
-    let rows = top(&p, 0, &none(), 10);
+    let rows = top(&p, 0, &none(), 10, TopSort::SelfValue);
     let f = rows.iter().find(|r| r.name == "f").unwrap();
     assert_eq!((f.self_value, f.total), (7, 7));
     assert_eq!(rows[0].name, "f");
+}
+
+#[test]
+fn top_sort_total_survives_limit() {
+    // wrapper has zero self but the highest total; many leaves have self.
+    let p = build(&[
+        (&["wrapper", "l1"], 10),
+        (&["wrapper", "l2"], 9),
+        (&["wrapper", "l3"], 8),
+        (&["wrapper", "l4"], 7),
+    ]);
+    let by_self = top(&p, 0, &none(), 2, TopSort::SelfValue);
+    assert_eq!(by_self[0].name, "l1");
+    assert!(by_self.iter().all(|r| r.name != "wrapper"));
+    let by_total = top(&p, 0, &none(), 2, TopSort::Total);
+    assert_eq!(by_total[0].name, "wrapper");
+    assert_eq!(by_total[0].self_value, 0);
+    assert_eq!(by_total[0].total, 34);
+    assert_eq!(by_total[1].name, "l1");
+    // filtered path honors it too
+    let f = Filter::parse(None, None, Some("^l4$")).unwrap();
+    assert_eq!(top(&p, 0, &f, 1, TopSort::Total)[0].name, "wrapper");
+}
+
+#[test]
+fn filtered_total_sums_surviving_samples() {
+    let p = std_profile();
+    assert_eq!(filtered_total(&p, 0, &none()), 10);
+    let f = Filter::parse(Some("^c$"), None, None).unwrap();
+    assert_eq!(filtered_total(&p, 0, &f), 5);
 }
 
 #[test]
@@ -135,7 +165,7 @@ fn empty_profile_flame_is_root_only() {
     let r = flame(&p, 0, &none(), 0.0);
     assert_eq!(r.total, 0);
     assert!(r.children.is_empty());
-    assert!(top(&p, 0, &none(), 10).is_empty());
+    assert!(top(&p, 0, &none(), 10, TopSort::SelfValue).is_empty());
 }
 
 #[test]
@@ -170,7 +200,7 @@ fn out_of_range_sample_type_yields_empty_views() {
     assert_eq!(r.total, 0);
     assert!(r.children.is_empty());
     assert_eq!(inverted_flame(&p, st, &none(), 0.0).total, 0);
-    assert!(top(&p, st, &none(), 10).is_empty());
+    assert!(top(&p, st, &none(), 10, TopSort::SelfValue).is_empty());
     let s = sandwich(&p, st, &none(), fid(&p, "a"), 0.0);
     assert_eq!((s.callees.total, s.callers.total), (0, 0));
     assert!(s.callees.children.is_empty() && s.callers.children.is_empty());
@@ -211,9 +241,12 @@ fn unfiltered_fast_path_matches_per_sample_path() {
     for min in [0.0, 0.1, 0.3] {
         assert_eq!(flame(&p, 0, &none(), min), flame(&p, 0, &slow, min));
     }
-    assert_eq!(top(&p, 0, &none(), 100), top(&p, 0, &slow, 100));
+    assert_eq!(
+        top(&p, 0, &none(), 100, TopSort::SelfValue),
+        top(&p, 0, &slow, 100, TopSort::SelfValue)
+    );
     assert!(flame(&p, 3, &none(), 0.0).children.is_empty());
-    assert!(top(&p, 3, &none(), 10).is_empty());
+    assert!(top(&p, 3, &none(), 10, TopSort::SelfValue).is_empty());
 
     // Exact ties (same total, same name, different files) must order the same
     // on both paths: x@b.go is first-seen on the fast path, x@a.go on the other.

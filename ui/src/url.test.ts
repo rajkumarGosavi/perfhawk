@@ -18,6 +18,16 @@ describe('url state', () => {
   })
 })
 
+describe('sort state', () => {
+  it('roundtrips total and omits the self default', () => {
+    const s = { profile: 'ab12', view: 'top' as const, sort: 'total' as const }
+    expect(writeViewState(s)).toContain('sort=total')
+    expect(readViewState(writeViewState(s))).toEqual(s)
+    expect(writeViewState({ view: 'top', sort: 'self' })).not.toContain('sort')
+    expect(readViewState('?view=top&sort=bogus').sort).toBeUndefined()
+  })
+})
+
 describe('mergeViewState', () => {
   it('two patches built from the same stale base both survive when applied sequentially', () => {
     const base: ViewState = { profile: 'ab12', view: 'flame' }

@@ -80,13 +80,13 @@ export const listProfiles = () => request<ProfileRecord[]>('/api/profiles')
 export const getProfile = (ref: string) => request<ProfileRecord>(p(ref))
 export const getFlame = (ref: string, q: AnalysisQuery & { inverted?: boolean } = {}) =>
   request<FlameNode>(`${p(ref)}/flame${qs(q)}`)
-export const getTop = (ref: string, q: AnalysisQuery & { limit?: number } = {}) =>
+export const getTop = (ref: string, q: AnalysisQuery & { limit?: number; sort?: 'self' | 'total' } = {}) =>
   request<TopRow[]>(`${p(ref)}/top${qs(q)}`)
 export const getSandwich = (ref: string, func: number, q: AnalysisQuery = {}) =>
   request<Sandwich>(`${p(ref)}/sandwich${qs({ ...q, func })}`)
 export const uploadProfile = async (file: File) => {
   const r = await request<{ record: ProfileRecord; created: boolean }>(
-    `/api/profiles${qs({ file_name: file.name, name: file.name })}`,
+    `/api/profiles${qs({ file_name: file.name })}`,
     { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' } },
   )
   return r

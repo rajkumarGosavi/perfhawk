@@ -1,25 +1,24 @@
-import { useMemo, useState } from 'react'
 import type { TopRow } from '../api'
 import { formatPct, formatValue } from '../format'
-
-type SortKey = 'selfValue' | 'total'
 
 export function TopTable({
   rows,
   unit,
+  sort,
+  onSort,
   onSelect,
 }: {
   rows: TopRow[]
   unit: string
+  sort: 'self' | 'total'
+  onSort: (s: 'self' | 'total') => void
   onSelect: (funcId: number) => void
 }) {
-  const [key, setKey] = useState<SortKey>('selfValue')
-  const sorted = useMemo(() => [...rows].sort((a, b) => b[key] - a[key]), [rows, key])
-  const th = (k: SortKey, label: string) => (
-    <th className="num" aria-sort={key === k ? 'descending' : 'none'}>
-      <button onClick={() => setKey(k)}>
+  const th = (k: 'self' | 'total', label: string) => (
+    <th className="num" aria-sort={sort === k ? 'descending' : 'none'}>
+      <button onClick={() => onSort(k)}>
         {label}
-        {key === k ? ' ▼' : ''}
+        {sort === k ? ' ▼' : ''}
       </button>
     </th>
   )
@@ -29,14 +28,14 @@ export function TopTable({
         <thead>
           <tr>
             <th>Function</th>
-            {th('selfValue', 'Self')}
+            {th('self', 'Self')}
             <th className="num">Self %</th>
             {th('total', 'Total')}
             <th className="num">Total %</th>
           </tr>
         </thead>
         <tbody>
-          {sorted.map((r) => (
+          {rows.map((r) => (
             <tr key={r.funcId}>
               <td className="name" title={r.file ? `${r.name}\n${r.file}` : r.name}>
                 <button className="linklike mono" onClick={() => onSelect(r.funcId)}>

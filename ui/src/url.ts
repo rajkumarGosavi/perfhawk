@@ -8,6 +8,8 @@ export type ViewState = {
   hide?: string
   func?: number
   search?: string
+  /** Top table ordering; 'self' is the default and is omitted from the URL. */
+  sort?: 'self' | 'total'
 }
 
 const VIEWS: ViewName[] = ['flame', 'icicle', 'top', 'sandwich']
@@ -32,6 +34,7 @@ export function readViewState(search: string): ViewState {
   }
   const func = int(p.get('func'))
   if (func !== undefined) s.func = func
+  if (p.get('sort') === 'total') s.sort = 'total'
   return s
 }
 
@@ -45,6 +48,7 @@ export function writeViewState(s: ViewState): string {
   if (s.hide) p.set('hide', s.hide)
   if (s.func !== undefined) p.set('func', String(s.func))
   if (s.search) p.set('search', s.search)
+  if (s.sort === 'total') p.set('sort', 'total')
   const q = p.toString()
   return q ? `?${q}` : ''
 }

@@ -200,3 +200,23 @@ async fn bad_query_params_are_json() {
     assert_eq!(s, 400);
     assert_eq!(v["error"]["code"], "bad_request");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn top_sort_param() {
+    let (_d, store, addr) = start().await;
+    let id = import(&store, CPU);
+    let (s, rows) = get(addr, &format!("/api/profiles/{id}/top?sort=total&limit=50")).await;
+    assert_eq!(s, 200);
+    let t: Vec<i64> = rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["total"].as_i64().unwrap())
+        .collect();
+    assert!(!t.is_empty() && t.windows(2).all(|w| w[0] >= w[1]));
+    let (s, _) = get(addr, &format!("/api/profiles/{id}/top?sort=self")).await;
+    assert_eq!(s, 200);
+    let (s, v) = get(addr, &format!("/api/profiles/{id}/top?sort=bogus")).await;
+    assert_eq!(s, 400);
+    assert_eq!(v["error"]["code"], "bad_request");
+}
