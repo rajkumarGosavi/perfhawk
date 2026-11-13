@@ -356,6 +356,29 @@ child), **Left** collapses (or moves to the parent), **Home/End** jump, and
 **Enter** opens the function in Sandwich. A node shows its first 200 children
 and a "… N more" row; use Focus to narrow.
 
+### Findings
+The Summary opens with **Findings**: plain sentences produced by fixed rules, each
+with the numbers it rests on and a button that opens the evidence. Severity is
+written out (Info, Warning, High). Rules: `dominant-function` (one function holds
+30% or more of self time), `flat-profile` (top 10 together under 30%: no single
+hotspot), `deep-recursion` (a function appears 50+ times in one stack; the button
+collapses recursion), `few-samples` (fewer than 100 samples), `gc-alloc-heavy`
+(CPU/wall: 25%+ of samples pass through a GC or allocator frame), `mostly-idle`
+(wall: 50%+ end in a parked or sleeping frame), `lock-site-dominant` (lock and
+blocking: one site holds 50%+ of the wait), `stacks-parked` (threads: one
+identical stack holds 50%+ and there are 1000+ threads) and `alloc-site-dominant`
+(memory: one function allocates 40%+). Thresholds are fixed. Findings respect the
+current filters and transforms. **Manage rules** turns individual rules off; the
+choice is stored in this browser only.
+
+### Export
+The **Export** menu offers, depending on the view: **Download SVG** and
+**Download PNG** of the flame or icicle (the PNG is the current canvas; the
+tooltip is not included), **Copy collapsed stacks** (`a;b;c N` lines that
+flamegraph tools read), **Download CSV** for Top and Groups, and **Copy link**
+(the URL holds the full view state). In Diff, SVG and PNG export the diff flame
+in its current colours. If the clipboard is blocked a message says so.
+
 ### Transforms
 Reversible reductions, shown as chips under the filter bar and stored in the URL
 (`tx`). **Focus subtree** keeps only the part of each stack from a function down;

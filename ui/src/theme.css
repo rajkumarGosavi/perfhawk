@@ -184,3 +184,6 @@ td.down { color: var(--diff-down-3); }
 .finding p { margin: 2px 0; }
 .finding .sev { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border: 1px solid currentColor; border-radius: 3px; }
 .finding.sev-high .sev { font-weight: 700; }
+.export-menu { position: relative; display: inline-block; }
+.export-list { position: absolute; z-index: 20; top: 100%; left: 0; display: flex; flex-direction: column; gap: 2px; min-width: 200px; padding: 4px; background: var(--bg, Canvas); border: 1px solid currentColor; border-radius: 4px; }
+.export-list button { text-align: left; }

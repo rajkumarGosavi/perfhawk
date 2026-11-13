@@ -31,6 +31,13 @@ type Props = {
   depthLimit?: number
   /** Nodes drawn with a heavy outline (the hot path). */
   highlight?: ReadonlySet<FlameNode>
+  /** Filled with export helpers (PNG of the canvas, literal colours); assigned, never state, so renders do not loop. */
+  exportRef?: { current: FlameExportApi | null }
+}
+
+export type FlameExportApi = {
+  toPng: () => Promise<Blob | null>
+  resolveColor: (n: FlameNode) => string
 }
 
 function resolveColor(cs: CSSStyleDeclaration, c: string): string {
@@ -38,13 +45,34 @@ function resolveColor(cs: CSSStyleDeclaration, c: string): string {
   return m ? cs.getPropertyValue(m[1]).trim() || '#888' : c
 }
 
-export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf, tooltipExtra, depthLimit = 1000, highlight }: Props) {
+export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf, tooltipExtra, depthLimit = 1000, highlight, exportRef }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [width, setWidth] = useState(0)
   const [zoom, setZoom] = useState<FlameNode | undefined>(undefined)
   const [hover, setHover] = useState<{ rect: Rect; px: number; py: number } | null>(null)
   const [theme, setTheme] = useState(0)
+
+  useEffect(() => {
+    if (!exportRef) return
+    exportRef.current = {
+      toPng: () => new Promise((res) => {
+        const c = canvasRef.current
+        if (!c) res(null)
+        else c.toBlob(res, 'image/png')
+      }),
+      resolveColor: (n) => {
+        const c = canvasRef.current
+        if (!c) return '#888'
+        const cs = getComputedStyle(c)
+        if (colorOf) return resolveColor(cs, colorOf(n))
+        const sat = cs.getPropertyValue('--flame-sat').trim() || '78%'
+        const light = cs.getPropertyValue('--flame-light').trim() || '62%'
+        return `hsl(${hashHue(n.name)} ${sat} ${light})`
+      },
+    }
+    return () => { exportRef.current = null }
+  }, [exportRef, colorOf])
 
   // A new tree invalidates the zoom target.
   useEffect(() => setZoom(undefined), [root])

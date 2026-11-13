@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError, getDiffFlame, getDiffTop, getProfile, listProfiles,
   type DiffFlame, type DiffTop, type ProfileRecord,
 } from '../api'
 import { diffColor } from '../flame/diffColor'
-import { FlameGraph } from '../flame/FlameGraph'
+import { FlameGraph, type FlameExportApi } from '../flame/FlameGraph'
+import { copyText, downloadBlob, downloadText, fileStem } from '../export/download'
+import { flameToSvg } from '../export/svg'
+import { ExportMenu, type ExportItem } from './ExportMenu'
 import { formatPct, formatValue } from '../format'
 import type { ViewState } from '../url'
 import { CallTree } from './CallTree'
@@ -50,6 +53,8 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<'flame' | 'tree'>('flame')
   const [cb, setCb] = useState(readPalette)
+  const exportRef = useRef<FlameExportApi | null>(null)
+  const [exportMsg, setExportMsg] = useState<string | null>(null)
 
   useEffect(() => {
     getProfile(headRef).then(setHead, (e: ApiError) => setError(e.message))
@@ -114,6 +119,33 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
     [flame, diffLayout],
   )
   const rows = useMemo(() => (top ? filterRows(top.rows, diffFilter) : []), [top, diffFilter])
+  const stem = fileStem(`diff-${base?.name ?? baseRef ?? 'base'}-${head?.name ?? headRef}`)
+  const exportItems: ExportItem[] = []
+  if (tab === 'flame' && !sides && tree) {
+    exportItems.push(
+      {
+        label: 'Download SVG',
+        run: () => downloadText(
+          flameToSvg(tree, {
+            width: 1200, rowHeight: 18, inverted: false, title: `Diff: ${base?.name ?? ''} → ${head?.name ?? ''}`,
+            colorOf: (n) => exportRef.current?.resolveColor(n) ?? '#888',
+          }),
+          `${stem}.svg`, 'image/svg+xml'),
+      },
+      {
+        label: 'Download PNG',
+        run: async () => {
+          const blob = await exportRef.current?.toPng()
+          if (blob) downloadBlob(blob, `${stem}.png`)
+          else setExportMsg('PNG export is unavailable for this view.')
+        },
+      },
+    )
+  }
+  exportItems.push({
+    label: 'Copy link',
+    run: async () => setExportMsg((await copyText(location.href)) ? 'Link copied.' : 'Copy failed: clipboard unavailable.'),
+  })
   const colorOf = (n: unknown) => diffColor((n as DiffFlameNode).base, (n as DiffFlameNode).head)
   const tooltipExtra = (n: unknown) => {
     const d = n as DiffFlameNode
@@ -198,6 +230,8 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
         </div>
       </div>
       <TransformBar tx={tx} onChange={(next) => navigate({ tx: next }, 'push')} />
+      <div className="toolbar"><ExportMenu items={exportItems} /></div>
+      {exportMsg && <p className="muted" role="status">{exportMsg}</p>}
       {error && <div className="banner" role="alert">{error}</div>}
       {!baseRef && <p className="muted">Pick a base profile to compare against.</p>}
       {loading && !error && <p className="muted" role="status">Loading...</p>}
@@ -209,7 +243,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
       </div>
       <div style={{ opacity: loading ? 0.5 : 1 }}>
         {tab === 'flame' && !sides && tree && (
-          <FlameGraph root={tree} unit={unit} inverted={false} colorOf={colorOf} tooltipExtra={tooltipExtra} />
+          <FlameGraph root={tree} unit={unit} inverted={false} colorOf={colorOf} tooltipExtra={tooltipExtra} exportRef={exportRef} />
         )}
         {tab === 'flame' && sides && (
           <div className="diff-sides">

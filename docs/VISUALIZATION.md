@@ -102,7 +102,7 @@ D1 **Query tab** (filter DSL from PLAN §205, then SQL over timelines via embedd
 |---|---|---|
 | **V1 "Orient"** (≈ 3–4 wk) **— delivered** | A1 summary, A2 hot path, A3 call tree, A6, A8 keyboard, B2 per-kind defaults | before/alongside Phase 2 (no capture work) |
 | **V2 "Reduce"** (≈ 3–4 wk) **— delivered** | A5 transforms-as-chips, A7 diff upgrades, A9 groupings, B3 cross-kind pivot | Phase 2 |
-| **V3 "Explain"** (≈ 3 wk) | B1 findings engine (start with 8–10 rules), export (D4) | Phase 2 |
+| **V3 "Explain"** (≈ 3 wk) **— delivered** | B1 findings engine (start with 8–10 rules), export (D4) | Phase 2 |
 | **V4 "Graph"** (≈ 3 wk) | A4 call graph | Phase 2/3 |
 | **V5 "Time"** (≈ 6–8 wk) | timestamps in the model, C1 heat map, C2 timeline, C3 session timeline | Phase 2 (timeline already scheduled) |
 | **V6 "Trend"** (≈ 3 wk) | C4 history, CI regression views | Phase 3 / CI gating |
@@ -127,6 +127,8 @@ D1 **Query tab** (filter DSL from PLAN §205, then SQL over timelines via embedd
 - A7: the regressions/improvements filter uses self delta for tables and total delta for trees; percent sort is server-side (before the row limit); side-by-side shares one diff request and does not link zoom.
 - A9: no goroutine state column (the model has none); "site" is the innermost non-`runtime.`/`sync.`/`internal/` frame (Go-centric); "who holds it" is out of scope.
 - B3: pivot compares each profile's default sample type by function name; shown in Sandwich and on the Summary.
+
+**V3 rulings:** thresholds are fixed defaults in `RuleConfig` (no per-user tuning yet); rules target Go and .NET runtime frame names, other runtimes get only the language-neutral rules; disabled rules are per-browser; findings are computed per request; PNG captures the current canvas only; diff export is the flame only; the "mutex profiling disabled" finding is not repeated because capture warnings already show it.
 
 Order rationale: V1–V3 need no new capture data and give the largest "time to first insight" win; V4 is the one "pprof web" gap users will notice; V5 is the largest build and unlocks the transient-problem class that aggregate graphs cannot show.
 

@@ -6,7 +6,12 @@ import {
 import { hotPath } from '../analysis/hotPath'
 import { SHORTCUTS, keyAction } from '../analysis/keys'
 import { addTransform, decodeTx, encodeTx, type Transform } from '../analysis/transforms'
-import { FlameGraph } from '../flame/FlameGraph'
+import { FlameGraph, type FlameExportApi } from '../flame/FlameGraph'
+import { toCollapsed } from '../export/collapsed'
+import { toCsv } from '../export/csv'
+import { copyText, downloadBlob, downloadText, fileStem } from '../export/download'
+import { flameToSvg } from '../export/svg'
+import { ExportMenu, type ExportItem } from './ExportMenu'
 import type { ViewName, ViewState } from '../url'
 import { CallTree } from './CallTree'
 import { Groups } from './Groups'
@@ -55,6 +60,8 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
   const [others, setOthers] = useState<ProfileRecord[]>([])
   const [helpOpen, setHelpOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
+  const exportRef = useRef<FlameExportApi | null>(null)
+  const [exportMsg, setExportMsg] = useState<string | null>(null)
 
   const replace = (patch: Partial<ViewState>) => navigate(patch, 'replace')
   const [focus, setFocus] = useDebounced(state.focus ?? '', (v) => replace({ focus: v || undefined }))
@@ -136,6 +143,61 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
     return () => window.removeEventListener('keydown', onKey)
   }, [helpOpen])
 
+  const stem = fileStem(record?.name ?? ref)
+  const say = (m: string) => setExportMsg(m)
+  const flameItems = (tree: FlameNode, inverted: boolean): ExportItem[] => [
+    {
+      label: 'Download SVG',
+      run: () => {
+        const api = exportRef.current
+        const svg = flameToSvg(tree, {
+          width: 1200, rowHeight: 18, inverted, title: record?.name ?? ref,
+          colorOf: (n) => api?.resolveColor(n) ?? '#e0705f',
+        })
+        downloadText(svg, `${stem}.svg`, 'image/svg+xml')
+      },
+    },
+    {
+      label: 'Download PNG',
+      run: async () => {
+        const blob = await exportRef.current?.toPng()
+        if (blob) downloadBlob(blob, `${stem}.png`)
+        else say('PNG export is unavailable for this view.')
+      },
+    },
+    {
+      label: 'Copy collapsed stacks',
+      run: async () => say((await copyText(toCollapsed(tree))) ? 'Collapsed stacks copied.' : 'Copy failed: clipboard unavailable.'),
+    },
+  ]
+  const linkItem: ExportItem = {
+    label: 'Copy link',
+    run: async () => say((await copyText(location.href)) ? 'Link copied.' : 'Copy failed: clipboard unavailable.'),
+  }
+  const exportItems: ExportItem[] = []
+  if (data && (data.kind === 'flame' || data.kind === 'both') && (view === 'flame' || view === 'icicle' || view === 'both')) {
+    exportItems.push(...flameItems(data.tree, view === 'icicle'))
+  }
+  if (data?.kind === 'top' && view === 'top') {
+    exportItems.push({
+      label: 'Download CSV',
+      run: () => downloadText(
+        toCsv(['function', 'file', 'self', 'total', 'self_pct', 'total_pct'],
+          data.rows.map((r) => [r.name, r.file, r.selfValue, r.total, r.selfPct, r.totalPct])),
+        `${stem}-top.csv`, 'text/csv'),
+    })
+  }
+  if (data?.kind === 'groups' && view === 'groups') {
+    exportItems.push({
+      label: 'Download CSV',
+      run: () => downloadText(
+        toCsv(['name', 'file', 'frames', 'value', 'count', 'mean', 'pct'],
+          data.rows.map((r) => [r.name, r.file, r.frames.join(';'), r.value, r.count ?? '', r.mean ?? '', r.pct])),
+        `${stem}-groups.csv`, 'text/csv'),
+    })
+  }
+  exportItems.push(linkItem)
+
   const highlight = hot && data && (data.kind === 'flame' || data.kind === 'both') ? new Set(hotPath(data.tree)) : undefined
 
   return (
@@ -154,6 +216,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
             Hot path (h)
           </button>
         )}
+        <ExportMenu items={exportItems} />
         <button onClick={() => setHelpOpen(true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
       </div>
       <div className="toolbar">
@@ -188,6 +251,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         <label className="field">Search<input ref={searchRef} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="highlight" /></label>
       </div>
       <TransformBar tx={tx} onChange={(next) => navigate({ tx: next }, 'push')} />
+      {exportMsg && <p className="muted" role="status">{exportMsg}</p>}
       {error && <div className="banner" role="alert">{error}</div>}
       {loading && !error && <p className="muted" role="status">Loading...</p>}
       {view === 'sandwich' && func === undefined && (
@@ -209,6 +273,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           inverted={view === 'icicle'}
           search={state.search}
           highlight={highlight}
+          exportRef={exportRef}
           onSelectFunc={(f) => pushView({ view: 'sandwich', func: f })}
         />
       )}
@@ -229,6 +294,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
             inverted={false}
             search={state.search}
             highlight={highlight}
+            exportRef={exportRef}
             onSelectFunc={(f) => pushView({ view: 'sandwich', func: f })}
           />
           <TopTable
