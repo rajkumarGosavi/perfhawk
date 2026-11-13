@@ -5,6 +5,7 @@ members = [
     "crates/prism-import",
     "crates/prism-analysis",
     "crates/prism-store",
+    "crates/prism-capture",
     "crates/prism-server",
     "crates/prism-cli",
     "tools/genprof",
