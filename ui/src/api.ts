@@ -262,6 +262,27 @@ export const getHeatmap = async (ref: string, q: AnalysisQuery & { cols?: number
   const raw = await request<RawHeatmap>(`${p(ref)}/heatmap${qs(q)}`)
   return { ...raw, cells: (raw.cells ?? []).map(([col, row, value]) => ({ col, row, value })) }
 }
+export type FollowUp = { kinds: string[]; durationSecs: number; needsPrivilege: boolean }
+export type NextStep = { label: string; command: string | null; openProfile: string | null; followUp: FollowUp | null }
+export type DoctorFinding = {
+  rule: string
+  confidence: 'low' | 'medium' | 'high'
+  fidelity: string
+  sharePct: number
+  title: string
+  detail: string
+  next: NextStep[]
+  hints: string[]
+}
+export type Diagnosis = {
+  verdict: 'cpuBound' | 'ioBound' | 'lockBound' | 'schedulerStarved' | 'waitingUnknown' | 'idle' | 'inconclusive'
+  summary: string
+  busyThreads: number
+  findings: DoctorFinding[]
+  notes: string[]
+}
+export const getDoctor = (sessionRef: string) =>
+  request<Diagnosis>(`/api/sessions/${encodeURIComponent(sessionRef)}/doctor`)
 export const getSessionTimeline = (sessionRef: string, points = 200) =>
   request<SessionTimeline>(`/api/sessions/${encodeURIComponent(sessionRef)}/timeline${qs({ points })}`)
 export const getSeries = () => request<SeriesInfo[]>('/api/series')

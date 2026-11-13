@@ -208,3 +208,9 @@ td.down { color: var(--diff-down-3); }
 .history-point { fill: currentColor; cursor: pointer; }
 .history-point:focus { outline: none; }
 .history-point:focus-visible { stroke: var(--accent); stroke-width: 3; fill: #fff; }
+
+.doctor { margin: 0.5rem 0; padding: 0.5rem 0.75rem; border: 1px solid var(--border, #8884); border-radius: 6px; }
+.doctor h3 { margin: 0 0 0.25rem; }
+.doctor-findings { list-style: none; margin: 0; padding: 0; }
+.doctor-findings li { margin: 0.5rem 0; }
+.doctor-next code { word-break: break-all; }
