@@ -42,7 +42,7 @@ public static class Program
                     var input = Required(flags, "in");
                     if (!File.Exists(input)) throw new HelperException("not_found", $"{input} does not exist");
                     var kinds = ParseKinds(flags);
-                    var arts = TraceConverter.Convert(input, Required(flags, "out"), kinds);
+                    var arts = TraceConverter.Convert(input, Required(flags, "out"), kinds, BucketMs(flags));
                     foreach (var a in arts) protocol.Artifact(a.Kind, a.Path, a.Samples);
                     protocol.Done("complete");
                     return 0;
@@ -57,7 +57,7 @@ public static class Program
                     ProcessList.EnsureAttachable(pid);
                     WatchStdin(stdin, stop);
                     protocol.Progress($"attaching to pid {pid}");
-                    var result = await Collector.CollectAsync(new DiagnosticsClient(pid), duration, kinds, outDir, stop.Token, protocol.Progress);
+                    var result = await Collector.CollectAsync(new DiagnosticsClient(pid), duration, kinds, outDir, stop.Token, protocol.Progress, bucketMs: BucketMs(flags));
                     Finish(protocol, result);
                     return 0;
                 }
@@ -69,7 +69,7 @@ public static class Program
                     var kinds = ParseKinds(flags);
                     var outDir = Required(flags, "out");
                     WatchStdin(stdin, stop);
-                    var result = await Launcher.LaunchAsync(rest[0], rest.Skip(1).ToList(), duration, kinds, outDir, stop.Token, protocol.Progress);
+                    var result = await Launcher.LaunchAsync(rest[0], rest.Skip(1).ToList(), duration, kinds, outDir, stop.Token, protocol.Progress, BucketMs(flags));
                     Finish(protocol, result);
                     return 0;
                 }
@@ -138,6 +138,10 @@ public static class Program
         }
         return (flags, rest);
     }
+
+    /// <summary>Optional <c>--bucket-ms N</c>: label cpu/wall samples with their N-ms time bucket.</summary>
+    private static int BucketMs(Dictionary<string, string> flags) =>
+        flags.TryGetValue("bucket-ms", out var v) && int.TryParse(v, out var n) && n > 0 ? n : 0;
 
     private static string Required(Dictionary<string, string> flags, string name) =>
         flags.TryGetValue(name, out var v) ? v : throw new HelperException("internal", $"missing --{name}");

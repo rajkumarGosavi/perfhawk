@@ -16,14 +16,15 @@ public static class TraceConverter
 
     private const long SampleIntervalNs = 1_000_000; // SampleProfiler default: 1 ms
 
-    public static List<ArtifactInfo> Convert(string nettracePath, string outDir, ISet<string> kinds)
+    /// <param name="bucketMs">When positive, cpu and wall samples get a <c>prism.bucket</c> label with their time bucket (milliseconds since the trace started divided by this width).</param>
+    public static List<ArtifactInfo> Convert(string nettracePath, string outDir, ISet<string> kinds, int bucketMs = 0)
     {
         Directory.CreateDirectory(outDir);
         var etlx = TraceLog.CreateFromEventPipeDataFile(nettracePath);
         try
         {
             using var log = new TraceLog(etlx);
-            return ConvertLog(log, outDir, kinds);
+            return ConvertLog(log, outDir, kinds, bucketMs);
         }
         finally
         {
@@ -48,7 +49,7 @@ public static class TraceConverter
         return frames;
     }
 
-    private static List<ArtifactInfo> ConvertLog(TraceLog log, string outDir, ISet<string> kinds)
+    private static List<ArtifactInfo> ConvertLog(TraceLog log, string outDir, ISet<string> kinds, int bucketMs)
     {
         var wall = new PprofBuilder(("wall", "nanoseconds"));
         var cpu = new PprofBuilder(("cpu", "nanoseconds"));
@@ -70,9 +71,15 @@ public static class TraceConverter
         sampler.ThreadSample += ev =>
         {
             var frames = FramesOf(ev);
-            if (kinds.Contains("wall")) wall.AddSample(frames, new[] { SampleIntervalNs });
+            string? lk = null, lv = null;
+            if (bucketMs > 0)
+            {
+                lk = "prism.bucket";
+                lv = ((long)Math.Max(0, ev.TimeStampRelativeMSec / bucketMs)).ToString();
+            }
+            if (kinds.Contains("wall")) wall.AddSample(frames, new[] { SampleIntervalNs }, lk, lv);
             if (kinds.Contains("cpu") && ev.Type == ClrThreadSampleType.Managed)
-                cpu.AddSample(frames, new[] { SampleIntervalNs });
+                cpu.AddSample(frames, new[] { SampleIntervalNs }, lk, lv);
             if (kinds.Contains("threads")) lastSamplePerThread[ev.ThreadID] = frames;
         };
 

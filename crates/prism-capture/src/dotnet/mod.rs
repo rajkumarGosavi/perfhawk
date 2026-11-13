@@ -58,6 +58,20 @@ fn kinds_arg(kinds: &[ProfileKind]) -> String {
         .join(",")
 }
 
+/// Width of the time buckets the helper labels samples with.
+const BUCKET_MS: u64 = 20;
+
+/// A timeline from the helper's per-sample `prism.bucket` labels, or `None` when the
+/// profile has none (for example an older helper).
+fn timeline_of(bytes: &[u8]) -> Option<prism_model::Timeline> {
+    let p = prism_import::import_bytes(bytes, &prism_import::ImportHints::default()).ok()?;
+    crate::timeline::timeline_from_labels(
+        &p,
+        BUCKET_MS * 1_000_000,
+        p.meta.captured_at_unix_ns.unwrap_or(0),
+    )
+}
+
 fn fidelity_for(kind: ProfileKind) -> Fidelity {
     match kind {
         ProfileKind::Cpu => Fidelity::Approximate,
@@ -224,6 +238,17 @@ impl Provider for DotnetProvider {
         std::fs::create_dir_all(&dir.0)?;
 
         let duration_ms = plan.duration.as_millis().to_string();
+        // Ask the helper to label cpu/wall samples with their 20 ms time bucket.
+        let want_time = plan.timeline
+            && plan
+                .kinds
+                .iter()
+                .any(|k| matches!(k, ProfileKind::Cpu | ProfileKind::Wall));
+        let bucket_args: Vec<String> = if want_time {
+            vec!["--bucket-ms".into(), BUCKET_MS.to_string()]
+        } else {
+            vec![]
+        };
         let mut args: Vec<String> = Vec::new();
         match target {
             Target::Pid(pid) => args.extend(["collect".into(), "--pid".into(), pid.to_string()]),
@@ -243,8 +268,9 @@ impl Provider for DotnetProvider {
                     kinds_arg(&plan.kinds),
                     "--out".into(),
                     dir.0.to_string_lossy().into_owned(),
-                    "--".into(),
                 ]);
+                args.extend(bucket_args.clone());
+                args.push("--".into());
                 args.extend(tail);
             }
             _ => {
@@ -262,6 +288,7 @@ impl Provider for DotnetProvider {
                 "--out".into(),
                 dir.0.to_string_lossy().into_owned(),
             ]);
+            args.extend(bucket_args);
         }
 
         let mut artifacts: Vec<Artifact> = Vec::new();
@@ -274,6 +301,11 @@ impl Provider for DotnetProvider {
             HelperEvent::Warning(w) => warnings.push(w),
             HelperEvent::Artifact { kind, path, .. } => match std::fs::read(&path) {
                 Ok(bytes) => artifacts.push(Artifact {
+                    timeline: if want_time && matches!(kind, ProfileKind::Cpu | ProfileKind::Wall) {
+                        timeline_of(&bytes)
+                    } else {
+                        None
+                    },
                     kind,
                     fidelity: fidelity_for(kind),
                     file_name: path
@@ -282,7 +314,6 @@ impl Provider for DotnetProvider {
                         .unwrap_or_else(|| format!("{kind}.pb.gz")),
                     bytes,
                     warning: None,
-                    timeline: None,
                 }),
                 Err(e) => read_err = Some(e),
             },

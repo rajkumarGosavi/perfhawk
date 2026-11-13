@@ -618,3 +618,94 @@ fn silent_helper_is_killed_after_the_grace() {
     assert!(res.unwrap_err().to_string().contains("did not stop"));
     assert!(start.elapsed() < Duration::from_secs(10));
 }
+
+// ---- V5 timelines ----
+
+const WINDOWS: &str = "fixtures/cpu-windows.pb.gz";
+
+fn launch_target() -> Target {
+    Target::Launch {
+        program: "dotnet".into(),
+        args: vec!["app.dll".into()],
+        cwd: None,
+    }
+}
+
+fn timeline_plan(kinds: Vec<ProfileKind>, on: bool) -> CapturePlan {
+    let mut p = plan(kinds);
+    p.timeline = on;
+    p
+}
+
+fn capture_with(lines: Vec<String>, plan: CapturePlan) -> (CaptureOutcome, Vec<String>) {
+    let dir = tempfile::TempDir::new().unwrap();
+    let h = scripted(&dir, &lines);
+    let p = provider(h);
+    let target = launch_target();
+    let rt = p.detect(&target).unwrap().unwrap();
+    let seen = Mutex::new(Vec::<String>::new());
+    let out = p
+        .capture(&rt, &target, &plan, &CancelToken::new(), &|m| {
+            seen.lock().unwrap().push(m.to_string())
+        })
+        .unwrap();
+    (out, seen.into_inner().unwrap())
+}
+
+fn script(art_line: String) -> Vec<String> {
+    vec![
+        HELLO.to_string(),
+        r#"{"type":"echo_args"}"#.to_string(),
+        art_line,
+        r#"{"type":"done","end":"complete"}"#.to_string(),
+    ]
+}
+
+#[test]
+fn dotnet_cpu_with_labelled_samples_gets_a_20ms_timeline() {
+    let (out, seen) = capture_with(
+        script(art("cpu", WINDOWS)),
+        timeline_plan(vec![ProfileKind::Cpu], true),
+    );
+    assert!(
+        seen.iter().any(|m| m.contains("--bucket-ms 20")),
+        "{seen:?}"
+    );
+    let a = &out.artifacts[0];
+    let t = a.timeline.as_ref().expect("timeline");
+    let n = prism_import::import_bytes(&a.bytes, &prism_import::ImportHints::default())
+        .unwrap()
+        .samples
+        .len();
+    assert!(t.validate(n));
+    assert_eq!(t.bucket_ns, 20_000_000);
+}
+
+#[test]
+fn dotnet_no_timeline_flag_is_not_passed_and_nothing_is_stored() {
+    let (out, seen) = capture_with(
+        script(art("cpu", WINDOWS)),
+        timeline_plan(vec![ProfileKind::Cpu], false),
+    );
+    assert!(seen.iter().all(|m| !m.contains("--bucket-ms")), "{seen:?}");
+    assert!(out.artifacts[0].timeline.is_none());
+}
+
+#[test]
+fn dotnet_cpu_without_labels_has_no_timeline() {
+    let (out, _) = capture_with(
+        script(art("cpu", CPU)),
+        timeline_plan(vec![ProfileKind::Cpu], true),
+    );
+    assert!(out.artifacts[0].timeline.is_none());
+}
+
+#[test]
+fn dotnet_memory_never_gets_a_timeline() {
+    let (out, seen) = capture_with(
+        script(art("memory", HEAP)),
+        timeline_plan(vec![ProfileKind::Memory], true),
+    );
+    assert!(seen.iter().all(|m| !m.contains("--bucket-ms")), "{seen:?}");
+    assert!(out.artifacts[0].timeline.is_none());
+}

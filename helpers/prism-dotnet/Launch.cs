@@ -16,7 +16,8 @@ public static class Launcher
         ISet<string> kinds,
         string outDir,
         CancellationToken stop,
-        Action<string>? progress)
+        Action<string>? progress,
+        int bucketMs = 0)
     {
         var address = OperatingSystem.IsWindows()
             ? "prism-" + Guid.NewGuid().ToString("N")
@@ -82,7 +83,7 @@ public static class Launcher
             {
                 var client = connector.Instance;
                 return await Collector.CollectAsync(client, durationMs, kinds, outDir, stop, progress,
-                    afterStart: () => client.ResumeRuntime());
+                    afterStart: () => client.ResumeRuntime(), bucketMs: bucketMs);
             }
         }
         finally

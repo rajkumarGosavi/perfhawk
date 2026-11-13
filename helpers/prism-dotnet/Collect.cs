@@ -30,7 +30,8 @@ public static class Collector
         string outDir,
         CancellationToken stop,
         Action<string>? progress,
-        Action? afterStart = null)
+        Action? afterStart = null,
+        int bucketMs = 0)
     {
         Directory.CreateDirectory(outDir);
         var tracePath = Path.Combine(outDir, "trace.nettrace");
@@ -80,7 +81,7 @@ public static class Collector
         List<ArtifactInfo> artifacts;
         try
         {
-            artifacts = TraceConverter.Convert(tracePath, outDir, kinds);
+            artifacts = TraceConverter.Convert(tracePath, outDir, kinds, bucketMs);
         }
         catch (Exception e) when (e is not HelperException)
         {

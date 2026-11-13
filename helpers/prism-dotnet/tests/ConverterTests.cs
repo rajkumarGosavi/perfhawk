@@ -112,6 +112,43 @@ public class ConverterTests
     }
 
     [Fact]
+    public async Task BucketLabelsAreWrittenOnlyWhenRequestedAndSpreadOverTime()
+    {
+        var (cts, threads) = Workload.Start();
+        var outDir = TempDir();
+        var plainDir = TempDir();
+        try
+        {
+            var client = new DiagnosticsClient(Environment.ProcessId);
+            var kinds = new HashSet<string> { "cpu", "wall", "memory" };
+            var timed = await Collector.CollectAsync(client, 2000, kinds, outDir, CancellationToken.None, null, null, bucketMs: 20);
+            foreach (var kind in new[] { "cpu", "wall" })
+            {
+                var prof = PprofDecoder.DecodeGzip(timed.Artifacts.Single(a => a.Kind == kind).Path);
+                Assert.True(prof.Samples.Count > 0, kind);
+                Assert.All(prof.Samples, s => Assert.Equal("prism.bucket", s.Labels.Single().Key));
+                var buckets = prof.Samples.Select(s => int.Parse(s.Labels.Single().Str)).Distinct().ToList();
+                // 2 s at 20 ms is up to 100 buckets; sampling jitter and startup lose a few.
+                Assert.True(buckets.Count >= 20, $"{kind}: only {buckets.Count} distinct buckets");
+                Assert.All(buckets, b => Assert.InRange(b, 0, 400));
+            }
+            var mem = PprofDecoder.DecodeGzip(timed.Artifacts.Single(a => a.Kind == "memory").Path);
+            Assert.DoesNotContain(mem.Samples, s => s.Labels.Any(l => l.Key == "prism.bucket"));
+
+            var plain = await Collector.CollectAsync(client, 1000, new HashSet<string> { "cpu" }, plainDir, CancellationToken.None, null);
+            var cpu = PprofDecoder.DecodeGzip(plain.Artifacts.Single().Path);
+            Assert.All(cpu.Samples, s => Assert.Empty(s.Labels));
+        }
+        finally
+        {
+            cts.Cancel();
+            foreach (var t in threads) t.Join(2000);
+            try { Directory.Delete(outDir, true); } catch { }
+            try { Directory.Delete(plainDir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task OnlyRequestedKindsAreProduced()
     {
         var (cts, threads) = Workload.Start();

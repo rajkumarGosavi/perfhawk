@@ -4,6 +4,7 @@
 //! directives: `{"type":"artifact","fixture":"<file>",...}` copies the fixture
 //! to `<--out>/<kind>.pb.gz` and prints a normal artifact line;
 //! `{"type":"wait_stop"}` blocks until `stop` (or EOF) arrives on stdin;
+//! `{"type":"echo_args"}` reports the helper's own arguments as a progress event;
 //! `{"type":"sleep","ms":N}` sleeps; `{"type":"exit","code":N}` exits at once.
 
 use std::io::{BufRead, Write};
@@ -59,6 +60,13 @@ fn main() {
                         break;
                     }
                 }
+            }
+            Some("echo_args") => {
+                let evt = serde_json::json!({
+                    "type": "progress",
+                    "message": format!("args: {}", args.join(" ")),
+                });
+                let _ = writeln!(out, "{evt}");
             }
             Some("sleep") => {
                 let ms = v.get("ms").and_then(|m| m.as_u64()).unwrap_or(0);
