@@ -59,7 +59,7 @@ fn series_key_from_command_basename() {
     assert_eq!(series_key(&[], "go", Some("/usr/bin/svc"), None), "go:svc");
     assert_eq!(
         series_key(&[], "go", Some("C:\\apps\\svc.exe --port 80"), None),
-        "go:svc.exe"
+        "go:svc"
     );
     assert_eq!(
         series_key(&[], "dotnet", Some("dotnet /a/b/app.dll all 15"), None),
@@ -68,6 +68,39 @@ fn series_key_from_command_basename() {
     assert_eq!(
         series_key(&[], "dotnet", Some("dotnet /a/b/app.dll all 3"), None),
         "dotnet:app.dll"
+    );
+}
+
+#[test]
+fn series_key_separates_go_subcommands_and_handles_quotes_and_exe() {
+    assert_eq!(series_key(&[], "go", Some("go test ./a"), None), "go:a");
+    assert_eq!(
+        series_key(&[], "go", Some("go test ./b -run X"), None),
+        "go:b"
+    );
+    assert_eq!(
+        series_key(&[], "go", Some("go run ./cmd/svc"), None),
+        "go:svc"
+    );
+    assert_eq!(
+        series_key(&[], "dotnet", Some("dotnet run"), None),
+        "dotnet:dotnet"
+    );
+    assert_eq!(
+        series_key(&[], "python", Some("python -m pkg.mod"), None),
+        "python:pkg.mod"
+    );
+    let quoted = format!(
+        "\"C:{bs}Program Files{bs}dotnet{bs}dotnet.exe\" app.dll all",
+        bs = '\\'
+    );
+    assert_eq!(
+        series_key(&[], "dotnet", Some(&quoted), None),
+        "dotnet:app.dll"
+    );
+    assert_eq!(
+        series_key(&[], "go", Some("C:/x/Svc.EXE --port 1"), None),
+        "go:Svc"
     );
 }
 

@@ -38,6 +38,7 @@ fn build(samples: &[(Vec<&str>, i64, u32)]) -> (Profile, Timeline) {
     let t = Timeline {
         bucket_ns: 20_000_000,
         start_unix_ns: 0,
+        total_buckets: 0,
         sample_bucket: buckets,
     };
     (b.finish(), t)
@@ -158,4 +159,50 @@ fn heatmap_respects_the_filter() {
     let h = heatmap(&p, &t, 0, &f, 1200);
     assert_eq!(h.max, 4);
     assert_eq!(h.cells.len(), 1);
+}
+
+#[test]
+fn a_dense_hour_long_heatmap_stays_under_one_megabyte() {
+    // One sample in every bucket of a 1 h capture at 20 ms.
+    let n = 180_000u32;
+    let mut b = ProfileBuilder::new(
+        vec![SampleType {
+            name: "samples".into(),
+            unit: Unit::Count,
+        }],
+        meta(),
+    );
+    let f = b.function("a", "x.go", 1);
+    let fr = b.frame(f, 1, 0);
+    let st = b.stack(&[fr]);
+    let mut buckets = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        b.add_sample(st, &[1 + (i % 7) as i64], vec![]).unwrap();
+        buckets.push(i);
+    }
+    let p = b.finish();
+    let t = Timeline {
+        bucket_ns: 20_000_000,
+        start_unix_ns: 0,
+        total_buckets: 0,
+        sample_bucket: buckets,
+    };
+    let h = heatmap(&p, &t, 0, &Filter::default(), 1000);
+    let json = serde_json::to_string(&h).unwrap();
+    assert!(
+        json.len() < 1_000_000,
+        "{} bytes for {} cells",
+        json.len(),
+        h.cells.len()
+    );
+    assert!(h.cells.len() > 10_000);
+}
+
+#[test]
+fn trailing_idle_time_counts_toward_the_heatmap_length() {
+    let (p, mut t) = build(&[(vec!["m", "a"], 4, 0)]);
+    t.total_buckets = 1000;
+    let h = heatmap(&p, &t, 0, &Filter::default(), 1200);
+    assert_eq!(h.total_buckets, 1000);
+    assert_eq!(h.cols, 20);
 }

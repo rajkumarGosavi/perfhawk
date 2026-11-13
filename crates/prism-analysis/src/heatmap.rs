@@ -7,11 +7,23 @@ use prism_model::{Profile, Timeline};
 use rustc_hash::FxHashMap as HashMap;
 use serde::Serialize;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// One non-zero cell. Serialised as `[col, row, value]` to keep dense maps small.
+#[derive(Debug, Clone, PartialEq)]
 pub struct HeatCell {
     pub col: u32,
     pub row: u32,
     pub value: i64,
+}
+
+impl Serialize for HeatCell {
+    fn serialize<S: serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeTuple;
+        let mut t = ser.serialize_tuple(3)?;
+        t.serialize_element(&self.col)?;
+        t.serialize_element(&self.row)?;
+        t.serialize_element(&self.value)?;
+        t.end()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

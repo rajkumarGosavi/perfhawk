@@ -555,7 +555,7 @@ async fn heatmap_h(
     Q(q): Q<AnalysisQuery>,
 ) -> ApiResult<Response> {
     let filter = q.filter()?;
-    let cols = q.cols.unwrap_or(1200).clamp(50, 2000);
+    let cols = q.cols.unwrap_or(600).clamp(50, 1000);
     let store = s.store.clone();
     let id = blocking(move || store.resolve(&r)).await?.id;
     let t = timeline_for(&s, &id)

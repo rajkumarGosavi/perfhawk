@@ -324,6 +324,7 @@ fn put_timeline(store: &Store, id: &str, start_ns: i64, bucket_ms: u64, gap: u32
             &prism_model::Timeline {
                 bucket_ns: bucket_ms * 1_000_000,
                 start_unix_ns: start_ns,
+                total_buckets: 0,
                 sample_bucket: (0..n as u32).map(|i| i * gap).collect(),
             },
         )

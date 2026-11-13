@@ -332,6 +332,7 @@ fn timeline(n: usize) -> prism_model::Timeline {
     prism_model::Timeline {
         bucket_ns: 20_000_000,
         start_unix_ns: 1_700_000_000_000_000_000,
+        total_buckets: 0,
         sample_bucket: (0..n as u32).map(|i| i * 50).collect(),
     }
 }

@@ -371,6 +371,7 @@ fn import_with_timeline(store: &Store) -> String {
     let t = prism_model::Timeline {
         bucket_ns: 20_000_000,
         start_unix_ns: 1_700_000_000_000_000_000,
+        total_buckets: 0,
         sample_bucket: (0..n as u32).map(|i| i * 10).collect(),
     };
     store.save_timeline(&id, &t).unwrap();

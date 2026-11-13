@@ -21,9 +21,14 @@ pub fn timeline_from_labels(p: &Profile, bucket_ns: u64, start_unix_ns: i64) -> 
         };
         out.push(b);
     }
+    let total_buckets = p
+        .meta
+        .duration_ns
+        .map_or(0, |d| d.div_ceil(bucket_ns).min(u32::MAX as u64) as u32);
     Some(Timeline {
         bucket_ns,
         start_unix_ns,
+        total_buckets,
         sample_bucket: out,
     })
 }
@@ -103,6 +108,22 @@ mod tests {
         assert!(timeline_from_labels(&profile(&[Some(("other", true, "1", 0))]), 1, 0).is_none());
         assert!(
             timeline_from_labels(&profile(&[Some((BUCKET_LABEL, true, "1", 0))]), 0, 0).is_none()
+        );
+    }
+
+    #[test]
+    fn capture_duration_becomes_the_timeline_length() {
+        let mut p = profile(&[Some((BUCKET_LABEL, true, "3", 0))]);
+        p.meta.duration_ns = Some(2_000_000_000);
+        let t = timeline_from_labels(&p, 20_000_000, 0).unwrap();
+        assert_eq!(t.total_buckets, 100);
+        assert_eq!(t.bucket_count(), 100);
+        p.meta.duration_ns = None;
+        assert_eq!(
+            timeline_from_labels(&p, 20_000_000, 0)
+                .unwrap()
+                .total_buckets,
+            0
         );
     }
 

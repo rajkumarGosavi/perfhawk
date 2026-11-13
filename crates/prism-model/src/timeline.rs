@@ -10,15 +10,20 @@ pub struct Timeline {
     pub bucket_ns: u64,
     pub start_unix_ns: i64,
     pub sample_bucket: Vec<u32>,
+    /// Capture length in buckets when known (0 = unknown, use the last sample's bucket).
+    pub total_buckets: u32,
 }
 
 impl Timeline {
-    /// Highest bucket plus one; 0 when there are no samples.
+    /// The capture length in buckets: at least the highest bucket plus one, and
+    /// longer when trailing idle time is known.
     pub fn bucket_count(&self) -> u32 {
-        self.sample_bucket
+        let last = self
+            .sample_bucket
             .iter()
             .max()
-            .map_or(0, |m| m.saturating_add(1))
+            .map_or(0, |m| m.saturating_add(1));
+        last.max(self.total_buckets)
     }
 
     /// True when there is exactly one bucket per sample.

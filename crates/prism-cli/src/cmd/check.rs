@@ -97,8 +97,12 @@ fn run_inner(store: &Store, a: &Args) -> Result<u8, String> {
         .into_iter()
         .filter_map(|r| {
             let delta_points = pct(r.head_self, ht) - pct(r.base_self, bt);
-            let growth = (r.base_self > 0)
-                .then(|| (r.head_self - r.base_self) as f64 / r.base_self as f64 * 100.0);
+            let growth = growth_pct(
+                r.base_self,
+                r.head_self,
+                base.meta.duration_ns,
+                head.meta.duration_ns,
+            );
             let regressed = match growth {
                 Some(g) => g > a.threshold && delta_points >= a.min_value,
                 None => r.head_self > 0 && pct(r.head_self, ht) >= a.min_value,
@@ -168,4 +172,49 @@ fn run_inner(store: &Store, a: &Args) -> Result<u8, String> {
         }
     }
     Ok(if report.ok { 0 } else { 1 })
+}
+
+/// Growth of a function's own cost in percent, or `None` when it is new in the head.
+/// When both profiles record their duration the baseline is scaled to the head's run
+/// length, so a shorter or longer run does not hide or invent a regression; without
+/// durations the raw values are compared.
+fn growth_pct(
+    base_self: i64,
+    head_self: i64,
+    base_dur: Option<u64>,
+    head_dur: Option<u64>,
+) -> Option<f64> {
+    if base_self <= 0 {
+        return None;
+    }
+    let scale = match (base_dur, head_dur) {
+        (Some(b), Some(h)) if b > 0 && h > 0 => h as f64 / b as f64,
+        _ => 1.0,
+    };
+    Some((head_self as f64 / (base_self as f64 * scale) - 1.0) * 100.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::growth_pct;
+
+    #[test]
+    fn raw_growth_without_durations() {
+        assert_eq!(growth_pct(100, 300, None, None), Some(200.0));
+        assert_eq!(growth_pct(0, 5, None, None), None);
+        assert_eq!(growth_pct(100, 100, Some(5), None), Some(0.0));
+    }
+
+    #[test]
+    fn a_shorter_head_run_does_not_hide_a_regression() {
+        // Half as long a run and the function still cost 75 (was 100): 50% worse per second.
+        let g = growth_pct(100, 75, Some(10_000), Some(5_000)).unwrap();
+        assert!((g - 50.0).abs() < 1e-9, "{g}");
+    }
+
+    #[test]
+    fn a_longer_head_run_does_not_invent_one() {
+        let g = growth_pct(100, 150, Some(10_000), Some(15_000)).unwrap();
+        assert!(g.abs() < 1e-9, "{g}");
+    }
 }

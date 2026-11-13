@@ -6,11 +6,52 @@ use prism_model::Profile;
 use serde::Serialize;
 
 const SERIES_PREFIX: &str = "series:";
-/// Launchers whose first argument names the real program.
-const LAUNCHERS: [&str; 5] = ["dotnet", "java", "node", "python", "python3"];
+/// Launchers whose first non-flag argument names the real program.
+const LAUNCHERS: [&str; 6] = ["dotnet", "java", "node", "python", "python3", "go"];
+/// Subcommands that sit between a launcher and the program it runs.
+const SUBCOMMANDS: [&str; 7] = ["run", "test", "build", "bench", "vet", "install", "exec"];
 
 fn basename(path: &str) -> &str {
     path.rsplit(['/', '\\']).next().unwrap_or(path)
+}
+
+/// `name` without a trailing `.exe` (any case).
+fn strip_exe(name: &str) -> &str {
+    if name.len() > 4 && name[name.len() - 4..].eq_ignore_ascii_case(".exe") {
+        &name[..name.len() - 4]
+    } else {
+        name
+    }
+}
+
+/// Splits a command line on whitespace, keeping double-quoted parts together.
+fn tokens(cmd: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut quoted = false;
+    let mut any = false;
+    for c in cmd.chars() {
+        match c {
+            '"' => {
+                quoted = !quoted;
+                any = true;
+            }
+            c if c.is_whitespace() && !quoted => {
+                if any {
+                    out.push(std::mem::take(&mut cur));
+                    any = false;
+                }
+            }
+            c => {
+                cur.push(c);
+                any = true;
+            }
+        }
+    }
+    if any {
+        out.push(cur);
+    }
+    out
 }
 
 /// The series a session belongs to: a `series:<name>` tag, else the program
@@ -29,14 +70,20 @@ pub fn series_key(
         return name.to_string();
     }
     if let Some(cmd) = command.map(str::trim).filter(|c| !c.is_empty()) {
-        let mut tokens = cmd.split_whitespace();
-        let first = tokens.next().unwrap_or(cmd);
-        let program = if LAUNCHERS.contains(&basename(first)) {
-            tokens.next().unwrap_or(first)
-        } else {
-            first
-        };
-        return format!("{runtime}:{}", basename(program));
+        let toks = tokens(cmd);
+        if let Some(first) = toks.first() {
+            let launcher = strip_exe(basename(first));
+            let program = if LAUNCHERS.contains(&launcher.to_ascii_lowercase().as_str()) {
+                toks[1..]
+                    .iter()
+                    .find(|t| !t.starts_with('-') && !SUBCOMMANDS.contains(&t.as_str()))
+                    .map(|t| strip_exe(basename(t)))
+                    .unwrap_or(launcher)
+            } else {
+                launcher
+            };
+            return format!("{runtime}:{program}");
+        }
     }
     if let Some(u) = url.filter(|u| !u.is_empty()) {
         return format!("{runtime}:{u}");

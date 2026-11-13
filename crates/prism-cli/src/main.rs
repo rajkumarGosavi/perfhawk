@@ -139,7 +139,7 @@ enum Command {
     },
     /// Fail when a profile regresses against a baseline
     #[command(
-        after_help = "A function regresses when its self value grows by more than --threshold percent AND its share of the profile grows by at least --min-value percentage points. A function that is new in the profile regresses when it holds at least --min-value points. Improvements never fail the check. Shares are taken from each profile's own total, so runs of different length compare fairly.\n\nExit codes: 0 no regression, 1 regression found, 2 usage or data error (unknown profile, no common sample type, empty baseline, bad option)."
+        after_help = "A function regresses when its self value grows by more than --threshold percent AND its share of the profile grows by at least --min-value percentage points. A function that is new in the profile regresses when it holds at least --min-value points. Improvements never fail the check. Growth is scaled by each profile's recorded duration when both have one, so a shorter or longer run does not hide or invent a regression; shares (for --min-value) always come from each profile's own total.\n\nExit codes: 0 no regression, 1 regression found, 2 usage or data error (unknown profile, no common sample type, empty baseline, bad option)."
     )]
     Check {
         /// The profile to check
@@ -258,9 +258,14 @@ async fn main() -> ExitCode {
         }
     }
     let home = cli.home.unwrap_or_else(default_home);
+    let is_check = matches!(cli.command, Command::Check { .. });
     let store = match Store::open(&home) {
         Ok(s) => Arc::new(s),
-        Err(e) => return fail(format!("cannot open store at {}: {e}", home.display())),
+        Err(e) => {
+            // `check` reserves exit 1 for "regression found".
+            eprintln!("error: cannot open store at {}: {e}", home.display());
+            return ExitCode::from(if is_check { 2 } else { 1 });
+        }
     };
     match cli.command {
         Command::Import {

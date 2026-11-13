@@ -12,10 +12,10 @@ prism check <HEAD> --baseline <BASE> [--sample-type NAME] [--threshold PCT] [--m
 
 A function regresses when **both** hold:
 
-- its self value grew by more than `--threshold` percent (default 10), and
+- its self value grew by more than `--threshold` percent (default 10; scaled by each profile's recorded duration when both have one, so a shorter or longer run does not hide or invent a regression), and
 - its share of its own profile grew by at least `--min-value` percentage points (default 1.0).
 
-A function that is **new** in the head regresses when it holds at least `--min-value` points of the profile. Improvements never fail the check. Shares come from each profile's own total, so two runs of different length compare fairly. A function is identified by its exact name, so a rename shows up as one regression (the new name) and one improvement.
+A function that is **new** in the head regresses when it holds at least `--min-value` points of the profile. Improvements never fail the check. Shares come from each profile's own total. A function is identified by its exact name, so a rename shows up as one regression (the new name) and one improvement.
 
 ## Exit codes
 

@@ -13,6 +13,7 @@ fn tl(n: usize) -> Timeline {
     Timeline {
         bucket_ns: 20_000_000,
         start_unix_ns: 1_700_000_000_000_000_000,
+        total_buckets: 0,
         sample_bucket: (0..n as u32).collect(),
     }
 }

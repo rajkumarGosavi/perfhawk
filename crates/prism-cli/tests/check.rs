@@ -228,3 +228,18 @@ fn json_matches_the_text_verdict_and_help_documents_exit_codes() {
         .stdout(predicate::str::contains("Exit codes"))
         .stdout(predicate::str::contains("--threshold"));
 }
+
+#[test]
+fn an_unopenable_store_is_a_data_error_for_check() {
+    let h = tempfile::tempdir().unwrap();
+    let not_a_dir = h.path().join("file");
+    std::fs::write(&not_a_dir, b"x").unwrap();
+    Command::cargo_bin("prism")
+        .unwrap()
+        .arg("--home")
+        .arg(&not_a_dir)
+        .args(["check", "a", "--baseline", "b"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("cannot open store"));
+}
