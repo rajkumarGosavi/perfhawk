@@ -32,8 +32,11 @@ pub struct HelperPath {
     pub env: Vec<(String, String)>,
 }
 
-const BUILD_HINT: &str = "build it with `dotnet publish helpers/perfhawk-dotnet -c Release -o <dir>` \
-    and either put perfhawk-dotnet next to the perfhawk binary or set PERFHAWK_DOTNET to its path";
+const BUILD_HINT: &str = concat!(
+    "it ships next to perfhawk in the release package, so reinstall Perfhawk or copy ",
+    "perfhawk-dotnet back into the same folder as perfhawk (or set PERFHAWK_DOTNET to its path). ",
+    "Building from source: `dotnet publish helpers/perfhawk-dotnet -c Release -o <dir>`"
+);
 
 fn exe_name() -> &'static str {
     if cfg!(windows) {

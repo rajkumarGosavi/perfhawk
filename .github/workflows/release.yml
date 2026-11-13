@@ -1,0 +1,90 @@
+name: Release
+
+# Pushing a tag like v0.1.0 builds the Windows x64 package and opens a DRAFT
+# GitHub Release. Review the draft, then publish it by hand.
+# Tags with a hyphen (v0.1.0-rc.1) become pre-releases.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('dev-{0}', github.sha) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag must match the crate version
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          have=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+          core="${want%%-*}"
+          if [ "$core" != "$have" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml version $have"; exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Build UI
+        working-directory: ui
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build perfhawk.exe (UI embedded)
+        run: cargo build --release --locked -p perfhawk-cli
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build self-contained .NET helper
+        run: >
+          dotnet publish helpers/perfhawk-dotnet -c Release -r win-x64 --self-contained
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true -o target/helper
+
+      - name: Third-party notices
+        shell: pwsh
+        run: |
+          cargo install cargo-about --locked --features cli
+          ./tools/release/build-notices.ps1 -Output THIRD_PARTY_NOTICES.txt
+
+      # Code signing goes here once a certificate or Azure Trusted Signing
+      # account exists (see docs/RELEASING.md). Sign perfhawk.exe and
+      # target/helper/perfhawk-dotnet.exe BEFORE packaging.
+
+      - name: Package
+        shell: pwsh
+        run: ./tools/release/package.ps1 -Version "${{ env.VERSION }}"
+
+      - name: Smoke test the package
+        shell: pwsh
+        run: ./tools/release/smoke-test.ps1 -Zip "dist/perfhawk-${{ env.VERSION }}-windows-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: perfhawk-windows-x64
+          path: dist/*
+
+      - name: Draft GitHub Release
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags="--draft --title $GITHUB_REF_NAME --generate-notes"
+          case "$GITHUB_REF_NAME" in *-*) flags="$flags --prerelease";; esac
+          gh release create "$GITHUB_REF_NAME" dist/* scripts/install.ps1 $flags

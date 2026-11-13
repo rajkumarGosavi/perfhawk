@@ -402,3 +402,30 @@ func TestCPUWindowsCancelledRequestFreesTheProfiler(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+func TestRejectsNonLoopbackHost(t *testing.T) {
+	a, err := Start(Options{DisableDiscovery: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	for host, want := range map[string]int{
+		a.Addr():          200,
+		"localhost:1234":  200,
+		"[::1]:80":        200,
+		"evil.example":    403,
+		"evil.example:80": 403,
+		"127.0.0.1.evil":  403,
+	} {
+		req, _ := http.NewRequest("GET", "http://"+a.Addr()+"/debug/perfhawk/info", nil)
+		req.Host = host
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("Host %q: got %d want %d", host, resp.StatusCode, want)
+		}
+	}
+}

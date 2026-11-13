@@ -10,3 +10,7 @@
 /helpers/perfhawk-dotnet/obj/
 /helpers/perfhawk-dotnet/tests/bin/
 /helpers/perfhawk-dotnet/tests/obj/
+
+# Release artifacts (generated)
+/dist/
+/THIRD_PARTY_NOTICES.txt

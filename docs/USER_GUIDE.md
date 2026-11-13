@@ -212,11 +212,11 @@ What each runtime supports (no admin/root needed for any of it):
 | blocking | native | not available in Phase 1 |
 | threads | native | native |
 
-**Go targets.** Add the agent to your program (`go get github.com/rajkumarGosavi/perfhawk/agents/go`, or use a
-`replace` directive while the module is unpublished):
+**Go targets.** Add the agent to your program (`go get github.com/rajkumarGosavi/perfhawk/agents/go`, or a
+`replace` directive for a local checkout):
 
 ```go
-import "github.com/rajkumarGosavi/perfhawk/agents/go"
+import agent "github.com/rajkumarGosavi/perfhawk/agents/go"
 
 func main() {
     a, _ := agent.Start(agent.Options{}) // loopback only
@@ -591,7 +591,7 @@ or the UI's diff view.
 | `the target has DOTNET_EnableDiagnostics=0` | Restart the target without that variable (or set it to 1). |
 | `the target runs as another user, or TMPDIR differs` | Run perfhawk as the target's user and with the target's `TMPDIR` (Linux/macOS). |
 | `pid N is not a .NET 8+ process` | Only .NET 8 and newer are supported. |
-| `the .NET helper (perfhawk-dotnet) was not found` | Build it (`dotnet publish helpers/perfhawk-dotnet -c Release -o <dir>`) and set `PERFHAWK_DOTNET`, or put it next to `perfhawk`. |
+| `the .NET helper (perfhawk-dotnet) was not found` | `perfhawk-dotnet` ships next to `perfhawk` in the release package: reinstall Perfhawk or copy it back beside `perfhawk`, or set `PERFHAWK_DOTNET`. From source: `dotnet publish helpers/perfhawk-dotnet -c Release -o <dir>`. |
 | `perfhawk-dotnet protocol X is not supported; rebuild the helper` | The helper and perfhawk are from different versions; rebuild the helper. |
 | `program did not start the perfhawk agent; import github.com/rajkumarGosavi/perfhawk/agents/go` | The launched Go program does not import the agent. |
 | `mutex profiling is disabled in the target ...` | A warning, not a failure: the profile is empty because the target has not enabled mutex/block sampling and no agent is present. |

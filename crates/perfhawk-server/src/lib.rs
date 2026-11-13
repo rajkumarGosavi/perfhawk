@@ -39,6 +39,7 @@ fn router_with_port(store: Arc<Store>, port: Option<u16>) -> Router {
             state.clone(),
             guard::host_origin_guard,
         ))
+        .layer(axum::middleware::from_fn(guard::security_headers))
         .with_state(state)
 }
 
