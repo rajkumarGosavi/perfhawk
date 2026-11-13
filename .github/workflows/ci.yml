@@ -8,7 +8,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Windows only for v0.1. When Linux and macOS are released, add
+        # ubuntu-latest and macos-latest back (known open issues: Go agent
+        # discovery by pid on Linux, `go test` LC_UUID on macOS; see docs/FOLLOWUPS.md).
+        os: [windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -53,9 +56,12 @@ jobs:
           unset TMPDIR
           export PERFHAWK_DOTNET="$GITHUB_WORKSPACE/target/helper/perfhawk-dotnet.dll"
           cargo test -p perfhawk-capture -- --include-ignored --test-threads=1
-      - name: cargo deny
-        if: matrix.os == 'ubuntu-latest'
-        uses: EmbarkStudios/cargo-deny-action@v2
+  # Licence check only (this action is Linux-based); not a Linux test run.
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check licenses
   perf:
