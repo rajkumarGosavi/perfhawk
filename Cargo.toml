@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/prism-model",
+    "crates/prism-import",
+    "crates/prism-analysis",
+    "crates/prism-store",
+    "crates/prism-server",
+    "crates/prism-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "Apache-2.0"
