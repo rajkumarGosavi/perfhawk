@@ -13,8 +13,13 @@
 //	block.pb.gz      blocking waits  (slow channel consumer)
 //	goroutine.pb.gz  goroutine dump  (workers parked on channels / locks)
 //
-// It also serves net/http/pprof on -pprof (default 127.0.0.1:6060) while it
-// runs, for later prism phases that capture from a live process.
+// It also serves net/http/pprof on -pprof (default 127.0.0.1:6060) and starts
+// the prism agent (-agent, default on), so a live run can be recorded:
+//
+//	go run . -files=false -duration 60s     # then: prism record --pid <pid>
+//
+// -files=false skips the demo's own CPU profile, which would otherwise hold
+// the runtime's single CPU profiler while prism tries to capture it.
 package main
 
 import (
@@ -33,6 +38,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"prism.dev/agent"
 )
 
 type Order struct {
@@ -52,15 +59,27 @@ func main() {
 	out := flag.String("out", "profiles", "directory to write profiles into")
 	duration := flag.Duration("duration", 10*time.Second, "how long to run the workload")
 	pprofAddr := flag.String("pprof", "127.0.0.1:6060", "net/http/pprof listen address (empty to disable)")
+	useAgent := flag.Bool("agent", true, "start the prism agent so `prism record --pid` can attach")
+	files := flag.Bool("files", true, "write profile files at the end (holds the CPU profiler while running)")
 	flag.Parse()
 
-	if err := os.MkdirAll(*out, 0o755); err != nil {
-		log.Fatal(err)
+	if *files {
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if *useAgent {
+		a, err := agent.Start(agent.Options{})
+		if err != nil {
+			log.Fatalf("prism agent: %v", err)
+		}
+		defer a.Close()
+		log.Printf("prism agent on %s (pid %d)", a.Addr(), os.Getpid())
 	}
 
 	// Record every mutex contention and every blocking event; sample heap often.
 	runtime.SetMutexProfileFraction(1)
-	runtime.SetBlockProfileRate(1)
+	agent.SetBlockProfileRate(1) // like runtime.SetBlockProfileRate, but lets the agent restore it
 	runtime.MemProfileRate = 4096
 
 	if *pprofAddr != "" {
@@ -72,9 +91,12 @@ func main() {
 		}()
 	}
 
-	cpuFile := create(*out, "cpu.pb.gz")
-	if err := pprof.StartCPUProfile(cpuFile); err != nil {
-		log.Fatal(err)
+	var cpuFile *os.File
+	if *files {
+		cpuFile = create(*out, "cpu.pb.gz")
+		if err := pprof.StartCPUProfile(cpuFile); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	log.Printf("running workload for %s ...", *duration)
@@ -104,10 +126,16 @@ func main() {
 
 	time.Sleep(*duration)
 
-	// Snapshot goroutines while the workload is still running.
-	writeLookup(*out, "goroutine", "goroutine.pb.gz")
+	if *files {
+		// Snapshot goroutines while the workload is still running.
+		writeLookup(*out, "goroutine", "goroutine.pb.gz")
+	}
 	close(stop)
 	wg.Wait()
+	if !*files {
+		log.Printf("done: %d orders cached", len(svc.cache))
+		return
+	}
 
 	pprof.StopCPUProfile()
 	cpuFile.Close()
@@ -183,7 +211,9 @@ func checksum(b []byte) [32]byte {
 }
 
 func rankItems(items []Item) {
-	sort.Slice(items, func(i, j int) bool { return items[i].Price*float64(items[i].Qty) > items[j].Price*float64(items[j].Qty) })
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Price*float64(items[i].Qty) > items[j].Price*float64(items[j].Qty)
+	})
 }
 
 func (s *service) remember(id int, body []byte, sum [32]byte) {

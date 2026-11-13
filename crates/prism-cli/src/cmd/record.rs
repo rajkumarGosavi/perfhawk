@@ -21,10 +21,15 @@ pub const ONE_TARGET: &str = "choose one target: --pid, --url, --go-test or -- <
 
 pub fn build_target(a: &Args) -> Result<Target, String> {
     let program = a.go_test.is_none() && !a.trailing.is_empty();
-    let n = [a.pid.is_some(), a.url.is_some(), a.go_test.is_some(), program]
-        .iter()
-        .filter(|b| **b)
-        .count();
+    let n = [
+        a.pid.is_some(),
+        a.url.is_some(),
+        a.go_test.is_some(),
+        program,
+    ]
+    .iter()
+    .filter(|b| **b)
+    .count();
     if n != 1 {
         return Err(ONE_TARGET.into());
     }
@@ -59,13 +64,14 @@ pub fn run(store: &Store, a: Args, target: Target) -> (u8, Option<String>) {
         name: a.name,
         tags: a.tags,
     };
-    let session = match prism_capture::record(store, &registry, &req, &cancel, &|m| eprintln!("{m}")) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return (1, None);
-        }
-    };
+    let session =
+        match prism_capture::record(store, &registry, &req, &cancel, &|m| eprintln!("{m}")) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return (1, None);
+            }
+        };
     for w in &session.warnings {
         eprintln!("warning: {w}");
     }

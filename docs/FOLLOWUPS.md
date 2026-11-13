@@ -1,13 +1,13 @@
-# Phase 0 follow-ups
+# Follow-ups
 
-Items found during Phase 0 reviews and deliberately deferred. None blocks Phase 0.
+Items found during reviews and deliberately deferred. ~~Struck through~~ items were done in Phase 1.
 
 ## Track for Phase 1
-- **Flame payload depth.** `min_fraction` limits the tree's width, not its depth. A few heavy, deep recursions produce flame JSON over 5 MiB, and deep trees can also exceed the browser's canvas size limit, so the graph renders blank. Add a depth cap or recursion collapsing to the flame API, plus a "too deep" notice in the UI.
-- **Ungated query paths.** Filtered flame/top, `inverted_flame` and `sandwich` still walk every sample (about 213 M frames on the 500 MB benchmark) and are not covered by the perf gate. Extend the trie fast path to them, or gate them.
-- **CI.** The 3-OS matrix and `cargo deny` have only run locally on Windows. Push the branch and get a green run (this also checks that `stacker` builds on Linux and macOS).
-- **`prism rm`.** Pair it with repairing a corrupt or partial blob on re-import, and add an fsync before the blob rename.
-- **Data directory.** Consider `%LOCALAPPDATA%` instead of Roaming `%APPDATA%` on Windows for multi-hundred-MB blobs.
+- ~~**Flame payload depth.** `min_fraction` limits the tree's width, not its depth. A few heavy, deep recursions produce flame JSON over 5 MiB, and deep trees can also exceed the browser's canvas size limit, so the graph renders blank. Add a depth cap or recursion collapsing to the flame API, plus a "too deep" notice in the UI.~~ Done: depth cap (default 1000) with a truncation marker, and a canvas clip notice.
+- **Ungated query paths** (moved to Phase 2 with block I/O). Filtered flame/top, `inverted_flame` and `sandwich` still walk every sample (about 213 M frames on the 500 MB benchmark) and are not covered by the perf gate. Extend the trie fast path to them, or gate them.
+- **CI.** (Still open: push a remote and get a green run; Phase 1 added Go, .NET and gated e2e steps that have only run locally on Windows.) The 3-OS matrix and `cargo deny` have only run locally on Windows. Push the branch and get a green run (this also checks that `stacker` builds on Linux and macOS).
+- ~~**`prism rm`.** Pair it with repairing a corrupt or partial blob on re-import, and add an fsync before the blob rename.~~ Done.
+- **Data directory** (moved to Phase 2). Consider `%LOCALAPPDATA%` instead of Roaming `%APPDATA%` on Windows for multi-hundred-MB blobs.
 
 ## Before the first binary release
 - Add a third-party notices file covering the Rust crates (e.g. cargo-about) and the npm production dependencies. The embedded UI bundle currently drops React's MIT notice.
@@ -20,5 +20,14 @@ Items found during Phase 0 reviews and deliberately deferred. None blocks Phase 
 - **Server:** no single-flight on cache misses (two loads of the same id can double peak memory). Mutex-poison `unwrap`. Path rejections and 405 responses are plain text. The 2 GiB upload is buffered in memory. The 413 path is untested.
 - **UI:** no `AbortController` for superseded requests. The canvas is not keyboard accessible (the Top table gives a keyboard path). The tooltip can clip near edges. No component or interaction tests.
 - **CLI:** `to_sig3` rounds ties half-to-even, unlike JS `toPrecision` (cosmetic). Ctrl-C exits 0. The open-test timeout message omits the child's stderr.
-- **Store:** the WAL pragma runs before the schema-version gate. The platform branches of `default_home` are untested.
+- **Store:** ~~the WAL pragma runs before the schema-version gate~~ (fixed in Phase 1). The platform branches of `default_home` are untested.
 - **Misc:** `$profile` loop variable in `examples/dotnet-demo/profile.ps1` shadows PowerShell's `$PROFILE`. Clippy `needless_lifetimes` in `crates/prism-import/tests/pprof.rs`. Recursive derived `Debug`/`Clone`/`PartialEq` on `FlameNode` overflow the stack on very deep trees (tests only).
+
+## Found in Phase 1
+- **cargo-deny** is not installed on the development machine, so the licence allow-list is unverified for the new dependencies (`ureq` pulls rustls/ring/webpki-roots; `ctrlc`, `tiny_http`, `getrandom`). Run `cargo deny check licenses` in CI; `deny.toml` may need `CDLA-Permissive-2.0` / a `ring` clarification. Also record the new .NET (MIT) and Go (`fgprof` MIT, `google/pprof` Apache-2.0) licences in the notices file before release.
+- **Ctrl-C while recording** abandons in-flight Go HTTP requests (ureq cannot abort); the agent restores sampling rates when the connection closes or the window ends. `go test` mode kills only the `go` tool, not the test binary, on Windows. The Unix `record_ctrl_c_exit_130` test has not been run on a Unix machine yet.
+- **Go block rate:** the runtime has no getter, so the agent restores only rates set through `agent.SetBlockProfileRate` (otherwise 0).
+- **.NET `prism targets`** shows no runtime version or command line (the client library does not expose them publicly).
+- **"Go process without the prism agent" hint** works on Linux only (`/proc/<pid>/exe`).
+- **Packaging:** bundle `prism-dotnet` next to `prism` in release archives (see "Before the first binary release").
+- **UI:** no component tests for the new views (Swap, delete confirm, normalize, compare were not exercised by automated tests).

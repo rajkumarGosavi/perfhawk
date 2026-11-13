@@ -53,7 +53,12 @@ pub fn run(
 }
 
 /// `.nettrace` files go through the prism-dotnet helper, which yields one profile per kind.
-fn import_nettrace(store: &Store, path: &PathBuf, name: &Option<String>, tags: &[String]) -> bool {
+fn import_nettrace(
+    store: &Store,
+    path: &std::path::Path,
+    name: &Option<String>,
+    tags: &[String],
+) -> bool {
     let artifacts = match prism_capture::dotnet::convert_nettrace(path) {
         Ok(a) => a,
         Err(e) => {

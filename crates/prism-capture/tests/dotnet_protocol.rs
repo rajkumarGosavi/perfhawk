@@ -20,7 +20,9 @@ fn fake_exe() -> PathBuf {
 }
 
 fn fixture(rel: &str) -> String {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join(rel);
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join(rel);
     p.to_string_lossy().replace('\\', "/")
 }
 
@@ -38,7 +40,10 @@ fn scripted(dir: &tempfile::TempDir, lines: &[String]) -> HelperPath {
 }
 
 fn art(kind: &str, fix: &str) -> String {
-    format!(r#"{{"type":"artifact","kind":"{kind}","fixture":"{}","samples":3}}"#, fixture(fix))
+    format!(
+        r#"{{"type":"artifact","kind":"{kind}","fixture":"{}","samples":3}}"#,
+        fixture(fix)
+    )
 }
 
 fn provider(h: HelperPath) -> DotnetProvider {
@@ -48,7 +53,9 @@ fn provider(h: HelperPath) -> DotnetProvider {
 const LIST_DONE: &str = r#"{"for":"list","type":"done","end":"complete"}"#;
 
 fn pid_listing(pid: u32) -> String {
-    format!(r#"{{"for":"list","type":"process","pid":{pid},"name":"app","command_line":"dotnet app.dll","runtime_version":"8.0.5"}}"#)
+    format!(
+        r#"{{"for":"list","type":"process","pid":{pid},"name":"app","command_line":"dotnet app.dll","runtime_version":"8.0.5"}}"#
+    )
 }
 
 fn plan(kinds: Vec<ProfileKind>) -> CapturePlan {
@@ -104,11 +111,19 @@ fn events_are_delivered_in_order() {
         ],
     );
     let mut seen = Vec::new();
-    run_helper(&h, &["list".into()], &CancelToken::new(), &mut |e| seen.push(e)).unwrap();
+    run_helper(&h, &["list".into()], &CancelToken::new(), &mut |e| {
+        seen.push(e)
+    })
+    .unwrap();
     assert!(matches!(&seen[0], HelperEvent::Hello { protocol: 1, .. }));
     assert!(matches!(&seen[1], HelperEvent::Progress(m) if m == "p1"));
     assert!(matches!(&seen[2], HelperEvent::Warning(m) if m == "w1"));
-    assert!(matches!(&seen[3], HelperEvent::Done { end: CaptureEnd::Complete }));
+    assert!(matches!(
+        &seen[3],
+        HelperEvent::Done {
+            end: CaptureEnd::Complete
+        }
+    ));
 }
 
 #[test]
@@ -152,7 +167,10 @@ fn detect_launch_recognises_dotnet_programs() {
     assert!(p.detect(&launch(&app.to_string_lossy())).unwrap().is_some());
     let other = dir.path().join("other.exe");
     std::fs::write(&other, b"x").unwrap();
-    assert!(p.detect(&launch(&other.to_string_lossy())).unwrap().is_none());
+    assert!(p
+        .detect(&launch(&other.to_string_lossy()))
+        .unwrap()
+        .is_none());
     assert!(p.detect(&Target::Url("http://x".into())).unwrap().is_none());
 }
 
@@ -170,7 +188,12 @@ fn capabilities_follow_the_matrix() {
     let caps = p.capabilities(&rt);
     let get = |k| caps.iter().find(|c| c.kind == k).unwrap();
     assert_eq!(get(ProfileKind::Cpu).fidelity, Fidelity::Approximate);
-    for k in [ProfileKind::Wall, ProfileKind::Memory, ProfileKind::Lock, ProfileKind::Threads] {
+    for k in [
+        ProfileKind::Wall,
+        ProfileKind::Memory,
+        ProfileKind::Lock,
+        ProfileKind::Threads,
+    ] {
         assert_eq!(get(k).fidelity, Fidelity::Native, "{k}");
         assert!(get(k).available);
     }
@@ -202,7 +225,11 @@ fn collect_imports_artifacts_with_fidelity() {
     let store = Store::open(home.path()).unwrap();
     let req = RecordRequest {
         target: Target::Pid(77),
-        plan: plan(vec![ProfileKind::Cpu, ProfileKind::Memory, ProfileKind::Lock]),
+        plan: plan(vec![
+            ProfileKind::Cpu,
+            ProfileKind::Memory,
+            ProfileKind::Lock,
+        ]),
         name: None,
         tags: vec![],
     };
@@ -213,12 +240,20 @@ fn collect_imports_artifacts_with_fidelity() {
     .unwrap();
     assert_eq!(s.status, SessionStatus::Complete);
     assert_eq!(s.profile_ids.len(), 3);
-    let recs: Vec<_> = s.profile_ids.iter().map(|i| store.resolve(i).unwrap()).collect();
+    let recs: Vec<_> = s
+        .profile_ids
+        .iter()
+        .map(|i| store.resolve(i).unwrap())
+        .collect();
     let by = |k| recs.iter().find(|r| r.kind == k).unwrap();
     assert_eq!(by(ProfileKind::Cpu).fidelity, Fidelity::Approximate);
     assert_eq!(by(ProfileKind::Memory).fidelity, Fidelity::Native);
     assert_eq!(by(ProfileKind::Lock).fidelity, Fidelity::Native);
-    assert!(s.warnings.iter().any(|w| w == "slow symbols"), "{:?}", s.warnings);
+    assert!(
+        s.warnings.iter().any(|w| w == "slow symbols"),
+        "{:?}",
+        s.warnings
+    );
     assert!(progress.lock().unwrap().iter().any(|m| m == "attaching"));
     assert_eq!(s.target.runtime, "dotnet");
 }
@@ -241,7 +276,9 @@ fn error_codes_map_to_messages() {
                 HELLO.to_string(),
                 pid_listing(77),
                 LIST_DONE.to_string(),
-                format!(r#"{{"for":"collect","type":"error","code":"{code}","message":"raw helper text"}}"#),
+                format!(
+                    r#"{{"for":"collect","type":"error","code":"{code}","message":"raw helper text"}}"#
+                ),
             ],
         );
         let p = provider(h);
@@ -314,9 +351,19 @@ fn stop_on_cancel() {
     });
     let start = Instant::now();
     let out = p
-        .capture(&rt, &Target::Pid(9), &plan(vec![ProfileKind::Wall]), &token, &|_| {})
+        .capture(
+            &rt,
+            &Target::Pid(9),
+            &plan(vec![ProfileKind::Wall]),
+            &token,
+            &|_| {},
+        )
         .unwrap();
-    assert!(start.elapsed() < Duration::from_secs(8), "{:?}", start.elapsed());
+    assert!(
+        start.elapsed() < Duration::from_secs(8),
+        "{:?}",
+        start.elapsed()
+    );
     assert_eq!(out.end, CaptureEnd::Cancelled);
     assert_eq!(out.artifacts.len(), 1);
     assert_eq!(out.artifacts[0].kind, ProfileKind::Wall);
@@ -327,7 +374,11 @@ fn launch_passes_program_after_double_dash() {
     let dir = tempfile::TempDir::new().unwrap();
     let h = scripted(
         &dir,
-        &[HELLO.to_string(), art("cpu", CPU), r#"{"type":"done","end":"complete"}"#.to_string()],
+        &[
+            HELLO.to_string(),
+            art("cpu", CPU),
+            r#"{"type":"done","end":"complete"}"#.to_string(),
+        ],
     );
     let p = provider(h);
     let target = Target::Launch {
@@ -337,7 +388,13 @@ fn launch_passes_program_after_double_dash() {
     };
     let rt = p.detect(&target).unwrap().unwrap();
     let out = p
-        .capture(&rt, &target, &plan(vec![ProfileKind::Cpu]), &CancelToken::new(), &|_| {})
+        .capture(
+            &rt,
+            &target,
+            &plan(vec![ProfileKind::Cpu]),
+            &CancelToken::new(),
+            &|_| {},
+        )
         .unwrap();
     assert_eq!(out.artifacts.len(), 1);
     assert_eq!(out.artifacts[0].fidelity, Fidelity::Approximate);
@@ -369,12 +426,19 @@ fn locate_helper_env_then_sibling() {
     // Without the variable: the sibling of the current executable, else a build hint.
     std::env::remove_var("PRISM_DOTNET");
     let cur = std::env::current_exe().unwrap();
-    let sibling = cur.with_file_name(if cfg!(windows) { "prism-dotnet.exe" } else { "prism-dotnet" });
+    let sibling = cur.with_file_name(if cfg!(windows) {
+        "prism-dotnet.exe"
+    } else {
+        "prism-dotnet"
+    });
     if sibling.exists() {
         assert_eq!(locate_helper().unwrap().program, sibling);
     } else {
         let err = locate_helper().unwrap_err().to_string();
-        assert!(err.contains("helpers/prism-dotnet") || err.contains("helpers\\prism-dotnet"), "{err}");
+        assert!(
+            err.contains("helpers/prism-dotnet") || err.contains("helpers\\prism-dotnet"),
+            "{err}"
+        );
         std::fs::write(&sibling, b"x").unwrap();
         let found = locate_helper();
         let _ = std::fs::remove_file(&sibling);
@@ -399,7 +463,11 @@ fn dotnet_launch_demo_all_kinds() {
     let p = provider(h);
     let target = Target::Launch {
         program: "dotnet".into(),
-        args: vec![demo.to_string_lossy().into_owned(), "all".into(), "6".into()],
+        args: vec![
+            demo.to_string_lossy().into_owned(),
+            "all".into(),
+            "6".into(),
+        ],
         cwd: None,
     };
     let rt = p.detect(&target).unwrap().unwrap();
@@ -468,7 +536,10 @@ fn convert_nettrace_returns_artifacts_with_fidelity() {
 
     let err_h = scripted(
         &dir,
-        &[HELLO.to_string(), r#"{"type":"error","code":"internal","message":"bad trace"}"#.to_string()],
+        &[
+            HELLO.to_string(),
+            r#"{"type":"error","code":"internal","message":"bad trace"}"#.to_string(),
+        ],
     );
     let err = convert_nettrace_with(&err_h, &trace).unwrap_err();
     assert!(err.to_string().contains("bad trace"), "{err}");

@@ -94,10 +94,9 @@ pub fn convert_nettrace_with(h: &HelperPath, path: &Path) -> Result<Vec<Artifact
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_nanos())
         .unwrap_or(0);
-    let dir = TempDir(std::env::temp_dir().join(format!(
-        "prism-nettrace-{}-{nanos}",
-        std::process::id()
-    )));
+    let dir = TempDir(
+        std::env::temp_dir().join(format!("prism-nettrace-{}-{nanos}", std::process::id())),
+    );
     std::fs::create_dir_all(&dir.0)?;
     let args = vec![
         "convert".to_string(),
@@ -186,11 +185,21 @@ impl Provider for DotnetProvider {
             note: note.map(str::to_string),
         };
         vec![
-            cap(Cpu, Fidelity::Approximate, true, Some("derived from managed-thread samples")),
+            cap(
+                Cpu,
+                Fidelity::Approximate,
+                true,
+                Some("derived from managed-thread samples"),
+            ),
             cap(Wall, Fidelity::Native, true, None),
             cap(Memory, Fidelity::Native, true, None),
             cap(Lock, Fidelity::Native, true, None),
-            cap(Blocking, Fidelity::Native, false, Some("not in Phase 1 for .NET")),
+            cap(
+                Blocking,
+                Fidelity::Native,
+                false,
+                Some("not in Phase 1 for .NET"),
+            ),
             cap(Threads, Fidelity::Native, true, None),
         ]
     }
@@ -208,21 +217,20 @@ impl Provider for DotnetProvider {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.subsec_nanos())
             .unwrap_or(0);
-        let dir = TempDir(std::env::temp_dir().join(format!(
-            "prism-dotnet-{}-{nanos}",
-            std::process::id()
-        )));
+        let dir = TempDir(
+            std::env::temp_dir().join(format!("prism-dotnet-{}-{nanos}", std::process::id())),
+        );
         std::fs::create_dir_all(&dir.0)?;
 
         let duration_ms = plan.duration.as_millis().to_string();
         let mut args: Vec<String> = Vec::new();
         match target {
-            Target::Pid(pid) => args.extend([
-                "collect".into(),
-                "--pid".into(),
-                pid.to_string(),
-            ]),
-            Target::Launch { program, args: pargs, .. } => {
+            Target::Pid(pid) => args.extend(["collect".into(), "--pid".into(), pid.to_string()]),
+            Target::Launch {
+                program,
+                args: pargs,
+                ..
+            } => {
                 args.push("launch".into());
                 let tail: Vec<String> = std::iter::once(program.clone())
                     .chain(pargs.iter().cloned())

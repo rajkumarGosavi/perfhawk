@@ -16,5 +16,6 @@ serde_json.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+prism-analysis = { path = "../prism-analysis" }
 tiny_http = "0.12"
 flate2.workspace = true

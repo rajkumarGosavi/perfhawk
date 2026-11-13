@@ -63,9 +63,15 @@ pub fn run(store: &Store, a: Args) -> Result<(), String> {
         base.sample_types[bi].name
     );
     println!();
-    let mut table = vec![["DELTA SELF", "BASE SELF", "HEAD SELF", "DELTA TOTAL", "FUNCTION"]
-        .map(String::from)
-        .to_vec()];
+    let mut table = vec![[
+        "DELTA SELF",
+        "BASE SELF",
+        "HEAD SELF",
+        "DELTA TOTAL",
+        "FUNCTION",
+    ]
+    .map(String::from)
+    .to_vec()];
     for r in rows {
         table.push(vec![
             signed(r.delta_self, &unit),

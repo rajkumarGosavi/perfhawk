@@ -153,7 +153,11 @@ async fn flame_depth_param_truncates() {
     let (_, full) = get(addr, &format!("/api/profiles/{id}/flame?min=0")).await;
     assert!(!any_truncated(&full));
     assert_eq!(v["total"], full["total"]);
-    let (st, v) = get(addr, &format!("/api/profiles/{id}/flame?depth=2&inverted=true")).await;
+    let (st, v) = get(
+        addr,
+        &format!("/api/profiles/{id}/flame?depth=2&inverted=true"),
+    )
+    .await;
     assert_eq!(st, 200);
     assert!(v["total"].as_i64().unwrap() > 0);
 }
@@ -191,7 +195,9 @@ async fn diff_flame_and_top() {
     assert_eq!(st, 200);
     let rows = t["rows"].as_array().unwrap();
     assert!(!rows.is_empty() && rows.len() <= 5);
-    assert!(rows.iter().all(|r| r["deltaSelf"] == 0 && r["deltaTotal"] == 0));
+    assert!(rows
+        .iter()
+        .all(|r| r["deltaSelf"] == 0 && r["deltaTotal"] == 0));
     assert!(t.get("root").is_none());
 
     // default view is the flame
@@ -221,7 +227,10 @@ async fn diff_incompatible_400() {
         assert_eq!(st, 400);
         assert_eq!(v["error"]["code"], "bad_request");
         let msg = v["error"]["message"].as_str().unwrap();
-        assert!(msg.contains("share no sample type") && msg.contains("base:") && msg.contains("head:"), "{msg}");
+        assert!(
+            msg.contains("share no sample type") && msg.contains("base:") && msg.contains("head:"),
+            "{msg}"
+        );
     }
     // a sample type missing from one side is a clear 400, not a silent fallback
     let (st, _) = get(addr, &format!("/api/diff?base={cpu}&head={cpu}&st=nope")).await;

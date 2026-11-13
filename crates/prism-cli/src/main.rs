@@ -7,9 +7,9 @@ use clap::{CommandFactory, Parser, Subcommand};
 use prism_model::ProfileKind;
 use prism_store::{default_home, ImportOptions, Store};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Parser)]
 #[command(name = "prism", version, about = "Local-first profiling workbench")]

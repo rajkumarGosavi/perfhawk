@@ -42,15 +42,16 @@ pub(crate) fn capture_go_test(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_nanos())
         .unwrap_or(0);
-    let dir = TempDir(std::env::temp_dir().join(format!(
-        "prism-gotest-{}-{nanos}",
-        std::process::id()
-    )));
+    let dir =
+        TempDir(std::env::temp_dir().join(format!("prism-gotest-{}-{nanos}", std::process::id())));
     std::fs::create_dir_all(&dir.0)?;
     let out_dir = &dir.0;
 
     let mut cmd = Command::new("go");
-    cmd.arg("test").arg("-count=1").arg("-o").arg(out_dir.join("test.bin"));
+    cmd.arg("test")
+        .arg("-count=1")
+        .arg("-o")
+        .arg(out_dir.join("test.bin"));
     let mut files = Vec::new();
     for &k in &plan.kinds {
         if let Some((flag, file)) = flag_and_file(k) {

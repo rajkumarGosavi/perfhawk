@@ -108,7 +108,10 @@ fn parse_event(line: &str) -> Result<HelperEvent, CaptureError> {
     let v: serde_json::Value = serde_json::from_str(line).map_err(|_| malformed())?;
     let s = |k: &str| v.get(k).and_then(|x| x.as_str()).map(str::to_string);
     let req = |k: &str| s(k).ok_or_else(malformed);
-    let ty = v.get("type").and_then(|t| t.as_str()).ok_or_else(malformed)?;
+    let ty = v
+        .get("type")
+        .and_then(|t| t.as_str())
+        .ok_or_else(malformed)?;
     Ok(match ty {
         "hello" => HelperEvent::Hello {
             protocol: v
@@ -118,7 +121,10 @@ fn parse_event(line: &str) -> Result<HelperEvent, CaptureError> {
             helper_version: s("helper_version").unwrap_or_default(),
         },
         "process" => HelperEvent::Process {
-            pid: v.get("pid").and_then(|p| p.as_u64()).ok_or_else(malformed)? as u32,
+            pid: v
+                .get("pid")
+                .and_then(|p| p.as_u64())
+                .ok_or_else(malformed)? as u32,
             name: s("name").unwrap_or_default(),
             command_line: s("command_line"),
             runtime_version: s("runtime_version"),
@@ -271,24 +277,31 @@ pub fn list_dotnet_processes() -> Result<Vec<RuntimeInfo>, CaptureError> {
 pub(crate) fn list_with(h: &HelperPath) -> Result<Vec<RuntimeInfo>, CaptureError> {
     let mut out = Vec::new();
     let mut error = None;
-    run_helper(h, &["list".to_string()], &CancelToken::new(), &mut |e| match e {
-        HelperEvent::Process {
-            pid,
-            name,
-            command_line,
-            runtime_version,
-        } => out.push(RuntimeInfo {
-            provider: "dotnet",
-            pid: Some(pid),
-            url: None,
-            runtime_version,
-            command: command_line.or(Some(name)).filter(|c| !c.is_empty()),
-        }),
-        HelperEvent::Error { message, .. } => error = Some(message),
-        _ => {}
-    })?;
+    run_helper(
+        h,
+        &["list".to_string()],
+        &CancelToken::new(),
+        &mut |e| match e {
+            HelperEvent::Process {
+                pid,
+                name,
+                command_line,
+                runtime_version,
+            } => out.push(RuntimeInfo {
+                provider: "dotnet",
+                pid: Some(pid),
+                url: None,
+                runtime_version,
+                command: command_line.or(Some(name)).filter(|c| !c.is_empty()),
+            }),
+            HelperEvent::Error { message, .. } => error = Some(message),
+            _ => {}
+        },
+    )?;
     match error {
-        Some(m) => Err(CaptureError::Helper(format!("prism-dotnet list failed: {m}"))),
+        Some(m) => Err(CaptureError::Helper(format!(
+            "prism-dotnet list failed: {m}"
+        ))),
         None => Ok(out),
     }
 }

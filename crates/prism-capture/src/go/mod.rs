@@ -23,13 +23,19 @@ impl GoProvider {
 enum Mode {
     GoTest,
     /// Reachable HTTP endpoint; `agent` is true when the prism agent answers.
-    Http { agent: bool },
+    Http {
+        agent: bool,
+    },
     /// A program we launch with the agent auto-started.
     LaunchAgent,
 }
 
 fn mode(rt: &RuntimeInfo) -> Mode {
-    if rt.command.as_deref().is_some_and(|c| c.starts_with("go test ")) {
+    if rt
+        .command
+        .as_deref()
+        .is_some_and(|c| c.starts_with("go test "))
+    {
         Mode::GoTest
     } else if rt.url.is_some() {
         Mode::Http {
@@ -232,9 +238,7 @@ fn launch_and_capture(
     progress: &dyn Fn(&str),
 ) -> Result<CaptureOutcome, CaptureError> {
     let mut cmd = Command::new(program);
-    cmd.args(args)
-        .env("PRISM_AGENT", "1")
-        .stdin(Stdio::null());
+    cmd.args(args).env("PRISM_AGENT", "1").stdin(Stdio::null());
     if let Some(c) = cwd {
         cmd.current_dir(c);
     }
@@ -242,7 +246,9 @@ fn launch_and_capture(
         .spawn()
         .map_err(|e| CaptureError::Target(format!("could not start {program}: {e}")))?;
     let pid = child.id();
-    progress(&format!("started {program} (pid {pid}); waiting for the prism agent"));
+    progress(&format!(
+        "started {program} (pid {pid}); waiting for the prism agent"
+    ));
     let found = discovery::wait_for_discovery(pid, Duration::from_secs(10), cancel, &mut || {
         matches!(child.try_wait(), Ok(None))
     });

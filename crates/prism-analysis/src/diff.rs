@@ -81,7 +81,10 @@ pub enum DiffError {
         .base.join(", "),
         .head.join(", ")
     )]
-    NoCommonSampleType { base: Vec<String>, head: Vec<String> },
+    NoCommonSampleType {
+        base: Vec<String>,
+        head: Vec<String>,
+    },
 }
 
 /// Picks the sample type indices `(base, head)` to compare. Types match on
@@ -259,7 +262,11 @@ pub fn diff_flame(
     for_each_sample(head.profile, head.sample_type, filter, |funcs, v| {
         arena.insert(funcs.iter().map(|f| hmap[f.0 as usize]), v, Side::Head)
     });
-    if let Some(r) = ratio(normalize, arena.nodes[0].base_total, arena.nodes[0].head_total) {
+    if let Some(r) = ratio(
+        normalize,
+        arena.nodes[0].base_total,
+        arena.nodes[0].head_total,
+    ) {
         for n in &mut arena.nodes {
             n.base_self = scale(n.base_self, r);
             n.base_total = scale(n.base_total, r);
@@ -268,12 +275,7 @@ pub fn diff_flame(
     into_diff(arena, &keys, min_fraction, max_depth)
 }
 
-fn into_diff(
-    arena: DArena,
-    keys: &Keys,
-    min_fraction: f64,
-    max_depth: Option<usize>,
-) -> DiffNode {
+fn into_diff(arena: DArena, keys: &Keys, min_fraction: f64, max_depth: Option<usize>) -> DiffNode {
     let nodes = &arena.nodes;
     let n = nodes.len();
     let mag = |i: usize| nodes[i].base_total.max(nodes[i].head_total);
@@ -323,9 +325,17 @@ fn into_diff(
         built[slot[i] as usize] = Some(DiffNode {
             name,
             file,
-            base_self: if folded { node.base_total } else { node.base_self },
+            base_self: if folded {
+                node.base_total
+            } else {
+                node.base_self
+            },
             base_total: node.base_total,
-            head_self: if folded { node.head_total } else { node.head_self },
+            head_self: if folded {
+                node.head_total
+            } else {
+                node.head_self
+            },
             head_total: node.head_total,
             children,
         });
@@ -416,7 +426,11 @@ pub fn diff_top(
         b.delta_self
             .unsigned_abs()
             .cmp(&a.delta_self.unsigned_abs())
-            .then_with(|| b.delta_total.unsigned_abs().cmp(&a.delta_total.unsigned_abs()))
+            .then_with(|| {
+                b.delta_total
+                    .unsigned_abs()
+                    .cmp(&a.delta_total.unsigned_abs())
+            })
             .then_with(|| a.name.cmp(&b.name))
             .then_with(|| a.file.cmp(&b.file))
     });

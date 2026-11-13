@@ -307,7 +307,11 @@ impl Arena {
                 func_id,
                 name,
                 file,
-                self_value: if truncated { node.total } else { node.self_value },
+                self_value: if truncated {
+                    node.total
+                } else {
+                    node.self_value
+                },
                 total: node.total,
                 truncated,
                 children,

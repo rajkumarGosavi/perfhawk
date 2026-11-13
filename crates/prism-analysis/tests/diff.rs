@@ -58,7 +58,11 @@ fn walk(n: &DiffNode, f: &mut impl FnMut(&DiffNode)) {
 
 #[test]
 fn diff_identical_is_zero() {
-    let p = build(&[(&["main", "a", "b"], 3), (&["main", "c"], 5), (&["main", "a"], 2)]);
+    let p = build(&[
+        (&["main", "a", "b"], 3),
+        (&["main", "c"], 5),
+        (&["main", "a"], 2),
+    ]);
     let rows = diff_top(inp(&p), inp(&p), &none(), DiffNormalize::None, 100);
     assert!(!rows.is_empty());
     for r in &rows {
@@ -81,7 +85,14 @@ fn diff_detects_regression() {
     assert_eq!(rows[0].name, "b");
     assert_eq!(rows[0].delta_self, 10);
     assert_eq!(rows[0].delta_total, 10);
-    let t = diff_flame(inp(&base), inp(&head), &none(), DiffNormalize::None, 0.0, None);
+    let t = diff_flame(
+        inp(&base),
+        inp(&head),
+        &none(),
+        DiffNormalize::None,
+        0.0,
+        None,
+    );
     assert_eq!((t.base_total, t.head_total), (10, 20));
 }
 
@@ -90,7 +101,14 @@ fn diff_merges_by_name_not_id() {
     let base = build(&[(&["main", "a"], 5), (&["main", "b"], 5)]);
     // Different interning order gives different FuncIds.
     let head = build(&[(&["main", "b"], 5), (&["main", "a"], 5)]);
-    let t = diff_flame(inp(&base), inp(&head), &none(), DiffNormalize::None, 0.0, None);
+    let t = diff_flame(
+        inp(&base),
+        inp(&head),
+        &none(),
+        DiffNormalize::None,
+        0.0,
+        None,
+    );
     let mut count = 0;
     walk(&t, &mut |n| {
         count += 1;
@@ -106,7 +124,14 @@ fn diff_function_only_in_head() {
     let rows = diff_top(inp(&base), inp(&head), &none(), DiffNormalize::None, 10);
     let new = rows.iter().find(|r| r.name == "new").unwrap();
     assert_eq!((new.base_self, new.head_self, new.delta_self), (0, 3, 3));
-    let t = diff_flame(inp(&base), inp(&head), &none(), DiffNormalize::None, 0.0, None);
+    let t = diff_flame(
+        inp(&base),
+        inp(&head),
+        &none(),
+        DiffNormalize::None,
+        0.0,
+        None,
+    );
     let main = &t.children[0];
     let n = main.children.iter().find(|c| c.name == "new").unwrap();
     assert_eq!((n.base_total, n.head_total), (0, 3));
@@ -116,14 +141,28 @@ fn diff_function_only_in_head() {
 fn normalize_total_scales_base() {
     let base = build(&[(&["main", "a"], 4), (&["main", "b"], 6)]);
     let head = build(&[(&["main", "a"], 8), (&["main", "b"], 12)]);
-    let t = diff_flame(inp(&base), inp(&head), &none(), DiffNormalize::Total, 0.0, None);
+    let t = diff_flame(
+        inp(&base),
+        inp(&head),
+        &none(),
+        DiffNormalize::Total,
+        0.0,
+        None,
+    );
     assert_eq!((t.base_total, t.head_total), (20, 20));
     let rows = diff_top(inp(&base), inp(&head), &none(), DiffNormalize::Total, 10);
     for r in &rows {
         assert_eq!(r.delta_self, 0, "{}", r.name);
     }
     let empty = build(&[]);
-    let t = diff_flame(inp(&empty), inp(&head), &none(), DiffNormalize::Total, 0.0, None);
+    let t = diff_flame(
+        inp(&empty),
+        inp(&head),
+        &none(),
+        DiffNormalize::Total,
+        0.0,
+        None,
+    );
     assert_eq!((t.base_total, t.head_total), (0, 20));
 }
 
@@ -164,7 +203,10 @@ fn preferred_sample_type_wins() {
         b.finish()
     };
     let (a, b) = (mk([1, 2]), mk([3, 4]));
-    assert_eq!(match_sample_type(&a, &b, Some("alloc_space")).unwrap(), (1, 1));
+    assert_eq!(
+        match_sample_type(&a, &b, Some("alloc_space")).unwrap(),
+        (1, 1)
+    );
     assert_eq!(match_sample_type(&a, &b, None).unwrap(), (0, 0));
     // unknown preferred falls back to default
     assert_eq!(match_sample_type(&a, &b, Some("nope")).unwrap(), (0, 0));
@@ -179,11 +221,25 @@ fn deep_diff_serializes() {
     let refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
     let base = build(&[(&refs, 1)]);
     let head = build(&[(&refs, 2)]);
-    let t = diff_flame(inp(&base), inp(&head), &none(), DiffNormalize::None, 0.0, None);
+    let t = diff_flame(
+        inp(&base),
+        inp(&head),
+        &none(),
+        DiffNormalize::None,
+        0.0,
+        None,
+    );
     let json = serde_json::to_string(&t).unwrap();
     assert!(json.contains("\"baseTotal\":1") && json.contains("\"headTotal\":2"));
     drop(t);
-    let capped = diff_flame(inp(&base), inp(&head), &none(), DiffNormalize::None, 0.0, Some(3));
+    let capped = diff_flame(
+        inp(&base),
+        inp(&head),
+        &none(),
+        DiffNormalize::None,
+        0.0,
+        Some(3),
+    );
     assert_eq!(capped.children[0].children[0].children[0].children.len(), 0);
     assert_eq!(capped.children[0].children[0].children[0].head_self, 2);
 }

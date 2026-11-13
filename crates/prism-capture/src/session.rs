@@ -39,7 +39,10 @@ pub fn record(
     let caps = provider.capabilities(&rt);
 
     let kinds: Vec<ProfileKind> = if req.plan.kinds.is_empty() {
-        caps.iter().filter(|c| c.available).map(|c| c.kind).collect()
+        caps.iter()
+            .filter(|c| c.available)
+            .map(|c| c.kind)
+            .collect()
     } else {
         for k in &req.plan.kinds {
             match caps.iter().find(|c| c.kind == *k) {
@@ -47,10 +50,9 @@ pub fn record(
                 Some(c) => {
                     return Err(CaptureError::Unsupported {
                         kind: *k,
-                        reason: c
-                            .note
-                            .clone()
-                            .unwrap_or_else(|| format!("not supported by the {} provider", rt.provider)),
+                        reason: c.note.clone().unwrap_or_else(|| {
+                            format!("not supported by the {} provider", rt.provider)
+                        }),
                     })
                 }
                 None => {

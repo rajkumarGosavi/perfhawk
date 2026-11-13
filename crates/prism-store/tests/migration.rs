@@ -76,7 +76,10 @@ fn session_lifecycle() {
         )
         .unwrap();
     assert_eq!(s.id.len(), 32);
-    assert!(s.id.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+    assert!(s
+        .id
+        .chars()
+        .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
     assert_eq!(s.status, SessionStatus::Running);
     for b in [CPU, HEAP] {
         store

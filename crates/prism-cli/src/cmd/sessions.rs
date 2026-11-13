@@ -39,7 +39,9 @@ pub fn run(store: &Store, json: bool) -> Result<(), String> {
             s.name.clone(),
             kind_str(&s.status),
             prism_store::format_utc_minute(s.started_at_unix_ms),
-            s.duration_ms.map(format_duration_ms).unwrap_or_else(|| "-".into()),
+            s.duration_ms
+                .map(format_duration_ms)
+                .unwrap_or_else(|| "-".into()),
             s.profile_ids.len().to_string(),
             target_text(s),
         ]);

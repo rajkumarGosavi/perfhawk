@@ -18,11 +18,21 @@ fn fake_helper() -> &'static PathBuf {
         let exe = std::env::current_exe().unwrap();
         let profile_dir = exe.parent().unwrap().parent().unwrap().to_path_buf();
         let mut cmd = std::process::Command::new(env!("CARGO"));
-        cmd.args(["build", "-q", "-p", "prism-capture", "--bin", "fake-dotnet-helper"]);
+        cmd.args([
+            "build",
+            "-q",
+            "-p",
+            "prism-capture",
+            "--bin",
+            "fake-dotnet-helper",
+        ]);
         if profile_dir.ends_with("release") {
             cmd.arg("--release");
         }
-        assert!(cmd.status().unwrap().success(), "building fake-dotnet-helper");
+        assert!(
+            cmd.status().unwrap().success(),
+            "building fake-dotnet-helper"
+        );
         let name = if cfg!(windows) {
             "fake-dotnet-helper.exe"
         } else {
@@ -73,14 +83,24 @@ fn standard_script(end: &str, extra: &[&str]) -> Vec<String> {
         art("memory", "go-heap.pb.gz"),
     ];
     v.extend(extra.iter().map(|s| s.to_string()));
-    v.push(format!(r#"{{"for":"collect","type":"done","end":"{end}"}}"#));
+    v.push(format!(
+        r#"{{"for":"collect","type":"done","end":"{end}"}}"#
+    ));
     v
 }
 
 fn record_ok(home: &Path, tmp: &Path) {
     let s = script(tmp, &standard_script("complete", &[]));
     fake_prism(home, &s)
-        .args(["record", "--pid", "77", "--kinds", "cpu,memory", "--duration", "1s"])
+        .args([
+            "record",
+            "--pid",
+            "77",
+            "--kinds",
+            "cpu,memory",
+            "--duration",
+            "1s",
+        ])
         .assert()
         .success();
 }
@@ -123,12 +143,23 @@ fn record_with_fake_dotnet_prints_summary() {
     let tmp = tempfile::tempdir().unwrap();
     let s = script(tmp.path(), &standard_script("complete", &[]));
     fake_prism(home.path(), &s)
-        .args(["record", "--pid", "77", "--kinds", "cpu,memory", "--duration", "1s"])
+        .args([
+            "record",
+            "--pid",
+            "77",
+            "--kinds",
+            "cpu,memory",
+            "--duration",
+            "1s",
+        ])
         .assert()
         .success()
-        .stderr(predicate::str::contains("[dotnet] capturing cpu, memory for 1s (pid 77)"))
+        .stderr(predicate::str::contains(
+            "[dotnet] capturing cpu, memory for 1s (pid 77)",
+        ))
         .stdout(
-            predicate::str::is_match(r"session [0-9a-f]{12}  dotnet-77  complete  \d+\.\ds").unwrap(),
+            predicate::str::is_match(r"session [0-9a-f]{12}  dotnet-77  complete  \d+\.\ds")
+                .unwrap(),
         )
         .stdout(predicate::str::contains("FIDELITY"))
         .stdout(predicate::str::is_match(r"cpu\s+approximate").unwrap())
@@ -156,7 +187,10 @@ fn record_warnings_go_to_stderr() {
     let tmp = tempfile::tempdir().unwrap();
     let s = script(
         tmp.path(),
-        &standard_script("complete", &[r#"{"for":"collect","type":"warning","message":"slow symbols"}"#]),
+        &standard_script(
+            "complete",
+            &[r#"{"for":"collect","type":"warning","message":"slow symbols"}"#],
+        ),
     );
     fake_prism(home.path(), &s)
         .args(["record", "--pid", "77", "--duration", "1s"])
@@ -175,7 +209,8 @@ fn record_capture_error_exit_1() {
             HELLO.to_string(),
             LIST.to_string(),
             LIST_DONE.to_string(),
-            r#"{"for":"collect","type":"error","code":"permission","message":"denied"}"#.to_string(),
+            r#"{"for":"collect","type":"error","code":"permission","message":"denied"}"#
+                .to_string(),
         ],
     );
     fake_prism(home.path(), &s)
@@ -191,7 +226,15 @@ fn record_unsupported_kind_exit_1() {
     let tmp = tempfile::tempdir().unwrap();
     let s = script(tmp.path(), &standard_script("complete", &[]));
     fake_prism(home.path(), &s)
-        .args(["record", "--pid", "77", "--kinds", "blocking", "--duration", "1s"])
+        .args([
+            "record",
+            "--pid",
+            "77",
+            "--kinds",
+            "blocking",
+            "--duration",
+            "1s",
+        ])
         .assert()
         .code(1)
         .stderr(predicate::str::contains("blocking").and(predicate::str::contains("Phase 1")));
@@ -232,11 +275,18 @@ fn ls_has_session_column_and_show_has_fidelity() {
     let out = prism(home.path()).arg("ls").output().unwrap();
     let text = String::from_utf8(out.stdout).unwrap();
     assert!(text.lines().next().unwrap().contains("SESSION"), "{text}");
-    let sess = prism(home.path()).args(["sessions", "--json"]).output().unwrap();
+    let sess = prism(home.path())
+        .args(["sessions", "--json"])
+        .output()
+        .unwrap();
     let v: serde_json::Value = serde_json::from_slice(&sess.stdout).unwrap();
     let short = v[0]["short_id"].as_str().unwrap().to_string();
     assert!(text.contains(&short), "{text}");
-    let with_dash = text.lines().skip(1).filter(|l| l.contains("go-mutex")).count();
+    let with_dash = text
+        .lines()
+        .skip(1)
+        .filter(|l| l.contains("go-mutex"))
+        .count();
     assert_eq!(with_dash, 1);
     prism(home.path())
         .args(["show", "dotnet-77-cpu"])
@@ -257,7 +307,11 @@ fn diff_identical_zero_deltas() {
         .args(["diff", "last", "last", "--top", "5"])
         .output()
         .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let text = String::from_utf8(out.stdout).unwrap();
     assert!(text.starts_with("base: go-cpu"), "{text}");
     assert!(text.contains("head: go-cpu"), "{text}");
@@ -270,19 +324,29 @@ fn diff_identical_zero_deltas() {
 fn diff_incompatible_errors() {
     let home = tempfile::tempdir().unwrap();
     for f in ["go-cpu.pb.gz", "go-heap.pb.gz"] {
-        prism(home.path()).arg("import").arg(fixture(f)).assert().success();
+        prism(home.path())
+            .arg("import")
+            .arg(fixture(f))
+            .assert()
+            .success();
     }
     prism(home.path())
         .args(["diff", "go-cpu", "go-heap"])
         .assert()
         .code(1)
-        .stderr(predicate::str::contains("error: profiles share no sample type (base: "));
+        .stderr(predicate::str::contains(
+            "error: profiles share no sample type (base: ",
+        ));
 }
 
 #[test]
 fn diff_unknown_sample_type_errors() {
     let home = tempfile::tempdir().unwrap();
-    prism(home.path()).arg("import").arg(fixture("go-cpu.pb.gz")).assert().success();
+    prism(home.path())
+        .arg("import")
+        .arg(fixture("go-cpu.pb.gz"))
+        .assert()
+        .success();
     prism(home.path())
         .args(["diff", "last", "last", "--st", "nope"])
         .assert()
@@ -295,7 +359,11 @@ fn rm_profile_and_session() {
     let home = tempfile::tempdir().unwrap();
     let tmp = tempfile::tempdir().unwrap();
     record_ok(home.path(), tmp.path());
-    prism(home.path()).arg("import").arg(fixture("go-mutex.pb.gz")).assert().success();
+    prism(home.path())
+        .arg("import")
+        .arg(fixture("go-mutex.pb.gz"))
+        .assert()
+        .success();
     // profile removal: unknown ref fails but the known one is still removed
     prism(home.path())
         .args(["rm", "go-mutex", "nope-ref"])
@@ -310,7 +378,11 @@ fn rm_profile_and_session() {
         .stdout(predicate::str::is_match(r"removed [0-9a-f]{12} dotnet-77").unwrap());
     let out = prism(home.path()).arg("ls").output().unwrap();
     let text = String::from_utf8(out.stdout).unwrap();
-    assert_eq!(text.lines().count(), 1, "only the header should remain: {text}");
+    assert_eq!(
+        text.lines().count(),
+        1,
+        "only the header should remain: {text}"
+    );
     prism(home.path())
         .args(["sessions", "--json"])
         .assert()
@@ -327,7 +399,9 @@ fn targets_without_helper_warns() {
         .assert()
         .success()
         .stdout(predicate::str::contains("RUNTIME"))
-        .stderr(predicate::str::contains("warning: ").and(predicate::str::contains("PRISM_DOTNET")));
+        .stderr(
+            predicate::str::contains("warning: ").and(predicate::str::contains("PRISM_DOTNET")),
+        );
 }
 
 #[test]
@@ -340,9 +414,16 @@ fn targets_lists_dotnet_processes() {
         .assert()
         .success()
         .stdout(predicate::str::is_match(r"dotnet\s+77\s+8\.0\.5").unwrap());
-    let out = fake_prism(home.path(), &s).args(["targets", "--json"]).output().unwrap();
+    let out = fake_prism(home.path(), &s)
+        .args(["targets", "--json"])
+        .output()
+        .unwrap();
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert!(v.as_array().unwrap().iter().any(|t| t["runtime"] == "dotnet" && t["pid"] == 77));
+    assert!(v
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["runtime"] == "dotnet" && t["pid"] == 77));
 }
 
 #[test]
@@ -406,6 +487,11 @@ fn record_ctrl_c_exit_130() {
         .status()
         .unwrap();
     let out = child.wait_with_output().unwrap();
-    assert_eq!(out.status.code(), Some(130), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        out.status.code(),
+        Some(130),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(String::from_utf8_lossy(&out.stdout).contains("cancelled"));
 }

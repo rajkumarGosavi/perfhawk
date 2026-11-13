@@ -21,7 +21,10 @@ fn main() {
         .ok()
         .and_then(|p| std::fs::read_to_string(p).ok());
     let Some(script) = script else {
-        let _ = writeln!(out, r#"{{"type":"hello","protocol":1,"helper_version":"fake"}}"#);
+        let _ = writeln!(
+            out,
+            r#"{{"type":"hello","protocol":1,"helper_version":"fake"}}"#
+        );
         let _ = writeln!(out, r#"{{"type":"done","end":"complete"}}"#);
         return;
     };

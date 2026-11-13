@@ -187,7 +187,11 @@ pub(crate) fn capture_http(
                 pending.remove(&a.kind);
                 artifacts.insert(a.kind, a);
             }
-            Ok(Msg::Failed { kind, gone: g, text }) => {
+            Ok(Msg::Failed {
+                kind,
+                gone: g,
+                text,
+            }) => {
                 pending.remove(&kind);
                 gone |= g;
                 warnings.push(format!("{kind}: {text}"));

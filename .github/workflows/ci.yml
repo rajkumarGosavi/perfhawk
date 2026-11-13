@@ -26,6 +26,33 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.22.x
+          cache-dependency-path: agents/go/go.sum
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Go agent
+        working-directory: agents/go
+        run: |
+          go vet ./...
+          go test ./...
+      - name: .NET helper
+        run: dotnet test helpers/prism-dotnet/tests
+      - name: Build helper and demo
+        run: |
+          dotnet publish helpers/prism-dotnet -c Release -o target/helper
+          dotnet build examples/dotnet-demo -c Release
+      - name: End-to-end capture (Go and .NET)
+        shell: bash
+        env:
+          PRISM_E2E: "1"
+        run: |
+          # Prism and the target must agree on TMPDIR (Linux/macOS diagnostics sockets).
+          unset TMPDIR
+          export PRISM_DOTNET="$GITHUB_WORKSPACE/target/helper/prism-dotnet.dll"
+          cargo test -p prism-capture -- --include-ignored --test-threads=1
       - name: cargo deny
         if: matrix.os == 'ubuntu-latest'
         uses: EmbarkStudios/cargo-deny-action@v2

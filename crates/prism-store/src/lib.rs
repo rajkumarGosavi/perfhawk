@@ -265,7 +265,8 @@ const V1_DDL: &str = "CREATE TABLE IF NOT EXISTS profiles (
     tags TEXT NOT NULL
 );";
 
-const V2_MIGRATION: &str = "ALTER TABLE profiles ADD COLUMN fidelity TEXT NOT NULL DEFAULT 'unknown';
+const V2_MIGRATION: &str =
+    "ALTER TABLE profiles ADD COLUMN fidelity TEXT NOT NULL DEFAULT 'unknown';
 ALTER TABLE profiles ADD COLUMN session_id TEXT NULL;
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY,
@@ -615,7 +616,11 @@ impl Store {
     pub fn resolve_session(&self, reference: &str) -> Result<SessionRecord, StoreError> {
         let not_found = || StoreError::NotFound(reference.to_string());
         if reference == "last" {
-            return self.list_sessions()?.into_iter().next().ok_or_else(not_found);
+            return self
+                .list_sessions()?
+                .into_iter()
+                .next()
+                .ok_or_else(not_found);
         }
         if let Some(s) = self.get_session(reference)? {
             return Ok(s);

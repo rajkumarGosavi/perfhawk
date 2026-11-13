@@ -81,8 +81,7 @@ fn mock(routes: Vec<(&str, Route)>) -> Mock {
                     if r.delay_by_seconds {
                         std::thread::sleep(Duration::from_secs(secs));
                     }
-                    let resp = tiny_http::Response::from_data(r.body)
-                        .with_status_code(r.status);
+                    let resp = tiny_http::Response::from_data(r.body).with_status_code(r.status);
                     let _ = req.respond(resp);
                 }
                 None => {
@@ -120,7 +119,7 @@ fn detect_url(m: &Mock) -> (GoProvider, RuntimeInfo) {
     (p, rt)
 }
 
-fn kind_of<'a>(o: &'a CaptureOutcome, k: ProfileKind) -> &'a Artifact {
+fn kind_of(o: &CaptureOutcome, k: ProfileKind) -> &Artifact {
     o.artifacts
         .iter()
         .find(|a| a.kind == k)
@@ -156,7 +155,11 @@ fn detect_plain_pprof_marks_wall_unavailable() {
     assert!(wall.note.as_deref().unwrap().contains("prism agent"));
     let lock = caps.iter().find(|c| c.kind == ProfileKind::Lock).unwrap();
     assert!(lock.available);
-    assert!(lock.note.as_deref().unwrap().contains("SetMutexProfileFraction"));
+    assert!(lock
+        .note
+        .as_deref()
+        .unwrap()
+        .contains("SetMutexProfileFraction"));
 }
 
 #[test]
@@ -197,8 +200,14 @@ fn capture_all_kinds_concurrently() {
     assert_eq!(out.artifacts.len(), 6);
     assert_eq!(kind_of(&out, ProfileKind::Wall).fidelity, Fidelity::Derived);
     let hits = m.hits.lock().unwrap().clone();
-    assert!(hits.contains(&"/debug/pprof/profile?seconds=2".to_string()), "{hits:?}");
-    assert!(hits.contains(&"/debug/prism/wall?seconds=2".to_string()), "{hits:?}");
+    assert!(
+        hits.contains(&"/debug/pprof/profile?seconds=2".to_string()),
+        "{hits:?}"
+    );
+    assert!(
+        hits.contains(&"/debug/prism/wall?seconds=2".to_string()),
+        "{hits:?}"
+    );
     assert!(
         hits.contains(&"/debug/prism/contention?seconds=2&kind=mutex".to_string()),
         "{hits:?}"
@@ -208,7 +217,10 @@ fn capture_all_kinds_concurrently() {
         "{hits:?}"
     );
     assert!(hits.contains(&"/debug/pprof/heap".to_string()), "{hits:?}");
-    assert!(hits.contains(&"/debug/pprof/goroutine".to_string()), "{hits:?}");
+    assert!(
+        hits.contains(&"/debug/pprof/goroutine".to_string()),
+        "{hits:?}"
+    );
 }
 
 #[test]
@@ -230,7 +242,10 @@ fn plain_pprof_uses_stock_endpoints() {
         .unwrap();
     assert_eq!(out.artifacts.len(), 2);
     let hits = m.hits.lock().unwrap().clone();
-    assert!(hits.contains(&"/debug/pprof/mutex?seconds=1".to_string()), "{hits:?}");
+    assert!(
+        hits.contains(&"/debug/pprof/mutex?seconds=1".to_string()),
+        "{hits:?}"
+    );
 }
 
 #[test]
@@ -314,7 +329,11 @@ fn partial_data_kept_when_target_dies() {
         .unwrap();
     // cpu endpoint 404s => warning, memory still delivered
     assert!(out.artifacts.iter().any(|a| a.kind == ProfileKind::Memory));
-    assert!(out.warnings.iter().any(|w| w.contains("cpu")), "{:?}", out.warnings);
+    assert!(
+        out.warnings.iter().any(|w| w.contains("cpu")),
+        "{:?}",
+        out.warnings
+    );
 }
 
 #[test]
@@ -337,7 +356,11 @@ fn cancel_returns_partial() {
             &|_| {},
         )
         .unwrap();
-    assert!(start.elapsed() < Duration::from_secs(10), "{:?}", start.elapsed());
+    assert!(
+        start.elapsed() < Duration::from_secs(10),
+        "{:?}",
+        start.elapsed()
+    );
     assert_eq!(out.end, CaptureEnd::Cancelled);
     // memory is snapshotted immediately on cancel; cpu never finished
     assert!(out.artifacts.iter().any(|a| a.kind == ProfileKind::Memory));
@@ -353,9 +376,7 @@ fn discovery_stale_file_ignored() {
     drop(l);
     std::fs::write(
         dir.path().join("4242.json"),
-        format!(
-            r#"{{"pid":4242,"addr":"{addr}","go_version":"go1.22.0","protocol":1}}"#
-        ),
+        format!(r#"{{"pid":4242,"addr":"{addr}","go_version":"go1.22.0","protocol":1}}"#),
     )
     .unwrap();
     assert!(discovery::discover_in(dir.path(), 4242).is_none());
@@ -491,7 +512,10 @@ fn go_attach_by_pid_via_discovery() {
         .capture(
             &rt,
             &Target::Pid(pid),
-            &plan(vec![ProfileKind::Cpu, ProfileKind::Wall, ProfileKind::Memory], 2),
+            &plan(
+                vec![ProfileKind::Cpu, ProfileKind::Wall, ProfileKind::Memory],
+                2,
+            ),
             &CancelToken::new(),
             &|_| {},
         )

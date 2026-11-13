@@ -9,7 +9,7 @@ use axum::{
 };
 use prism_analysis::{
     diff_flame, diff_top, flame_with, inverted_flame_with, match_sample_type, sandwich, top,
-    DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow, FlameOptions, Filter, TopSort,
+    DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow, Filter, FlameOptions, TopSort,
 };
 use prism_model::{FuncId, Profile, ProfileKind};
 use prism_store::{ImportOptions, ProfileRecord, SampleTypeInfo, StoreError};
@@ -106,9 +106,15 @@ pub fn not_found_response() -> Response {
 pub fn routes() -> Router<St> {
     Router::new()
         .route("/api/profiles", get(list).post(upload))
-        .route("/api/profiles/{reference}", get(get_one).delete(delete_profile))
+        .route(
+            "/api/profiles/{reference}",
+            get(get_one).delete(delete_profile),
+        )
         .route("/api/sessions", get(list_sessions))
-        .route("/api/sessions/{reference}", get(get_session).delete(delete_session))
+        .route(
+            "/api/sessions/{reference}",
+            get(get_session).delete(delete_session),
+        )
         .route("/api/diff", get(diff_h))
         .route("/api/profiles/{reference}/flame", get(flame_h))
         .route("/api/profiles/{reference}/top", get(top_h))
@@ -261,7 +267,9 @@ const MAX_DEPTH: usize = 10_000;
 fn check_depth(depth: Option<usize>) -> ApiResult<usize> {
     let d = depth.unwrap_or(DEFAULT_DEPTH);
     if !(1..=MAX_DEPTH).contains(&d) {
-        return Err(ApiError::bad(format!("depth must be within 1..={MAX_DEPTH}")));
+        return Err(ApiError::bad(format!(
+            "depth must be within 1..={MAX_DEPTH}"
+        )));
     }
     Ok(d)
 }
