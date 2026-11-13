@@ -3,7 +3,9 @@ import {
   ApiError, deleteSession, listProfiles, listSessions, type ProfileRecord, type SessionRecord,
 } from '../api'
 import { formatValue } from '../format'
+import type { Range } from '../time/range'
 import { FidelityBadge } from './FidelityBadge'
+import { SessionTimeline } from './SessionTimeline'
 
 function target(s: SessionRecord): string {
   const t = s.target
@@ -19,11 +21,13 @@ export function SessionList({
   version,
   initialExpanded,
   onOpenProfile,
+  onOpenWindow,
   onChanged,
 }: {
   version: number
   initialExpanded?: string
   onOpenProfile: (shortId: string) => void
+  onOpenWindow?: (shortId: string, range: Range) => void
   onChanged: () => void
 }) {
   const [sessions, setSessions] = useState<SessionRecord[] | null>(null)
@@ -146,6 +150,7 @@ export function SessionList({
                             })}
                           </ul>
                         )}
+                        {onOpenWindow && <SessionTimeline sessionId={s.id} onOpenWindow={onOpenWindow} />}
                         {s.warnings.map((w, i) => (
                           <div key={i} className="muted">⚠ {w}</div>
                         ))}

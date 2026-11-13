@@ -356,6 +356,35 @@ child), **Left** collapses (or moves to the parent), **Home/End** jump, and
 **Enter** opens the function in Sandwich. A node shows its first 200 children
 and a "… N more" row; use Focus to narrow.
 
+### Time
+Profiles recorded with time data show a **Time** tab (key `9`). The heat map is
+one column per second (wider for long captures) with the offset inside the second
+down the side; brighter cells are busier, so stalls and periodic bursts stand out
+where an averaged flame graph hides them. **Drag** to select a window, **Shift-drag**
+to select a baseline, **Esc** to clear. By keyboard, focus the map and use Left/Right
+to move and Up/Down to grow or shrink the window (hold Shift to move the baseline);
+the Window start/end boxes below it take exact milliseconds. A selected window
+applies to every other view (flame, top, graph, findings, and so on) and shows as a
+"Window" chip you can clear. With a baseline set, **Diff window vs baseline** opens
+the diff of the two time ranges of the same profile. In the URL: `t0`/`t1` (window)
+and `b0`/`b1` (baseline), in milliseconds from the start of the capture.
+
+Resolution depends on the runtime: Go CPU is captured in 250 ms windows, .NET CPU
+and wall in 20 ms buckets. Go wall-clock and every other kind have no time data,
+and neither do imported files (the Time tab is hidden for them). `prism record`
+captures time data by default where it can; use `--no-timeline` to skip it. If a
+runtime cannot provide it, the session records a warning ("no time resolution for
+wall"). Windows at the heat map's resolution are approximate: Go spreads a window's
+samples evenly across it because pprof does not say when inside a window a sample
+was taken.
+
+### Session timeline
+Expanding a session on the home page shows one sparkline per kind that has time
+data, all on the same time axis. Click (or focus and press Enter) to select the
+window around a spike, then **Open window in <kind>** to see that profile's flame
+limited to the window. Profiles are aligned by their start times, which can differ
+by a few hundred milliseconds between kinds.
+
 ### Call graph
 The Graph view (key `8`) draws the profile as a graph of functions: each box is a
 function (taller and darker means more self cost), each arrow a caller-to-callee
@@ -421,7 +450,7 @@ field.
 
 | Key | Action |
 |---|---|
-| `1` `2` `3` `4` `5` `6` `7` `8` | Summary, Flame, Icicle, Call tree, Top, Both, Groups, Graph |
+| `1` `2` `3` `4` `5` `6` `7` `8` `9` | Summary, Flame, Icicle, Call tree, Top, Both, Groups, Graph, Time |
 | `f` `m` `x` | Focus subtree / Merge / Drop the selected call-tree node |
 | `h` | Toggle hot path |
 | `/` | Focus Search |
@@ -432,7 +461,7 @@ field.
 The URL holds everything: profile, view, sample type, filters, search and the
 selected function. Reloading or bookmarking the page reproduces the exact view.
 A link without a `view` opens the Summary (older links meant Flame; they now
-need `view=flame`, which is written explicitly). `hot=1` turns on the hot path; `tx` holds transforms, `gb` the Groups grouping (`stack` or `site`), and in Diff `layout=side`, `only=regressions|improvements` and `dsort=percent`; `view=graph&gn=N` sets the call-graph node count.
+need `view=flame`, which is written explicitly). `hot=1` turns on the hot path; `tx` holds transforms, `gb` the Groups grouping (`stack` or `site`), and in Diff `layout=side`, `only=regressions|improvements` and `dsort=percent`; `view=graph&gn=N` sets the call-graph node count; `t0`/`t1` and `b0`/`b1` hold the time window and baseline in milliseconds.
 
 ## 6. Filters
 

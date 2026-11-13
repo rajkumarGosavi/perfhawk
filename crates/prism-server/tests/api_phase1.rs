@@ -313,3 +313,69 @@ async fn diff_top_sort_param() {
     assert_eq!(st, 400);
     assert_eq!(v["error"]["code"], "bad_request");
 }
+
+// ---- V5 session timeline ----
+
+fn put_timeline(store: &Store, id: &str, start_ns: i64, bucket_ms: u64, gap: u32) {
+    let n = store.load(id).unwrap().samples.len();
+    store
+        .save_timeline(
+            id,
+            &prism_model::Timeline {
+                bucket_ns: bucket_ms * 1_000_000,
+                start_unix_ns: start_ns,
+                sample_bucket: (0..n as u32).map(|i| i * gap).collect(),
+            },
+        )
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn session_timeline_has_one_series_per_timelined_profile() {
+    let (_d, store, addr) = start().await;
+    let s = session_with(&store, &[CPU, HEAP]);
+    put_timeline(&store, &s.profile_ids[0], 1_700_000_000_000_000_000, 20, 10);
+    put_timeline(&store, &s.profile_ids[1], 1_700_000_000_000_000_000, 20, 5);
+    let (st, v) = get(addr, &format!("/api/sessions/{}/timeline?points=50", s.id)).await;
+    assert_eq!(st, 200, "{v}");
+    assert!(v["durationMs"].as_i64().unwrap() > 0);
+    let series = v["series"].as_array().unwrap();
+    assert_eq!(series.len(), 2);
+    for x in series {
+        assert_eq!(x["values"].as_array().unwrap().len(), 50);
+        assert!(x["profileId"].is_string() && x["shortId"].is_string() && x["kind"].is_string());
+        assert!(x["sampleType"]["name"].is_string() && x["sampleType"]["unit"].is_string());
+        assert!(x["values"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n.as_i64().unwrap() > 0));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn session_without_timelines_has_empty_series() {
+    let (_d, store, addr) = start().await;
+    let s = session_with(&store, &[CPU]);
+    let (st, v) = get(addr, &format!("/api/sessions/{}/timeline", s.id)).await;
+    assert_eq!(st, 200);
+    assert_eq!(v["durationMs"], 0);
+    assert_eq!(v["series"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn session_timeline_points_are_clamped_and_unknown_session_404() {
+    let (_d, store, addr) = start().await;
+    let s = session_with(&store, &[CPU]);
+    put_timeline(&store, &s.profile_ids[0], 1_700_000_000_000_000_000, 20, 10);
+    let (_, v) = get(addr, &format!("/api/sessions/{}/timeline?points=5", s.id)).await;
+    assert_eq!(v["series"][0]["values"].as_array().unwrap().len(), 20);
+    let (_, v) = get(
+        addr,
+        &format!("/api/sessions/{}/timeline?points=99999", s.id),
+    )
+    .await;
+    assert_eq!(v["series"][0]["values"].as_array().unwrap().len(), 600);
+    let (st, _) = get(addr, "/api/sessions/nope/timeline").await;
+    assert_eq!(st, 404);
+}

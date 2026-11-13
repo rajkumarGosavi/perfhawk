@@ -125,6 +125,10 @@ pub fn routes() -> Router<St> {
             get(get_session).delete(delete_session),
         )
         .route("/api/sessions/{reference}/pivot", get(pivot_h))
+        .route(
+            "/api/sessions/{reference}/timeline",
+            get(session_timeline_h),
+        )
         .route("/api/diff", get(diff_h))
         .route("/api/profiles/{reference}/flame", get(flame_h))
         .route("/api/profiles/{reference}/top", get(top_h))
@@ -828,4 +832,111 @@ async fn pivot_h(
     })
     .await?;
     Ok(Json(rows).into_response())
+}
+
+#[derive(Deserialize, Default)]
+struct SessionTimelineQuery {
+    points: Option<usize>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TimelineSeries {
+    profile_id: String,
+    short_id: String,
+    kind: ProfileKind,
+    sample_type: SampleTypeOut,
+    values: Vec<i64>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionTimelineOut {
+    duration_ms: i64,
+    series: Vec<TimelineSeries>,
+}
+
+/// One sparkline per session profile that has a timeline, resampled to `points`
+/// equal slices of the session window (profiles are aligned by their start times).
+async fn session_timeline_h(
+    State(s): State<St>,
+    Path(r): Path<String>,
+    Q(q): Q<SessionTimelineQuery>,
+) -> ApiResult<Response> {
+    let points = q.points.unwrap_or(200).clamp(20, 600);
+    let store = s.store.clone();
+    let out = blocking(move || {
+        let sess = store.resolve_session(&r)?;
+        struct Item {
+            rec: ProfileRecord,
+            t: Timeline,
+            vals: Vec<i64>,
+        }
+        let mut items: Vec<Item> = Vec::new();
+        for id in &sess.profile_ids {
+            let Some(t) = store.load_timeline(id)? else {
+                continue;
+            };
+            let rec = store.resolve(id)?;
+            let p = store.load(id)?;
+            let st = rec.default_sample_type;
+            let vals = (0..p.samples.len()).map(|i| p.value(i, st)).collect();
+            items.push(Item { rec, t, vals });
+        }
+        if items.is_empty() {
+            return Ok(SessionTimelineOut {
+                duration_ms: 0,
+                series: vec![],
+            });
+        }
+        // Window in ns relative to the earliest known start; unknown starts align to it.
+        let origin = items
+            .iter()
+            .filter(|i| i.t.start_unix_ns > 0)
+            .map(|i| i.t.start_unix_ns)
+            .min()
+            .unwrap_or(0);
+        let offset = |t: &Timeline| -> u128 {
+            if t.start_unix_ns > 0 {
+                (t.start_unix_ns - origin).max(0) as u128
+            } else {
+                0
+            }
+        };
+        let span: u128 = items
+            .iter()
+            .map(|i| offset(&i.t) + i.t.bucket_count() as u128 * i.t.bucket_ns as u128)
+            .max()
+            .unwrap_or(0)
+            .max(1);
+        let series = items
+            .into_iter()
+            .map(|i| {
+                let mut values = vec![0i64; points];
+                let off = offset(&i.t);
+                for (k, &b) in i.t.sample_bucket.iter().enumerate() {
+                    let at = off + b as u128 * i.t.bucket_ns as u128;
+                    let idx = ((at * points as u128) / span).min(points as u128 - 1) as usize;
+                    values[idx] = values[idx].saturating_add(i.vals[k]);
+                }
+                let info = i.rec.sample_types.get(i.rec.default_sample_type).cloned();
+                TimelineSeries {
+                    profile_id: i.rec.id.clone(),
+                    short_id: i.rec.short_id.clone(),
+                    kind: i.rec.kind,
+                    sample_type: SampleTypeOut {
+                        name: info.as_ref().map(|x| x.name.clone()).unwrap_or_default(),
+                        unit: info.map(|x| x.unit).unwrap_or_default(),
+                    },
+                    values,
+                }
+            })
+            .collect();
+        Ok(SessionTimelineOut {
+            duration_ms: (span / 1_000_000).min(i64::MAX as u128) as i64,
+            series,
+        })
+    })
+    .await?;
+    Ok(Json(out).into_response())
 }

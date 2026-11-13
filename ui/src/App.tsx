@@ -46,7 +46,11 @@ export default function App() {
         ) : state.profile ? (
           <ProfileView key={state.profile} state={state} navigate={navigate} />
         ) : (
-          <Home session={state.session} onOpen={(id) => navigate({ profile: id }, 'push', true)} />
+          <Home
+            session={state.session}
+            onOpen={(id) => navigate({ profile: id }, 'push', true)}
+            onOpenWindow={(id, r) => navigate({ profile: id, view: 'flame', t0: r.t0, t1: r.t1 }, 'push', true)}
+          />
         )}
       </main>
     </>

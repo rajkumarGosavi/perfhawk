@@ -158,6 +158,15 @@ export type Heatmap = {
   totalBuckets: number
 }
 
+export type TimelineSeries = {
+  profileId: string
+  shortId: string
+  kind: string
+  sampleType: SampleTypeInfo
+  values: number[]
+}
+export type SessionTimeline = { durationMs: number; series: TimelineSeries[] }
+
 export class ApiError extends Error {
   code: string
   constructor(code: string, message: string) {
@@ -222,6 +231,8 @@ export const getGraph = (ref: string, q: AnalysisQuery & { nodes?: number } = {}
   request<CallGraph>(`${p(ref)}/graph${qs(q)}`)
 export const getHeatmap = (ref: string, q: AnalysisQuery & { cols?: number } = {}) =>
   request<Heatmap>(`${p(ref)}/heatmap${qs(q)}`)
+export const getSessionTimeline = (sessionRef: string, points = 200) =>
+  request<SessionTimeline>(`/api/sessions/${encodeURIComponent(sessionRef)}/timeline${qs({ points })}`)
 export const getPivot = (sessionRef: string, name: string) =>
   request<PivotRow[]>(`/api/sessions/${encodeURIComponent(sessionRef)}/pivot${qs({ name })}`)
 export const deleteProfile = (ref: string) => request<void>(p(ref), DELETE_INIT)
