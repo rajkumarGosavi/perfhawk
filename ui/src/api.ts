@@ -133,6 +133,10 @@ export type Finding = {
   action: FindingAction
 }
 
+export type GraphNode = { funcId: number; name: string; file: string; selfValue: number; total: number }
+export type GraphEdge = { from: number; to: number; value: number; elided: boolean }
+export type CallGraph = { nodes: GraphNode[]; edges: GraphEdge[]; hiddenNodes: number; totalValue: number }
+
 export class ApiError extends Error {
   code: string
   constructor(code: string, message: string) {
@@ -193,6 +197,8 @@ export const getGroups = (ref: string, q: AnalysisQuery & { by: 'stack' | 'site'
   request<GroupRow[]>(`${p(ref)}/groups${qs(q)}`)
 export const getFindings = (ref: string, q: AnalysisQuery = {}) =>
   request<Finding[]>(`${p(ref)}/findings${qs(q)}`)
+export const getGraph = (ref: string, q: AnalysisQuery & { nodes?: number } = {}) =>
+  request<CallGraph>(`${p(ref)}/graph${qs(q)}`)
 export const getPivot = (sessionRef: string, name: string) =>
   request<PivotRow[]>(`/api/sessions/${encodeURIComponent(sessionRef)}/pivot${qs({ name })}`)
 export const deleteProfile = (ref: string) => request<void>(p(ref), DELETE_INIT)

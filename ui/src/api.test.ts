@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  ApiError, deleteProfile, deleteSession, getDiffFlame, getDiffTop, getFlame, getFindings, getGroups, getPivot, listSessions,
+  ApiError, deleteProfile, deleteSession, getDiffFlame, getDiffTop, getFlame, getFindings, getGraph, getGroups, getPivot, listSessions,
 } from './api'
 
 function stub(status: number, body?: unknown) {
@@ -97,6 +97,17 @@ describe('findings api', () => {
     await getFindings('p1', { tx: 'rec', st: 1 })
     const u = (f.mock.calls[0] as unknown as [string])[0]
     expect(u).toContain('/api/profiles/p1/findings?')
+    expect(u).toContain('tx=rec')
+  })
+})
+
+describe('graph api', () => {
+  it('getGraph URL includes nodes and tx', async () => {
+    const f = stub(200, {})
+    await getGraph('p1', { nodes: 120, tx: 'rec' })
+    const u = (f.mock.calls[0] as unknown as [string])[0]
+    expect(u).toContain('/api/profiles/p1/graph?')
+    expect(u).toContain('nodes=120')
     expect(u).toContain('tx=rec')
   })
 })

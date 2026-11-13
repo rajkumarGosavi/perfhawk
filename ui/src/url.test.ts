@@ -107,3 +107,18 @@ describe('v2 state', () => {
     expect(s.diffSort).toBeUndefined()
   })
 })
+
+describe('graph state', () => {
+  it('roundtrips view=graph and gn', () => {
+    const s = { profile: 'p', view: 'graph' as const, graphNodes: 120 }
+    const w = writeViewState(s)
+    expect(w).toContain('view=graph')
+    expect(w).toContain('gn=120')
+    expect(readViewState(w)).toEqual(s)
+  })
+  it('ignores out-of-range or malformed gn', () => {
+    for (const bad of ['0', '4', '301', '999', 'x', '']) expect(readViewState(`?gn=${bad}`).graphNodes).toBeUndefined()
+    expect(readViewState('?gn=5').graphNodes).toBe(5)
+    expect(readViewState('?gn=300').graphNodes).toBe(300)
+  })
+})
