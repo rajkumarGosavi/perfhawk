@@ -7,6 +7,7 @@ mod findings;
 mod graph;
 mod groups;
 mod heatmap;
+mod history;
 mod pivot;
 mod sandwich;
 mod top;
@@ -22,6 +23,7 @@ pub use findings::{findings, Evidence, Finding, FindingAction, RuleConfig, Sever
 pub use graph::{call_graph, CallGraph, GraphEdge, GraphNode};
 pub use groups::{groups, GroupBy, GroupRow};
 pub use heatmap::{heatmap, HeatCell, Heatmap};
+pub use history::{history_point, series_key, HistoryValue};
 pub use pivot::function_stats;
 pub use sandwich::{sandwich, Sandwich};
 pub use top::{filtered_total, top, TopRow, TopSort};
