@@ -1,3 +1,4 @@
+pub mod check;
 pub mod diff;
 pub mod import;
 pub mod ls;

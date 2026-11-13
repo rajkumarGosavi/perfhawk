@@ -137,6 +137,32 @@ enum Command {
         #[arg(long, value_name = "RE")]
         hide: Option<String>,
     },
+    /// Fail when a profile regresses against a baseline
+    #[command(
+        after_help = "A function regresses when its self value grows by more than --threshold percent AND its share of the profile grows by at least --min-value percentage points. A function that is new in the profile regresses when it holds at least --min-value points. Improvements never fail the check. Shares are taken from each profile's own total, so runs of different length compare fairly.\n\nExit codes: 0 no regression, 1 regression found, 2 usage or data error (unknown profile, no common sample type, empty baseline, bad option)."
+    )]
+    Check {
+        /// The profile to check
+        head: String,
+        /// The profile to compare against
+        #[arg(long, value_name = "REF")]
+        baseline: String,
+        /// Sample type name (default: the common default)
+        #[arg(long, value_name = "NAME")]
+        sample_type: Option<String>,
+        /// Growth in percent above which a function regresses
+        #[arg(long, default_value = "10", value_parser = non_negative)]
+        threshold: f64,
+        /// Minimum growth of a function's share, in percentage points
+        #[arg(long, default_value = "1.0", value_parser = non_negative)]
+        min_value: f64,
+        /// Regressions to print (all still count)
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        /// Machine-readable output
+        #[arg(long)]
+        json: bool,
+    },
     /// Delete profiles (or whole sessions with --session)
     Rm {
         #[arg(required = true, value_name = "REF")]
@@ -170,6 +196,15 @@ fn parse_kind(s: &str) -> Result<ProfileKind, String> {
     serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|_| {
         format!("invalid kind '{s}' (expected cpu|wall|memory|lock|blocking|block_io|threads)")
     })
+}
+
+fn non_negative(s: &str) -> Result<f64, String> {
+    let v: f64 = s.parse().map_err(|_| format!("'{s}' is not a number"))?;
+    if v.is_finite() && v >= 0.0 {
+        Ok(v)
+    } else {
+        Err(format!("'{s}' must be zero or more"))
+    }
 }
 
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
@@ -360,6 +395,26 @@ async fn main() -> ExitCode {
                 focus,
                 exclude,
                 hide,
+            },
+        )),
+        Command::Check {
+            head,
+            baseline,
+            sample_type,
+            threshold,
+            min_value,
+            limit,
+            json,
+        } => ExitCode::from(cmd::check::run(
+            &store,
+            cmd::check::Args {
+                head,
+                baseline,
+                sample_type,
+                threshold,
+                min_value,
+                limit,
+                json,
             },
         )),
         Command::Rm { refs, session } => ExitCode::from(cmd::rm::run(&store, refs, session)),
