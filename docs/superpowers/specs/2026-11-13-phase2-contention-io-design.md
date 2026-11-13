@@ -4,13 +4,13 @@ Status: draft for approval. Date: 2026-11-13. Roadmap entry: [PLAN.md §7](../..
 
 ## 1. Intent
 
-A developer's Go (or .NET) service is slow and they do not know whether the cause is disk, locks or CPU. Today Prism can capture CPU, wall, memory, lock, blocking and thread profiles per runtime, but it cannot tell the user *which one matters*, has no Block I/O data (the `BlockIo` kind is declared in `prism-model` but nothing produces it), and cannot see what happens outside the runtime (the OS scheduler, the disk).
+A developer's Go (or .NET) service is slow and they do not know whether the cause is disk, locks or CPU. Today Perfhawk can capture CPU, wall, memory, lock, blocking and thread profiles per runtime, but it cannot tell the user *which one matters*, has no Block I/O data (the `BlockIo` kind is declared in `perfhawk-model` but nothing produces it), and cannot see what happens outside the runtime (the OS scheduler, the disk).
 
-Phase 2 closes that gap. After it, `prism doctor` takes about 60 seconds, says what is slow, and prints the exact next command to run. That scenario is the success test, not any single capture feature.
+Phase 2 closes that gap. After it, `perfhawk doctor` takes about 60 seconds, says what is slow, and prints the exact next command to run. That scenario is the success test, not any single capture feature.
 
 ## 2. Goals
 
-- `prism doctor` produces a verdict with evidence, a ready-to-run follow-up command, and short likely-fix hints. It stops there by default; `--follow-up` runs the follow-up capture.
+- `perfhawk doctor` produces a verdict with evidence, a ready-to-run follow-up command, and short likely-fix hints. It stops there by default; `--follow-up` runs the follow-up capture.
 - Block I/O per stack (time and bytes, with the file as the leaf) for Go and .NET on **Windows (ETW)** and **Linux (eBPF)**. macOS is best-effort.
 - Off-CPU time per stack (waiting on I/O, locks, channels, sleep) and scheduler analysis (run-queue delay; container CPU throttling on Linux).
 - The existing timeline and heat map show I/O, off-CPU and scheduler data, aligned to the same session window as the language profiles.
@@ -25,7 +25,7 @@ Phase 2 closes that gap. After it, `prism doctor` takes about 60 seconds, says w
 
 ## 4. Anti-goals (a failure even if it technically works)
 
-- Prism silently elevating privileges, or running a privileged capture the user did not request.
+- Perfhawk silently elevating privileges, or running a privileged capture the user did not request.
 - A Doctor verdict stated with more confidence than the data supports (for example claiming "I/O-bound" from wall-vs-CPU alone, without OS data). Every finding carries a confidence and the fidelity of its evidence.
 - Doctor leaving the user with a verdict and no idea what to do next.
 - OS-level tracing adding noticeable overhead on the target without telling the user the cost first.
@@ -33,9 +33,9 @@ Phase 2 closes that gap. After it, `prism doctor` takes about 60 seconds, says w
 ## 5. Constraints
 
 - Targets: Go 1.22+, .NET 8+. Linux, macOS, Windows as in Phase 1. Apache-2.0 core, permissive-licensed bundled dependencies only.
-- ETW needs administrator; eBPF needs `CAP_BPF`/root and a recent kernel (CO-RE, roughly 5.8+). Prism never self-elevates; it explains and prints the exact elevated command.
+- ETW needs administrator; eBPF needs `CAP_BPF`/root and a recent kernel (CO-RE, roughly 5.8+). Perfhawk never self-elevates; it explains and prints the exact elevated command.
 - The development machine is Windows. The Linux provider cannot be built or tested here; it needs a Linux CI runner (and so a git remote, which does not exist yet).
-- Single static `prism` binary stays the goal; any eBPF programs are embedded in it.
+- Single static `perfhawk` binary stays the goal; any eBPF programs are embedded in it.
 
 ## 6. Approaches considered
 
@@ -58,18 +58,18 @@ Doctor stops at the verdict plus the exact command, and offers `--follow-up` (th
 
 **M2. Doctor v0.**
 - A `SystemProvider` seam (see 7.2) is defined in M1/M2 so M3 and M4 plug in without changing Doctor.
-- `prism doctor [target]`: default 60 s, one session, capturing CPU, wall, lock, blocking and threads through the existing language provider, plus Block I/O/off-CPU if a system provider is available and permitted.
-- Rule engine in `prism-analysis` (pure function over a session's profiles, unit-testable with fixtures). Each rule yields a Finding: id, severity, confidence, evidence (numbers and top stacks), next command, likely-fix hints.
+- `perfhawk doctor [target]`: default 60 s, one session, capturing CPU, wall, lock, blocking and threads through the existing language provider, plus Block I/O/off-CPU if a system provider is available and permitted.
+- Rule engine in `perfhawk-analysis` (pure function over a session's profiles, unit-testable with fixtures). Each rule yields a Finding: id, severity, confidence, evidence (numbers and top stacks), next command, likely-fix hints.
 - Without OS data Doctor can say "off-CPU dominated, likely I/O or waiting" and why it cannot say more, and tells the user how to enable OS tracing.
 - Output: terminal report and `--json`. The UI session page shows the verdict card and a button/deep link to the matching view.
-- `prism doctor --follow-up` runs the first recommended capture after the verdict. `prism doctor --check` reports which kinds are available and what privilege is missing.
+- `perfhawk doctor --follow-up` runs the first recommended capture after the verdict. `perfhawk doctor --check` reports which kinds are available and what privilege is missing.
 
 Initial rules (thresholds are builder-tunable, validated on the demo apps):
 
 | Finding | Evidence | Next command |
 |---|---|---|
-| CPU-bound | CPU samples cover most of wall time; a few stacks dominate | CPU flame / `prism show --view top` |
-| Waiting, cause unknown | wall time much greater than CPU time | `prism record --kind block-io,offcpu` (needs elevation) |
+| CPU-bound | CPU samples cover most of wall time; a few stacks dominate | CPU flame / `perfhawk show --view top` |
+| Waiting, cause unknown | wall time much greater than CPU time | `perfhawk record --kind block-io,offcpu` (needs elevation) |
 | I/O-bound | off-CPU time dominated by Block I/O stacks | Block I/O view, by file |
 | Lock contention | lock/mutex profile has large wait relative to wall | Lock view |
 | Scheduler starved | run-queue delay high, or cgroup throttling | Scheduler view |
@@ -91,12 +91,12 @@ Initial rules (thresholds are builder-tunable, validated on the demo apps):
 
 ### 7.2 System provider seam
 
-`prism-capture` gets a second provider kind beside the language `Provider`: a `SystemProvider` that attaches to a pid (obtained from the language provider's `RuntimeInfo`) and captures `BlockIo`/`OffCpu`/`SchedDelay` for the same window. The session already stores several profiles for one window; the system provider just adds more artifacts. Capability reporting says which kinds are available and the missing privilege, so Doctor and `prism record` can explain instead of failing.
+`perfhawk-capture` gets a second provider kind beside the language `Provider`: a `SystemProvider` that attaches to a pid (obtained from the language provider's `RuntimeInfo`) and captures `BlockIo`/`OffCpu`/`SchedDelay` for the same window. The session already stores several profiles for one window; the system provider just adds more artifacts. Capability reporting says which kinds are available and the missing privilege, so Doctor and `perfhawk record` can explain instead of failing.
 
 ### 7.3 Permissions and overhead
 
 - `--check` and capability notes state the missing privilege and print the exact command to rerun with it (administrator shell on Windows, `sudo` or capabilities on Linux).
-- Before an OS-level capture starts, Prism prints an estimated overhead and the duration cap.
+- Before an OS-level capture starts, Perfhawk prints an estimated overhead and the duration cap.
 - Without privilege, Doctor still runs (language-provider data only) and says what it could not see.
 
 ## 8. Testing
@@ -117,9 +117,9 @@ Rule thresholds; exact kind names and store schema migration; ETW and eBPF event
 - **Doctor maths:** all shares use **thread-seconds** over the window (sum across threads), excluding threads that are parked in the runtime's own idle pools (Go idle Ps, .NET idle thread-pool workers, GC threads reported separately). "CPU-bound" means CPU thread-seconds are a large share of *busy* (non-idle) thread-seconds. Doctor assumes the target is under representative load; if the target is mostly idle it says "target looked idle, rerun under load" instead of a verdict. Doctor does not generate load.
 - **Symbolization bar for M3/M4:** required: Go frames from unstripped binaries, and .NET JIT-compiled methods (via rundown or perf map). Allowed to fall back: ReadyToRun/native frames as `module+offset`, with PDB/DWARF names when available. Out of scope: stripped Go binaries (reported as such). New permissively licensed Rust crates are fine (for example `ferrisetw`, `object`, `gimli`); a Windows-only Rust provider is expected, not a .NET helper.
 - **Linux CI gate:** creating the git remote and a privileged Linux runner (GitHub-hosted runners may not allow eBPF; a self-hosted runner or VM may be needed) is the user's action. M4 is planned as a gated milestone: it may be written against the shared contract but is reported "unverified" until it passes on real Linux.
-- **`--follow-up`:** if the follow-up needs privilege Prism does not have, it refuses and prints the exact elevated command; it never elevates. The follow-up capture creates a new session tagged as a child of the Doctor session, default 30 s.
+- **`--follow-up`:** if the follow-up needs privilege Perfhawk does not have, it refuses and prints the exact elevated command; it never elevates. The follow-up capture creates a new session tagged as a child of the Doctor session, default 30 s.
 - **Overhead estimate:** a static per-provider range plus the duration cap, shown before the capture. No calibration in Phase 2.
-- **Windows data directory:** new homes use `%LOCALAPPDATA%\prism`; an existing `%APPDATA%\prism` keeps being used (no copy), unless the new directory exists too. Changed during planning from "copy on first write".
+- **Windows data directory:** new homes use `%LOCALAPPDATA%\perfhawk`; an existing `%APPDATA%\perfhawk` keeps being used (no copy), unless the new directory exists too. Changed during planning from "copy on first write".
 
 ## 11. Risks
 

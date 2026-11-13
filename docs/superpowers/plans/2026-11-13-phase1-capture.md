@@ -2,14 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `prism record` captures CPU, wall-clock, memory, lock/blocking and threads profiles from live Go and .NET processes on Linux, macOS and Windows, either by attaching or by launching the target. Captures are grouped into sessions. Two profiles can be diffed in the CLI and the UI.
+**Goal:** `perfhawk record` captures CPU, wall-clock, memory, lock/blocking and threads profiles from live Go and .NET processes on Linux, macOS and Windows, either by attaching or by launching the target. Captures are grouped into sessions. Two profiles can be diffed in the CLI and the UI.
 
 **Architecture:**
-- A new `prism-capture` crate defines a `Provider` trait plus the session orchestration. Two providers implement it:
+- A new `perfhawk-capture` crate defines a `Provider` trait plus the session orchestration. Two providers implement it:
   - **Go:** talks HTTP to `net/http/pprof`. A tiny Go agent package adds wall-clock profiling, temporary sampling rates and pid discovery.
-  - **.NET:** drives a bundled C# helper, `prism-dotnet`, over a versioned JSON-lines protocol. The helper uses Microsoft's diagnostics libraries and writes pprof files.
+  - **.NET:** drives a bundled C# helper, `perfhawk-dotnet`, over a versioned JSON-lines protocol. The helper uses Microsoft's diagnostics libraries and writes pprof files.
 - Every capture result is a pprof file imported through the existing Phase 0 pipeline, tagged with a session id and a fidelity.
-- Diff and a flame depth cap are added to `prism-analysis`. The store moves to schema v2. The server, UI and CLI gain sessions, diff and delete.
+- Diff and a flame depth cap are added to `perfhawk-analysis`. The store moves to schema v2. The server, UI and CLI gain sessions, diff and delete.
 
 **Tech Stack:**
 - Rust (existing workspace, plus `ureq` for blocking HTTP).
@@ -24,11 +24,11 @@
 All Phase 0 constraints still apply. See `docs/superpowers/plans/2026-11-13-phase0-foundations.md` § Global Constraints:
 - Apache-2.0 licensing; permissive dependencies only; `cargo deny`.
 - 3-OS CI.
-- One `prism` binary.
+- One `perfhawk` binary.
 - `127.0.0.1`-only server.
 - LF line endings.
 - Iterative tree code.
-- `--home` / `PRISM_HOME`.
+- `--home` / `PERFHAWK_HOME`.
 
 Phase 1 adds the following.
 
@@ -43,7 +43,7 @@ Phase 1 adds the following.
   - Nothing else without a recorded ruling.
 
 **Safety and behaviour**
-- Capture must leave the target as it found it. Any sampling rate prism raises (Go mutex/block rates) is restored when capture ends, including on error or Ctrl-C.
+- Capture must leave the target as it found it. Any sampling rate perfhawk raises (Go mutex/block rates) is restored when capture ends, including on error or Ctrl-C.
 - Record duration: default **30 s**, minimum **1 s**, maximum **10 min**. Format `<n>ms|s|m` (e.g. `500ms`, `30s`, `2m`).
 - Fidelity values follow PLAN.md §0.1 exactly:
 
@@ -59,24 +59,24 @@ Phase 1 adds the following.
 - The kind vocabulary is unchanged. Go capture produces `blocking` from the block profile and `lock` from the mutex profile. .NET produces no `blocking` profile in Phase 1.
 
 **Helper protocol**
-- `prism-dotnet` speaks a JSON-lines protocol on stdout. The first line is `{"type":"hello","protocol":1,"helper_version":"<semver>"}`. Prism refuses any other protocol number and says how to update.
+- `perfhawk-dotnet` speaks a JSON-lines protocol on stdout. The first line is `{"type":"hello","protocol":1,"helper_version":"<semver>"}`. Perfhawk refuses any other protocol number and says how to update.
 - Helper location order:
-  1. `PRISM_DOTNET` environment variable (path to an executable, or to a `.dll` run with `dotnet`).
-  2. The sibling of `std::env::current_exe()` named `prism-dotnet[.exe]`.
+  1. `PERFHAWK_DOTNET` environment variable (path to an executable, or to a `.dll` run with `dotnet`).
+  2. The sibling of `std::env::current_exe()` named `perfhawk-dotnet[.exe]`.
   3. Otherwise, an error that tells the user how to build the helper.
 
 **Go agent discovery**
-- The agent writes `<temp>/prism-agents/<pid>.json` containing `{"pid":N,"addr":"127.0.0.1:PORT","go_version":"...","protocol":1}`. `<temp>` is Go's `os.TempDir()` and Rust's `std::env::temp_dir()`.
-- The agent removes the file on clean exit. Prism ignores stale files whose pid isn't alive or whose address doesn't answer.
+- The agent writes `<temp>/perfhawk-agents/<pid>.json` containing `{"pid":N,"addr":"127.0.0.1:PORT","go_version":"...","protocol":1}`. `<temp>` is Go's `os.TempDir()` and Rust's `std::env::temp_dir()`.
+- The agent removes the file on clean exit. Perfhawk ignores stale files whose pid isn't alive or whose address doesn't answer.
 
-**Exit criteria (PLAN.md §7 Phase 1):** the same `prism record` UX works for Go and .NET on all three OSes, and the §0.1 matrix is green except Block I/O. This is proven by the gated end-to-end tests in Task 12 passing in CI on `ubuntu-latest`, `macos-latest` and `windows-latest`.
+**Exit criteria (PLAN.md §7 Phase 1):** the same `perfhawk record` UX works for Go and .NET on all three OSes, and the §0.1 matrix is green except Block I/O. This is proven by the gated end-to-end tests in Task 12 passing in CI on `ubuntu-latest`, `macos-latest` and `windows-latest`.
 
 ## Review Focus
 
 1. **The target exits mid-capture** (a launched program finishes in 2 s of a 30 s record). The session is stored as `partial` with whatever was captured, and the CLI says so. No hang, no lost data. Tests: Tasks 4, 6 and 8.
-2. **Ctrl-C during `prism record`.** The .NET EventPipe session stops cleanly, Go rates are reverted, partial artifacts are imported, the session is `cancelled`, and the exit code is 130. Tests: Tasks 4 and 9.
+2. **Ctrl-C during `perfhawk record`.** The .NET EventPipe session stops cleanly, Go rates are reverted, partial artifacts are imported, the session is `cancelled`, and the exit code is 130. Tests: Tasks 4 and 9.
 3. **The .NET target isn't reachable** (`DOTNET_EnableDiagnostics=0`, another user, mismatched `TMPDIR` on Linux/macOS, or a pid that isn't .NET). The error names the cause and a fix, never a raw exception. Tests: Tasks 7 and 8.
-4. **A Go target without the agent, with mutex/block rates at zero.** That capture produces an empty profile, which is imported with the warning `mutex profiling is disabled in the target (call runtime.SetMutexProfileFraction or use the prism agent)`. It is never silently empty. Test: Task 6.
+4. **A Go target without the agent, with mutex/block rates at zero.** That capture produces an empty profile, which is imported with the warning `mutex profiling is disabled in the target (call runtime.SetMutexProfileFraction or use the perfhawk agent)`. It is never silently empty. Test: Task 6.
 5. **Diffing incompatible profiles** (no shared sample type name/unit, e.g. CPU vs heap) gives a clear 400 / CLI error. Diffing a profile against itself gives all-zero deltas. Tests: Tasks 3 and 10.
 
 ---
@@ -89,11 +89,11 @@ Add a GitHub remote and push `main` so the Phase 0 CI matrix and `cargo deny` ac
 
 ```
 crates/
-  prism-model/src/lib.rs           + Fidelity Display/parse helpers (no schema change)
-  prism-store/src/lib.rs           schema v2 (sessions, fidelity, session_id), migration, rm, blob repair
-  prism-analysis/src/diff.rs       diff_flame, diff_top
-  prism-analysis/src/tree.rs       max_depth cap in flame/inverted_flame
-  prism-capture/                   NEW crate
+  perfhawk-model/src/lib.rs           + Fidelity Display/parse helpers (no schema change)
+  perfhawk-store/src/lib.rs           schema v2 (sessions, fidelity, session_id), migration, rm, blob repair
+  perfhawk-analysis/src/diff.rs       diff_flame, diff_top
+  perfhawk-analysis/src/tree.rs       max_depth cap in flame/inverted_flame
+  perfhawk-capture/                   NEW crate
     src/lib.rs                     re-exports
     src/types.rs                   Target, RuntimeInfo, Capability, CapturePlan, Artifact, CaptureOutcome
     src/duration.rs                parse_duration
@@ -108,18 +108,18 @@ crates/
     src/dotnet/helper.rs           helper location + JSON-lines client
     tests/                         fake_provider.rs, go_http.rs, dotnet_protocol.rs, e2e.rs (gated)
     src/bin/fake-dotnet-helper.rs  test-only protocol fake (behind feature "test-helpers")
-  prism-server/src/api.rs          sessions, diff, delete endpoints; depth param
-  prism-cli/src/cmd/{record,targets,sessions,diff,rm}.rs
-agents/go/                         NEW Go module  prism.dev/agent (consumed via `replace` directives until published)
+  perfhawk-server/src/api.rs          sessions, diff, delete endpoints; depth param
+  perfhawk-cli/src/cmd/{record,targets,sessions,diff,rm}.rs
+agents/go/                         NEW Go module  github.com/rajkumarGosavi/perfhawk/agents/go (consumed via `replace` directives until published)
   agent.go, wall.go, rates.go, discovery.go, agent_test.go, go.mod, go.sum
-helpers/prism-dotnet/              NEW C# solution
-  PrismDotnet.csproj, Program.cs, Protocol.cs, Collect.cs, Launch.cs, Convert/*.cs, Pprof/PprofWriter.cs
-  tests/PrismDotnet.Tests.csproj, tests/*.cs
+helpers/perfhawk-dotnet/              NEW C# solution
+  PerfhawkDotnet.csproj, Program.cs, Protocol.cs, Collect.cs, Launch.cs, Convert/*.cs, Pprof/PprofWriter.cs
+  tests/PerfhawkDotnet.Tests.csproj, tests/*.cs
 ui/src/
   api.ts, url.ts                   sessions, diff, delete, fidelity, depth
   views/SessionList.tsx, views/DiffView.tsx, flame/diffColor.ts (+ tests)
 examples/go-demo/main.go           uses the agent
-examples/dotnet-demo/              README: `prism record` instead of dotnet-trace
+examples/dotnet-demo/              README: `perfhawk record` instead of dotnet-trace
 docs/USER_GUIDE.md                 Phase 1 sections
 .github/workflows/ci.yml           setup-go, setup-dotnet, helper build/test, agent test, gated e2e
 ```
@@ -128,10 +128,10 @@ docs/USER_GUIDE.md                 Phase 1 sections
 
 ### Task 1: Store schema v2 — sessions, fidelity, delete, blob repair
 
-**Files:** Modify `crates/prism-store/src/lib.rs`. Test: `crates/prism-store/tests/store.rs`, `tests/migration.rs`.
+**Files:** Modify `crates/perfhawk-store/src/lib.rs`. Test: `crates/perfhawk-store/tests/store.rs`, `tests/migration.rs`.
 
 **Interfaces:**
-- Consumes: `prism_model::{Fidelity, ProfileKind}` (Fidelity already serde snake_case).
+- Consumes: `perfhawk_model::{Fidelity, ProfileKind}` (Fidelity already serde snake_case).
 - Produces:
   - `ImportOptions` gains `pub fidelity_override: Option<Fidelity>` and `pub session_id: Option<String>`.
   - `ProfileRecord` gains `pub fidelity: Fidelity` and `pub session_id: Option<String>`. Serialized names `fidelity`, `session_id`.
@@ -161,7 +161,7 @@ docs/USER_GUIDE.md                 Phase 1 sections
   - `remove_session_cascades`: returns 2, and both profiles are gone.
   - `reimport_repairs_corrupt_blob`: corrupt the blob, re-import the same bytes (still `false`), and `load` now succeeds.
   - `newer_schema_rejected_before_wal`: `user_version = 3`, then `Corrupt`, and `PRAGMA journal_mode` on the raw connection is still `delete`.
-- [ ] **Step 2:** `cargo test -p prism-store`. Expected: FAIL.
+- [ ] **Step 2:** `cargo test -p perfhawk-store`. Expected: FAIL.
 - [ ] **Step 3:** Implement.
 - [ ] **Step 4:** `cargo test --workspace`. Expected: PASS. Server and CLI compile because they only read the new fields.
 - [ ] **Step 5: Commit:** `feat(store): schema v2 with sessions, fidelity, delete and blob repair`
@@ -170,7 +170,7 @@ docs/USER_GUIDE.md                 Phase 1 sections
 
 ### Task 2: Analysis — flame depth cap
 
-**Files:** Modify `crates/prism-analysis/src/tree.rs`, `lib.rs`. Test: `tests/analysis.rs`.
+**Files:** Modify `crates/perfhawk-analysis/src/tree.rs`, `lib.rs`. Test: `tests/analysis.rs`.
 
 **Interfaces:**
 - Produces:
@@ -185,14 +185,14 @@ docs/USER_GUIDE.md                 Phase 1 sections
   - `max_depth_none_unchanged`: the result equals `flame(...)`.
   - `truncated_omitted_in_json_when_false`: `serde_json` output of an untruncated tree contains no `"truncated"`.
   - The fast and slow paths give equal results under `max_depth: Some(1)` (extend the existing equivalence test).
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** `cargo test -p prism-analysis` PASS.
+- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** `cargo test -p perfhawk-analysis` PASS.
 - [ ] **Step 5: Commit:** `feat(analysis): flame depth cap with truncation marker`
 
 ---
 
 ### Task 3: Analysis — diff
 
-**Files:** Create `crates/prism-analysis/src/diff.rs`; modify `lib.rs`. Test: `tests/diff.rs`.
+**Files:** Create `crates/perfhawk-analysis/src/diff.rs`; modify `lib.rs`. Test: `tests/diff.rs`.
 
 **Interfaces:**
 - Produces:
@@ -220,12 +220,12 @@ docs/USER_GUIDE.md                 Phase 1 sections
 
 ---
 
-### Task 4: `prism-capture` core — types, provider trait, session orchestration
+### Task 4: `perfhawk-capture` core — types, provider trait, session orchestration
 
-**Files:** Create `crates/prism-capture/{Cargo.toml, src/lib.rs, types.rs, duration.rs, cancel.rs, provider.rs, session.rs}`; add the crate to the workspace. Test: `crates/prism-capture/tests/fake_provider.rs`.
+**Files:** Create `crates/perfhawk-capture/{Cargo.toml, src/lib.rs, types.rs, duration.rs, cancel.rs, provider.rs, session.rs}`; add the crate to the workspace. Test: `crates/perfhawk-capture/tests/fake_provider.rs`.
 
 **Interfaces:**
-- Consumes: `prism_store::{Store, ImportOptions, TargetInfo, SessionStatus, SessionRecord}`, `prism_model::{ProfileKind, Fidelity}`.
+- Consumes: `perfhawk_store::{Store, ImportOptions, TargetInfo, SessionStatus, SessionRecord}`, `perfhawk_model::{ProfileKind, Fidelity}`.
 - Produces:
   - `pub enum Target { Pid(u32), Url(String), Launch { program: String, args: Vec<String>, cwd: Option<PathBuf> }, GoTest { package: String, args: Vec<String> } }`.
   - `pub struct RuntimeInfo { pub provider: &'static str, pub pid: Option<u32>, pub url: Option<String>, pub runtime_version: Option<String>, pub command: Option<String> }`.
@@ -234,7 +234,7 @@ docs/USER_GUIDE.md                 Phase 1 sections
   - `pub struct Artifact { pub kind: ProfileKind, pub fidelity: Fidelity, pub file_name: String, pub bytes: Vec<u8>, pub warning: Option<String> }`.
   - `pub enum CaptureEnd { Complete, TargetExited, Cancelled }`.
   - `pub struct CaptureOutcome { pub artifacts: Vec<Artifact>, pub end: CaptureEnd, pub warnings: Vec<String> }`.
-  - `pub enum CaptureError { NotDetected(String), Unsupported { kind: ProfileKind, reason: String }, Target(String), Helper(String), Io(std::io::Error), Store(prism_store::StoreError) }`, with `thiserror` and human messages.
+  - `pub enum CaptureError { NotDetected(String), Unsupported { kind: ProfileKind, reason: String }, Target(String), Helper(String), Io(std::io::Error), Store(perfhawk_store::StoreError) }`, with `thiserror` and human messages.
   - `pub fn parse_duration(s: &str) -> Result<Duration, String>`, following the Global Constraints format and limits.
   - `#[derive(Clone)] pub struct CancelToken`, with `new()`, `cancel()`, `is_cancelled()`, `wait_timeout(Duration) -> bool` (Condvar-based; returns true if cancelled), and `CancelToken::install_ctrlc() -> CancelToken` (`ctrlc` crate, MIT/Apache).
   - `pub trait Provider: Send + Sync`:
@@ -255,21 +255,21 @@ docs/USER_GUIDE.md                 Phase 1 sections
 
 - [ ] **Step 1: Write failing tests** with an in-test `FakeProvider` whose behaviour is scripted per test:
   - `parse_duration_cases`: `"500ms"` is ok but below the minimum, so `Err`; `"1s"` → 1 s; `"30s"`; `"2m"`; `"11m"` → `Err`; `"abc"` → `Err`.
-  - `record_complete_imports_artifacts`: two pprof artifacts (use `crates/prism-import/tests/fixtures/go-cpu.pb.gz` and `go-heap.pb.gz`) → status `Complete`, 2 profiles with the given kinds and fidelities and the `session_id`.
+  - `record_complete_imports_artifacts`: two pprof artifacts (use `crates/perfhawk-import/tests/fixtures/go-cpu.pb.gz` and `go-heap.pb.gz`) → status `Complete`, 2 profiles with the given kinds and fidelities and the `session_id`.
   - `record_target_exit_is_partial`: the fake returns `TargetExited` with one artifact.
   - `record_cancel_is_cancelled`: the fake waits on the token and returns `Cancelled` with a partial artifact when it fires. The test cancels after 100 ms. The artifact is imported.
   - `unsupported_kind_fails_before_session`: no session is created.
   - `capture_error_marks_failed`.
   - `empty_kinds_means_all_available`.
   - `cancel_token_wait_timeout`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** `cargo test -p prism-capture` PASS.
+- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** `cargo test -p perfhawk-capture` PASS.
 - [ ] **Step 5: Commit:** `feat(capture): provider trait, cancel token, session orchestration`
 
 ---
 
 ### Task 5: Go agent package
 
-**Files:** Create `agents/go/{go.mod, agent.go, wall.go, rates.go, discovery.go, agent_test.go}`. Module path `prism.dev/agent`, with `go 1.22` and `require github.com/felixge/fgprof`.
+**Files:** Create `agents/go/{go.mod, agent.go, wall.go, rates.go, discovery.go, agent_test.go}`. Module path `github.com/rajkumarGosavi/perfhawk/agents/go`, with `go 1.22` and `require github.com/felixge/fgprof`.
 
 **Interfaces (Go):**
 - `type Options struct { Addr string /* default "127.0.0.1:0" */; DisableDiscovery bool }`.
@@ -277,49 +277,49 @@ docs/USER_GUIDE.md                 Phase 1 sections
 - `func (a *Agent) Addr() string` and `func (a *Agent) Close() error` (Close removes the discovery file).
 - Routes, all GET:
   - The standard `/debug/pprof/*`, registered on the agent's own mux (`net/http/pprof` handlers, not `DefaultServeMux`).
-  - `/debug/prism/info`: JSON `{"protocol":1,"pid":N,"go_version":"..."}`.
-  - `/debug/prism/wall?seconds=N`: fgprof pprof output.
-  - `/debug/prism/contention?seconds=N&kind=mutex|block`: raises `SetMutexProfileFraction(5)` or `SetBlockProfileRate(10_000 /*ns*/)` (remembering the previous value), sleeps N seconds or until the request context is cancelled, writes a **delta** profile (Lookup before and after, then subtract), and **restores the previous rate in a `defer`**.
-- Discovery file per Global Constraints: written with 0600 permissions, removed on `Close`, and also removed on `SIGINT`/`SIGTERM` via a `signal.NotifyContext` hook that `Start` installs only if `PRISM_AGENT_SIGNALS=1` (the agent must not steal the app's signal handling by default).
-- Auto-start: the package's `init()` calls `Start(Options{})` **only** when the env var `PRISM_AGENT=1` is set. This is used by prism's launch mode (Task 6). Importing the package with a blank `_` import and no env var does nothing.
-- Extra test: `TestAutoStartOnlyWithEnv` runs a subprocess with and without `PRISM_AGENT=1` and checks that the discovery file appears only with it.
+  - `/debug/perfhawk/info`: JSON `{"protocol":1,"pid":N,"go_version":"..."}`.
+  - `/debug/perfhawk/wall?seconds=N`: fgprof pprof output.
+  - `/debug/perfhawk/contention?seconds=N&kind=mutex|block`: raises `SetMutexProfileFraction(5)` or `SetBlockProfileRate(10_000 /*ns*/)` (remembering the previous value), sleeps N seconds or until the request context is cancelled, writes a **delta** profile (Lookup before and after, then subtract), and **restores the previous rate in a `defer`**.
+- Discovery file per Global Constraints: written with 0600 permissions, removed on `Close`, and also removed on `SIGINT`/`SIGTERM` via a `signal.NotifyContext` hook that `Start` installs only if `PERFHAWK_AGENT_SIGNALS=1` (the agent must not steal the app's signal handling by default).
+- Auto-start: the package's `init()` calls `Start(Options{})` **only** when the env var `PERFHAWK_AGENT=1` is set. This is used by perfhawk's launch mode (Task 6). Importing the package with a blank `_` import and no env var does nothing.
+- Extra test: `TestAutoStartOnlyWithEnv` runs a subprocess with and without `PERFHAWK_AGENT=1` and checks that the discovery file appears only with it.
 
 - [ ] **Step 1: Write failing tests (`go test ./...`).**
   - `TestStartWritesDiscoveryAndCloseRemoves`.
   - `TestRejectsNonLoopbackAddr`.
   - `TestInfoEndpoint`.
   - `TestWallReturnsPprof`: `seconds=1`; the body is gzip and decodes with `github.com/google/pprof/profile` (test-only dependency, Apache-2.0).
-  - `TestContentionRestoresRates`: set the mutex fraction to 0, call `/debug/prism/contention?seconds=1&kind=mutex`, and `runtime.SetMutexProfileFraction(-1)` reads back 0 afterwards. Run with a goroutine contending a mutex, so the profile has ≥ 1 sample.
+  - `TestContentionRestoresRates`: set the mutex fraction to 0, call `/debug/perfhawk/contention?seconds=1&kind=mutex`, and `runtime.SetMutexProfileFraction(-1)` reads back 0 afterwards. Run with a goroutine contending a mutex, so the profile has ≥ 1 sample.
   - `TestContentionCancelledRequestRestores`: cancel the client context after 200 ms → the rate is restored.
 - [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** `cd agents/go && go vet ./... && go test ./...` PASS.
-- [ ] **Step 5: Commit:** `feat(agent-go): prism Go agent with wall, contention and discovery`
+- [ ] **Step 5: Commit:** `feat(agent-go): perfhawk Go agent with wall, contention and discovery`
 
 ---
 
 ### Task 6: Go provider
 
-**Files:** Create `crates/prism-capture/src/go/{mod.rs, discovery.rs, http.rs, gotest.rs}`. Test: `crates/prism-capture/tests/go_http.rs`, plus a test helper program `crates/prism-capture/tests/goapp/main.go` (uses the agent via a `replace prism.dev/agent => ../../../../agents/go` directive).
+**Files:** Create `crates/perfhawk-capture/src/go/{mod.rs, discovery.rs, http.rs, gotest.rs}`. Test: `crates/perfhawk-capture/tests/go_http.rs`, plus a test helper program `crates/perfhawk-capture/tests/goapp/main.go` (uses the agent via a `replace github.com/rajkumarGosavi/perfhawk/agents/go => ../../../../agents/go` directive).
 
 **Interfaces:**
 - Consumes: Task 4 types; Task 5 HTTP contract.
 - Produces: `pub struct GoProvider` implementing `Provider` with id `"go"`.
   - **`detect`:**
-    - `Url(u)` → GET `u + "/debug/prism/info"`. If that 404s, try `u + "/debug/pprof/"`; success means Go (`runtime_version: None`, "agent: no").
-    - `Pid(p)` → discovery file `<temp>/prism-agents/<p>.json` → URL, verified via `/debug/prism/info`. With no discovery file, return `Ok(None)`. If the pid's executable contains the Go buildinfo magic `\xff Go buildinf:`, set the registry's `NotDetected` hint: "Go process without the prism agent: start the agent or pass --url to its net/http/pprof endpoint".
+    - `Url(u)` → GET `u + "/debug/perfhawk/info"`. If that 404s, try `u + "/debug/pprof/"`; success means Go (`runtime_version: None`, "agent: no").
+    - `Pid(p)` → discovery file `<temp>/perfhawk-agents/<p>.json` → URL, verified via `/debug/perfhawk/info`. With no discovery file, return `Ok(None)`. If the pid's executable contains the Go buildinfo magic `\xff Go buildinf:`, set the registry's `NotDetected` hint: "Go process without the perfhawk agent: start the agent or pass --url to its net/http/pprof endpoint".
     - `Launch` → `Ok(None)` (Go launch is via `GoTest`, or via `Launch` once the program embeds the agent — see capture).
     - `GoTest` → `Ok(Some)` if `go` is on PATH.
   - **`capabilities`:**
     - Agent present: cpu, wall, memory, lock, blocking and threads, all available with the fidelities from Global Constraints.
-    - No agent (plain pprof): wall unavailable (note "needs prism agent").
+    - No agent (plain pprof): wall unavailable (note "needs perfhawk agent").
     - Lock and blocking available but with the note "depends on target's runtime.SetMutexProfileFraction / SetBlockProfileRate".
   - **`capture` over HTTP:** run all kinds **concurrently**, one thread each, with `ureq` default features (rustls), so both `http://` and `https://` URLs work. Endpoints:
 
     | Kind | Endpoint |
     |---|---|
     | cpu | `/debug/pprof/profile?seconds=D` |
-    | wall | `/debug/prism/wall?seconds=D` |
-    | lock | `/debug/prism/contention?seconds=D&kind=mutex` (agent), else `/debug/pprof/mutex?seconds=D` |
-    | blocking | `/debug/prism/contention?seconds=D&kind=block` (agent), else `/debug/pprof/block?seconds=D` |
+    | wall | `/debug/perfhawk/wall?seconds=D` |
+    | lock | `/debug/perfhawk/contention?seconds=D&kind=mutex` (agent), else `/debug/pprof/mutex?seconds=D` |
+    | blocking | `/debug/perfhawk/contention?seconds=D&kind=block` (agent), else `/debug/pprof/block?seconds=D` |
     | memory | `/debug/pprof/heap`, fetched at the end of the window |
     | threads | `/debug/pprof/goroutine`, fetched at the end of the window |
 
@@ -329,7 +329,7 @@ docs/USER_GUIDE.md                 Phase 1 sections
     - A connection refused mid-capture → `TargetExited`.
     - An **empty** lock/blocking profile (0 samples) from plain pprof → keep the artifact and attach the Review Focus #4 warning.
   - **`capture` with `GoTest`:** run `go test <package> <args> -run <args or .> -cpuprofile T/cpu.pprof -memprofile T/heap.pprof -mutexprofile T/mutex.pprof -blockprofile T/block.pprof -o T/test.bin` in a temp dir. The requested kinds pick which flags are passed. wall and threads are unavailable for GoTest. Collect the files as artifacts. Duration is not applicable: the test decides; warn if `--duration` was given.
-  - **`capture` with `Launch` and an agent-enabled program:** spawn it with `PRISM_AGENT=1` in the env (agent auto-start, Task 5), wait up to 10 s for `<temp>/prism-agents/<childpid>.json`, then capture as with a URL. No discovery file within 10 s → `CaptureError::Target("program did not start the prism agent; import prism.dev/agent")`. Kill the child after capture unless it already exited.
+  - **`capture` with `Launch` and an agent-enabled program:** spawn it with `PERFHAWK_AGENT=1` in the env (agent auto-start, Task 5), wait up to 10 s for `<temp>/perfhawk-agents/<childpid>.json`, then capture as with a URL. No discovery file within 10 s → `CaptureError::Target("program did not start the perfhawk agent; import github.com/rajkumarGosavi/perfhawk/agents/go")`. Kill the child after capture unless it already exited.
 
 - [ ] **Step 1: Write failing tests.** In-process tests run a mock HTTP server on loopback (`tiny_http`, MIT/Apache, dev-dependency) serving the fixture pprof bytes:
   - `detect_by_url_with_agent`.
@@ -339,18 +339,18 @@ docs/USER_GUIDE.md                 Phase 1 sections
   - `connection_refused_midway_is_target_exited`.
   - `cancel_returns_partial`.
   - `discovery_stale_file_ignored`: pid not alive.
-  - Gated real-Go tests (`#[ignore]` unless `PRISM_E2E=1` and `go` is on PATH), using `tests/goapp`:
+  - Gated real-Go tests (`#[ignore]` unless `PERFHAWK_E2E=1` and `go` is on PATH), using `tests/goapp`:
     - `go_attach_by_pid_via_discovery`.
     - `go_launch_with_agent`.
     - `go_test_mode_produces_cpu_and_heap`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. Add `GoProvider` to `ProviderRegistry::with_defaults()`. **Step 4:** `cargo test -p prism-capture` PASS; `PRISM_E2E=1 cargo test -p prism-capture -- --ignored go_` PASS locally.
+- [ ] **Step 2:** FAIL. **Step 3:** implement. Add `GoProvider` to `ProviderRegistry::with_defaults()`. **Step 4:** `cargo test -p perfhawk-capture` PASS; `PERFHAWK_E2E=1 cargo test -p perfhawk-capture -- --ignored go_` PASS locally.
 - [ ] **Step 5: Commit:** `feat(capture): Go provider (agent, net/http/pprof, go test)`
 
 ---
 
-### Task 7: `prism-dotnet` helper (C#)
+### Task 7: `perfhawk-dotnet` helper (C#)
 
-**Files:** Create `helpers/prism-dotnet/{PrismDotnet.csproj, Program.cs, Protocol.cs, ProcessList.cs, Collect.cs, Launch.cs, Convert/TraceConverter.cs, Pprof/PprofWriter.cs}` and `helpers/prism-dotnet/tests/{PrismDotnet.Tests.csproj, PprofWriterTests.cs, ConverterTests.cs, CollectSmokeTests.cs}`.
+**Files:** Create `helpers/perfhawk-dotnet/{PerfhawkDotnet.csproj, Program.cs, Protocol.cs, ProcessList.cs, Collect.cs, Launch.cs, Convert/TraceConverter.cs, Pprof/PprofWriter.cs}` and `helpers/perfhawk-dotnet/tests/{PerfhawkDotnet.Tests.csproj, PprofWriterTests.cs, ConverterTests.cs, CollectSmokeTests.cs}`.
 
 **Interfaces (CLI + protocol, protocol 1):**
 - Project: `net8.0`, `RollForward=Major`, `Nullable=enable`, `InvariantGlobalization=true`. Package refs: `Microsoft.Diagnostics.NETCore.Client` and `Microsoft.Diagnostics.Tracing.TraceEvent`, latest stable versions that support net8.0, pinned exactly. Publish: `-p:PublishSingleFile=true --self-contained -r <rid>`.
@@ -372,7 +372,7 @@ docs/USER_GUIDE.md                 Phase 1 sections
     - Start the program with `DOTNET_DiagnosticPorts=<unique port>,suspend` and accept it with `ReversedDiagnosticsServer`.
     - Start the session, then `ResumeRuntime`, then proceed as `collect`.
     - The child is killed at the end if still running.
-  - `convert --in FILE.nettrace --out DIR --kinds ...` → artifacts only (used by `prism import x.nettrace`).
+  - `convert --in FILE.nettrace --out DIR --kinds ...` → artifacts only (used by `perfhawk import x.nettrace`).
 - Conversion (`TraceConverter`, using `TraceLog` + `TraceCallStack` for managed frames; unresolved frames `[unknown]`; modules as `module!Method`):
 
   | Kind | Source | Sample type | Fidelity |
@@ -391,14 +391,14 @@ docs/USER_GUIDE.md                 Phase 1 sections
   - `ConverterTests`: run a tiny in-test workload (spin + lock + allocate) for 2 s under `collect` on its **own** process (`DiagnosticsClient(Environment.ProcessId)`), convert, and check: wall > 0 samples; memory has frames containing the test's allocation method; lock has ≥ 1 sample; threads ≥ 2.
   - `CollectSmokeTests.UnknownPidGivesNotFoundError`: the output contains `"code":"not_found"`.
   - `ProtocolTests.FirstLineIsHello`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** `cd helpers/prism-dotnet && dotnet test` PASS; `dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true` succeeds.
+- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** `cd helpers/perfhawk-dotnet && dotnet test` PASS; `dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true` succeeds.
 - [ ] **Step 5: Commit:** `feat(dotnet-helper): EventPipe collect/launch/convert to pprof`
 
 ---
 
 ### Task 8: .NET provider + `.nettrace` import
 
-**Files:** Create `crates/prism-capture/src/dotnet/{mod.rs, helper.rs}` and `crates/prism-capture/src/bin/fake-dotnet-helper.rs` (`required-features = ["test-helpers"]`). Modify `crates/prism-cli/src/cmd/import.rs` (`.nettrace`). Test: `crates/prism-capture/tests/dotnet_protocol.rs`.
+**Files:** Create `crates/perfhawk-capture/src/dotnet/{mod.rs, helper.rs}` and `crates/perfhawk-capture/src/bin/fake-dotnet-helper.rs` (`required-features = ["test-helpers"]`). Modify `crates/perfhawk-cli/src/cmd/import.rs` (`.nettrace`). Test: `crates/perfhawk-capture/tests/dotnet_protocol.rs`.
 
 **Interfaces:**
 - Produces:
@@ -406,7 +406,7 @@ docs/USER_GUIDE.md                 Phase 1 sections
   - `pub enum HelperEvent { Hello { protocol: u32, helper_version: String }, Process { pid: u32, name: String, command_line: Option<String>, runtime_version: Option<String> }, Progress(String), Artifact { kind: ProfileKind, path: PathBuf, samples: u64 }, Warning(String), Error { code: String, message: String }, Done { end: CaptureEnd } }`.
   - `pub fn run_helper(h: &HelperPath, args: &[String], cancel: &CancelToken, on_event: &mut dyn FnMut(HelperEvent)) -> Result<(), CaptureError>`:
     - Spawns the helper with piped stdin and stdout and reads lines.
-    - The first line must be `Hello` with protocol 1, else `Helper("prism-dotnet protocol X is not supported; rebuild the helper")`.
+    - The first line must be `Hello` with protocol 1, else `Helper("perfhawk-dotnet protocol X is not supported; rebuild the helper")`.
     - On cancel, write `stop\n` to stdin, then wait up to 10 s, then kill.
     - Malformed lines → `Helper` error that includes the line.
   - `pub fn list_dotnet_processes() -> Result<Vec<RuntimeInfo>, CaptureError>`.
@@ -415,12 +415,12 @@ docs/USER_GUIDE.md                 Phase 1 sections
     - **capabilities:** cpu, wall, memory, lock, threads with the Global Constraints fidelities. blocking is unavailable ("not in Phase 1 for .NET").
     - **capture:** `collect` or `launch` into a temp dir; read the artifact files into `Artifact`s (fidelity from the table; **cpu = approximate**); map helper error codes to messages per Review Focus #3:
       - `diagnostics_disabled` → "the target has DOTNET_EnableDiagnostics=0"
-      - `permission` → "the target runs as another user, or TMPDIR differs (Linux/macOS: run prism with the same TMPDIR as the target)"
+      - `permission` → "the target runs as another user, or TMPDIR differs (Linux/macOS: run perfhawk with the same TMPDIR as the target)"
       - `not_dotnet` → "pid N is not a .NET 8+ process"
-  - `prism import <file>.nettrace` runs the helper `convert` with all kinds and imports each artifact (no session; tag `nettrace`). Without a helper → a clear error.
+  - `perfhawk import <file>.nettrace` runs the helper `convert` with all kinds and imports each artifact (no session; tag `nettrace`). Without a helper → a clear error.
 - The `fake-dotnet-helper` reads `FAKE_SCRIPT=<path to a JSON-lines file>` and replays it. It honours `stop` on stdin by emitting `done cancelled`. It copies fixture pprof files to the requested `--out` paths.
 
-- [ ] **Step 1: Write failing tests**, using `PRISM_DOTNET=<fake helper path>` (built by `cargo test --features test-helpers`):
+- [ ] **Step 1: Write failing tests**, using `PERFHAWK_DOTNET=<fake helper path>` (built by `cargo test --features test-helpers`):
   - `hello_protocol_mismatch_errors`.
   - `collect_imports_artifacts_with_fidelity`: the cpu fidelity is approximate.
   - `error_codes_map_to_messages`: one case per code.
@@ -428,21 +428,21 @@ docs/USER_GUIDE.md                 Phase 1 sections
   - `target_exited_is_partial`.
   - `malformed_line_errors`.
   - `locate_helper_env_then_sibling`.
-  - Gated (`PRISM_E2E=1`, `dotnet` on PATH, `PRISM_DOTNET` pointing at the real helper):
+  - Gated (`PERFHAWK_E2E=1`, `dotnet` on PATH, `PERFHAWK_DOTNET` pointing at the real helper):
     - `dotnet_launch_demo_all_kinds`: `examples/dotnet-demo all 5`.
     - `dotnet_attach_by_pid`.
 - [ ] **Step 2:** FAIL. **Step 3:** implement. Add the provider to `with_defaults()` after Go. **Step 4:** PASS (gated tests locally).
-- [ ] **Step 5: Commit:** `feat(capture): .NET provider via prism-dotnet; .nettrace import`
+- [ ] **Step 5: Commit:** `feat(capture): .NET provider via perfhawk-dotnet; .nettrace import`
 
 ---
 
 ### Task 9: CLI — record, targets, sessions, diff, rm
 
-**Files:** Create `crates/prism-cli/src/cmd/{record.rs, targets.rs, sessions.rs, diff.rs, rm.rs}`; modify `main.rs`. Test: `crates/prism-cli/tests/cli_phase1.rs`.
+**Files:** Create `crates/perfhawk-cli/src/cmd/{record.rs, targets.rs, sessions.rs, diff.rs, rm.rs}`; modify `main.rs`. Test: `crates/perfhawk-cli/tests/cli_phase1.rs`.
 
 **Interfaces / UX (exact):**
 
-`prism record [--pid N | --url URL | --go-test PKG [-- ARGS] | -- PROGRAM ARGS...] [--kinds k1,k2] [--duration 30s] [--name N] [--tag T]... [--open] [--port P]`
+`perfhawk record [--pid N | --url URL | --go-test PKG [-- ARGS] | -- PROGRAM ARGS...] [--kinds k1,k2] [--duration 30s] [--name N] [--tag T]... [--open] [--port P]`
 - Exactly one target form is allowed. Zero or more → exit 2: `error: choose one target: --pid, --url, --go-test or -- <program>`.
 - It prints progress lines to stderr (`[go] capturing cpu, wall, memory, lock, blocking, threads for 30s (pid 1234)`), then a summary table to stdout:
   ```
@@ -454,17 +454,17 @@ docs/USER_GUIDE.md                 Phase 1 sections
 - `--open` starts the UI on `/?session=<short_id>` after recording.
 - Exit codes: 0 for complete; 0 for partial, with the stderr line `note: target exited before the window ended; session is partial`; 130 for cancelled; 1 for failed or any capture error.
 
-`prism targets [--json]` → table `RUNTIME  PID  VERSION  AGENT  COMMAND` from the Go discovery files (verified) plus `list_dotnet_processes()`. If the helper is missing, a stderr warning and Go targets only.
+`perfhawk targets [--json]` → table `RUNTIME  PID  VERSION  AGENT  COMMAND` from the Go discovery files (verified) plus `list_dotnet_processes()`. If the helper is missing, a stderr warning and Go targets only.
 
-`prism sessions [--json]` → `ID  NAME  STATUS  STARTED (UTC)  DURATION  PROFILES  TARGET`.
+`perfhawk sessions [--json]` → `ID  NAME  STATUS  STARTED (UTC)  DURATION  PROFILES  TARGET`.
 
-`prism diff <BASE> <HEAD> [--st NAME] [--normalize none|total] [--top N=20] [--focus/--exclude/--hide RE]` → header `base: <name> (<total>)  head: <name> (<total>)  sample type: <st>`, then rows `DELTA SELF  BASE SELF  HEAD SELF  DELTA TOTAL  FUNCTION`. Positive deltas get a `+` sign and are formatted with the unit formatter. `NoCommonSampleType` → exit 1 `error: profiles share no sample type (base: a, b; head: c)`.
+`perfhawk diff <BASE> <HEAD> [--st NAME] [--normalize none|total] [--top N=20] [--focus/--exclude/--hide RE]` → header `base: <name> (<total>)  head: <name> (<total>)  sample type: <st>`, then rows `DELTA SELF  BASE SELF  HEAD SELF  DELTA TOTAL  FUNCTION`. Positive deltas get a `+` sign and are formatted with the unit formatter. `NoCommonSampleType` → exit 1 `error: profiles share no sample type (base: a, b; head: c)`.
 
-`prism rm <REF>... [--session]` → removes profiles, or sessions with `--session`. Prints `removed <short_id> <name>`. Unknown ref → error, exit 1, and the others are still removed.
+`perfhawk rm <REF>... [--session]` → removes profiles, or sessions with `--session`. Prints `removed <short_id> <name>`. Unknown ref → error, exit 1, and the others are still removed.
 
-`prism ls` gains a `SESSION` column (short session id or `-`). `prism show` header adds `fidelity: <f>`.
+`perfhawk ls` gains a `SESSION` column (short session id or `-`). `perfhawk show` header adds `fidelity: <f>`.
 
-- [ ] **Step 1: Write failing tests** (`assert_cmd`; use `PRISM_DOTNET=fake-dotnet-helper` + `FAKE_SCRIPT` for record):
+- [ ] **Step 1: Write failing tests** (`assert_cmd`; use `PERFHAWK_DOTNET=fake-dotnet-helper` + `FAKE_SCRIPT` for record):
   - `record_requires_one_target`.
   - `record_with_fake_dotnet_prints_summary`.
   - `record_partial_exit_zero_with_note`.
@@ -476,18 +476,18 @@ docs/USER_GUIDE.md                 Phase 1 sections
   - `targets_without_helper_warns`.
   - `ls_has_session_column`.
   - `record_ctrl_c_exit_130`: Unix-only test sending SIGINT to the child; on Windows, cover the same path through `CancelToken` in Task 4's tests.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** `cargo test -p prism-cli` PASS.
+- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** `cargo test -p perfhawk-cli` PASS.
 - [ ] **Step 5: Commit:** `feat(cli): record, targets, sessions, diff, rm`
 
 ---
 
 ### Task 10: Server API — sessions, diff, delete, depth
 
-**Files:** Modify `crates/prism-server/src/api.rs` (and split into `api/{profiles,sessions,diff}.rs` if `api.rs` exceeds ~600 lines). Test: `crates/prism-server/tests/api_phase1.rs`.
+**Files:** Modify `crates/perfhawk-server/src/api.rs` (and split into `api/{profiles,sessions,diff}.rs` if `api.rs` exceeds ~600 lines). Test: `crates/perfhawk-server/tests/api_phase1.rs`.
 
 **Interfaces:**
 - `GET /api/sessions` → `[SessionRecord]`; `GET /api/sessions/{ref}` → `SessionRecord`.
-- `DELETE /api/profiles/{ref}` → 204; `DELETE /api/sessions/{ref}` → `{removed: N}`. Both go through the Host/Origin guard. **DELETE requires the header `X-Prism-Request: 1`**, else 403 `forbidden`. A custom header forces a CORS preflight that prism never approves.
+- `DELETE /api/profiles/{ref}` → 204; `DELETE /api/sessions/{ref}` → `{removed: N}`. Both go through the Host/Origin guard. **DELETE requires the header `X-Perfhawk-Request: 1`**, else 403 `forbidden`. A custom header forces a CORS preflight that perfhawk never approves.
 - `GET /api/profiles/{ref}/flame` gains `depth` (optional usize, 1..=10 000, default **1000**) → `flame_with` / `inverted_flame_with`.
 - `GET /api/diff?base=REF&head=REF&st=NAME&normalize=none|total&view=flame|top&min=&depth=&limit=&focus=&exclude=&hide=`:
   - `view=flame` → `{base: ProfileRecord, head: ProfileRecord, sampleType: {name, unit}, root: DiffNode}`.
@@ -505,7 +505,7 @@ docs/USER_GUIDE.md                 Phase 1 sections
   - `diff_flame_and_top`.
   - `diff_incompatible_400`.
   - `diff_unknown_ref_404`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** `cargo test -p prism-server` PASS.
+- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** `cargo test -p perfhawk-server` PASS.
 - [ ] **Step 5: Commit:** `feat(server): sessions, diff, delete and depth endpoints`
 
 ---
@@ -517,7 +517,7 @@ docs/USER_GUIDE.md                 Phase 1 sections
 **Interfaces:**
 - `api.ts` adds:
   - `listSessions()`, `getSession(ref)`
-  - `deleteProfile(ref)`, `deleteSession(ref)` — both send `X-Prism-Request: 1`
+  - `deleteProfile(ref)`, `deleteSession(ref)` — both send `X-Perfhawk-Request: 1`
   - `getDiffFlame(base, head, q)`, `getDiffTop(base, head, q)`
   - Types `SessionRecord`, `DiffNode`, `DiffRow` matching the Rust JSON exactly (`SessionRecord` snake_case, `DiffNode`/`DiffRow` camelCase); `ProfileRecord` gains `fidelity` and `session_id`
   - `getFlame` passes `depth`
@@ -542,8 +542,8 @@ docs/USER_GUIDE.md                 Phase 1 sections
   - `url`: round-trip `{profile, view:'diff', base, normalize:'total'}`; `normalize` none is omitted.
   - `api`: `deleteProfile` sends the header; non-2xx → `ApiError`.
   - `layout`: depth clamp helper `maxCanvasRows(dpr)` returns `floor(16384 / (18 × dpr))`.
-- [ ] **Step 2:** `npm test` FAIL. **Step 3:** implement. **Step 4:** `npm test && npm run build` PASS; `cargo test -p prism-server` still PASS.
-- [ ] **Step 5: Manual check** (with `cargo run -p prism-cli -- record --go-test ./...` in `examples/go-demo`, or the gated demos): the sessions tab, badges, compare → diff colors, swap, delete with confirm, the hatched truncated node (record go-demo and set `depth=3` in the URL), and 375 px width.
+- [ ] **Step 2:** `npm test` FAIL. **Step 3:** implement. **Step 4:** `npm test && npm run build` PASS; `cargo test -p perfhawk-server` still PASS.
+- [ ] **Step 5: Manual check** (with `cargo run -p perfhawk-cli -- record --go-test ./...` in `examples/go-demo`, or the gated demos): the sessions tab, badges, compare → diff colors, swap, delete with confirm, the hatched truncated node (record go-demo and set `depth=3` in the URL), and 375 px width.
 - [ ] **Step 6: Commit:** `feat(ui): sessions, fidelity badges, diff view, delete, depth notice`
 
 ---
@@ -552,21 +552,21 @@ docs/USER_GUIDE.md                 Phase 1 sections
 
 **Files:**
 - Modify:
-  - `examples/go-demo/{main.go, go.mod}` — add an optional `-agent` flag (default on) that calls `agent.Start`; `replace prism.dev/agent => ../../agents/go`.
-  - `examples/README.md`, `examples/dotnet-demo/` — replace `profile.ps1`/`profile.sh` with `prism record -- dotnet run ...` docs; keep the scripts as a "dotnet-trace alternative".
+  - `examples/go-demo/{main.go, go.mod}` — add an optional `-agent` flag (default on) that calls `agent.Start`; `replace github.com/rajkumarGosavi/perfhawk/agents/go => ../../agents/go`.
+  - `examples/README.md`, `examples/dotnet-demo/` — replace `profile.ps1`/`profile.sh` with `perfhawk record -- dotnet run ...` docs; keep the scripts as a "dotnet-trace alternative".
   - `docs/USER_GUIDE.md` — new sections: Recording (Go, .NET), Sessions, Diff, Deleting, Fidelity badges, Troubleshooting capture (Review Focus #3 causes).
   - `docs/FOLLOWUPS.md` — strike done items.
   - `.github/workflows/ci.yml`
-- Create: `crates/prism-capture/tests/e2e.rs` (gated).
+- Create: `crates/perfhawk-capture/tests/e2e.rs` (gated).
 
 **CI (exact):**
 - Matrix jobs (3 OS) add `actions/setup-go@v5` (go `1.22.x`) and `actions/setup-dotnet@v4` (`8.0.x`).
 - Steps, after the Phase 0 steps:
   1. `cd agents/go && go test ./...`
-  2. `cd helpers/prism-dotnet && dotnet test`
-  3. `dotnet publish helpers/prism-dotnet -c Release -o target/helper`
-  4. `PRISM_DOTNET=target/helper/prism-dotnet[.dll] PRISM_E2E=1 cargo test -p prism-capture --features test-helpers -- --include-ignored`
-- **Linux only:** the e2e step runs with `TMPDIR` unset so prism and the target agree.
+  2. `cd helpers/perfhawk-dotnet && dotnet test`
+  3. `dotnet publish helpers/perfhawk-dotnet -c Release -o target/helper`
+  4. `PERFHAWK_DOTNET=target/helper/perfhawk-dotnet[.dll] PERFHAWK_E2E=1 cargo test -p perfhawk-capture --features test-helpers -- --include-ignored`
+- **Linux only:** the e2e step runs with `TMPDIR` unset so perfhawk and the target agree.
 - `cargo deny` keeps its ubuntu-only position.
 
 **`e2e.rs` acceptance tests** (all `#[ignore]`, run by CI with `--include-ignored`):
@@ -574,7 +574,7 @@ docs/USER_GUIDE.md                 Phase 1 sections
 - `go_record_url_plain_pprof`: go-demo with `-agent=false`, pprof on 6060 → wall reported unavailable; `--kinds cpu,memory` works.
 - `dotnet_record_launch_all_kinds`: `record --kinds cpu,wall,memory,lock,threads --duration 3s -- dotnet examples/dotnet-demo/bin/Release/net8.0/dotnet-demo.dll all 6` → 5 profiles; cpu fidelity approximate; memory frames contain `BuildReports`; lock frames contain `ReserveInventory`.
 - `dotnet_record_attach_pid`.
-- `diff_two_go_sessions`: two short go-demo recordings → `prism diff` exits 0 with rows.
+- `diff_two_go_sessions`: two short go-demo recordings → `perfhawk diff` exits 0 with rows.
 - `target_exit_partial`: dotnet-demo `cpu 1` with `--duration 5s` → partial.
 
 - [ ] **Step 1:** Write `e2e.rs`; run it locally on Windows with the real helper and Go installed. Expected: PASS.
@@ -587,9 +587,9 @@ docs/USER_GUIDE.md                 Phase 1 sections
 ## Phase 1 done when
 
 - All unit and integration suites pass on Windows locally, and in CI on all 3 OSes once the remote exists: Rust, UI, Go agent, .NET helper, and the gated e2e.
-- `prism record` captures every §0.1 kind except Block I/O for Go and .NET, by attach and by launch, with correct fidelity badges.
-- `prism diff` / the Diff view, sessions and delete work as specified. The user guide documents them.
+- `perfhawk record` captures every §0.1 kind except Block I/O for Go and .NET, by attach and by launch, with correct fidelity badges.
+- `perfhawk diff` / the Diff view, sessions and delete work as specified. The user guide documents them.
 
 **Scope notes:**
 - Moved to Phase 2 with block I/O: extending the trie fast path to filtered, inverted and sandwich queries (FOLLOWUPS.md "Ungated query paths"), and the `%LOCALAPPDATA%` change.
-- Release packaging (bundling `prism-dotnet` next to `prism`, notices file) stays in "before the first binary release".
+- Release packaging (bundling `perfhawk-dotnet` next to `perfhawk`, notices file) stays in "before the first binary release".
