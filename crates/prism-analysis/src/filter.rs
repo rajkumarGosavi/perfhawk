@@ -56,6 +56,9 @@ pub(crate) fn for_each_sample(
     filter: &Filter,
     mut visit: impl FnMut(&[FuncId], i64),
 ) {
+    if sample_type >= p.sample_types.len() {
+        return;
+    }
     let n = p.functions.len();
     let mut focus = Cached::new(&filter.focus, n);
     let mut exclude = Cached::new(&filter.exclude, n);

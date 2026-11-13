@@ -138,6 +138,7 @@ impl Profile {
     }
 
     pub fn value(&self, sample: usize, sample_type: usize) -> i64 {
+        debug_assert!(sample_type < self.sample_types.len());
         self.values[sample * self.sample_types.len() + sample_type]
     }
 

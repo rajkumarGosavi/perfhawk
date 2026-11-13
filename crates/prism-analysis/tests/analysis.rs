@@ -161,3 +161,17 @@ fn saturating_totals() {
     let p = build(&[(&["a"], i64::MAX), (&["a"], i64::MAX)]);
     assert_eq!(flame(&p, 0, &none(), 0.0).total, i64::MAX);
 }
+
+#[test]
+fn out_of_range_sample_type_yields_empty_views() {
+    let p = std_profile();
+    let st = p.sample_types.len();
+    let r = flame(&p, st, &none(), 0.0);
+    assert_eq!(r.total, 0);
+    assert!(r.children.is_empty());
+    assert_eq!(inverted_flame(&p, st, &none(), 0.0).total, 0);
+    assert!(top(&p, st, &none(), 10).is_empty());
+    let s = sandwich(&p, st, &none(), fid(&p, "a"), 0.0);
+    assert_eq!((s.callees.total, s.callers.total), (0, 0));
+    assert!(s.callees.children.is_empty() && s.callers.children.is_empty());
+}
