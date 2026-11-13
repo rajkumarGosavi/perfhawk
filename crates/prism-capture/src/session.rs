@@ -119,7 +119,14 @@ pub fn record(
         if let Some(w) = &a.warning {
             warnings.push(format!("{}: {w}", a.kind));
         }
-        let wants_time = matches!(a.kind, ProfileKind::Cpu | ProfileKind::Wall);
+        let wants_time = matches!(
+            a.kind,
+            ProfileKind::Cpu
+                | ProfileKind::Wall
+                | ProfileKind::BlockIo
+                | ProfileKind::OffCpu
+                | ProfileKind::SchedDelay
+        );
         if req.plan.timeline && wants_time && a.timeline.is_none() {
             warnings.push(format!(
                 "no time resolution for {}: the {} provider gave no timestamps",
