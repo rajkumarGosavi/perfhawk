@@ -16,7 +16,12 @@ fn fake_helper() -> &'static PathBuf {
     static P: OnceLock<PathBuf> = OnceLock::new();
     P.get_or_init(|| {
         let exe = std::env::current_exe().unwrap();
-        let profile_dir = exe.parent().unwrap().parent().unwrap().to_path_buf();
+        // Walk up to the profile directory (`debug` or `release`); the test exe's depth varies.
+        let profile_dir = exe
+            .ancestors()
+            .find(|d| matches!(d.file_name().and_then(|n| n.to_str()), Some("debug" | "release")))
+            .expect("profile dir (debug/release) above the test exe")
+            .to_path_buf();
         let mut cmd = std::process::Command::new(env!("CARGO"));
         cmd.args([
             "build",
