@@ -11,7 +11,7 @@ export function heat(n: GraphNode, totalValue: number): number {
 
 /** Box size: width from the name length, height from how much self cost the node holds. */
 export function nodeSize(n: GraphNode, totalValue: number): { w: number; h: number } {
-  return { w: clamp(n.name.length * 7 + 24, 80, 260), h: Math.round(24 + 40 * heat(n, totalValue)) }
+  return { w: clamp(n.name.length * 7 + 24, 150, 260), h: Math.round(40 + 24 * heat(n, totalValue)) }
 }
 
 export function edgeWidth(value: number, maxValue: number): number {

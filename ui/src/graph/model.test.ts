@@ -27,12 +27,14 @@ describe('sizes and weights', () => {
   it('nodeSize stays within bounds and is finite for a zero total', () => {
     for (const total of [0, 10, 1e12]) {
       const s = nodeSize(node(1, 'x'.repeat(500), 5, 5), total)
-      expect(s.w).toBeGreaterThanOrEqual(80)
+      expect(s.w).toBeGreaterThanOrEqual(150)
       expect(s.w).toBeLessThanOrEqual(260)
-      expect(s.h).toBeGreaterThanOrEqual(24)
+      expect(s.h).toBeGreaterThanOrEqual(40)
       expect(s.h).toBeLessThanOrEqual(64)
     }
-    expect(nodeSize(node(1, 'a', 1, 1), 100).w).toBe(80)
+    expect(nodeSize(node(1, 'a', 1, 1), 100).w).toBe(150)
+    // room for two text lines even when the node holds no self cost
+    expect(nodeSize(node(1, 'a', 0, 1), 100).h).toBeGreaterThanOrEqual(40)
   })
   it('heat is 0..1 and 0 for a zero total', () => {
     expect(heat(node(1, 'a', 5, 5), 10)).toBe(0.5)

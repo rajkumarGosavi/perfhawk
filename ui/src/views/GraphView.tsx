@@ -154,7 +154,7 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
       >
         <svg width="100%" height="100%" role="group" aria-label="Call graph nodes. Arrow keys move, Enter opens the function, f focuses its subtree.">
           <defs>
-            <marker id="graph-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <marker id="graph-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
               <path d="M0 0 L8 4 L0 8 z" fill="currentColor" />
             </marker>
           </defs>
@@ -198,7 +198,7 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
                 >
                   <rect width={s.w} height={s.h} rx={4} fill={`hsl(24 78% ${Math.round(92 - 40 * h)}%)`} />
                   <text x={6} y={15} className="graph-name">{clip(n.name)}</text>
-                  <text x={6} y={s.h - 7} className="graph-nums">
+                  <text x={6} y={s.h - 9} className="graph-nums">
                     self {formatPct((n.selfValue / graph.totalValue) * 100)} · total {formatPct((n.total / graph.totalValue) * 100)}
                   </text>
                 </g>
