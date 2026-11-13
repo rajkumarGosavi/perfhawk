@@ -11,12 +11,13 @@ type Props = {
   hot: boolean
   onSelectFunc: (funcId: number) => void
   onTransform?: (t: Transform) => void
+  extra?: { header: string; cell: (node: FlameNode) => string }
 }
 
 const MAX_INDENT_LEVELS = 40
 const rowId = (key: string) => `tree-row-${key}`
 
-export function CallTree({ root, unit, hot, onSelectFunc, onTransform }: Props) {
+export function CallTree({ root, unit, hot, onSelectFunc, onTransform, extra }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['']))
   const [selected, setSelected] = useState<string | null>(null)
   const boxRef = useRef<HTMLDivElement>(null)
@@ -41,6 +42,7 @@ export function CallTree({ root, unit, hot, onSelectFunc, onTransform }: Props) 
     boxRef.current?.querySelector(`[data-key="${selected}"]`)?.scrollIntoView({ block: 'nearest' })
   }, [selected, rows])
 
+  const grid = extra ? { gridTemplateColumns: 'minmax(200px, 1fr) 90px 90px 80px 110px' } : undefined
   const pct = (v: number) => (root.total > 0 ? formatPct((v / root.total) * 100) : '0%')
   const current = rows.find((r) => r.kind === 'node' && r.key === selected)
 
@@ -101,11 +103,12 @@ export function CallTree({ root, unit, hot, onSelectFunc, onTransform }: Props) 
       aria-activedescendant={selected !== null ? rowId(selected) : undefined}
       onKeyDown={onKeyDown}
     >
-      <div className="tree-head" aria-hidden="true">
+      <div className="tree-head" aria-hidden="true" style={grid}>
         <span className="tree-fn">Function</span>
         <span className="num">Self</span>
         <span className="num">Total</span>
         <span className="num">Total %</span>
+        {extra && <span className="num">{extra.header}</span>}
       </div>
       {rows.map((r) => {
         const indent = { paddingLeft: Math.min(r.depth, MAX_INDENT_LEVELS) * 14 + 4 }
@@ -128,6 +131,7 @@ export function CallTree({ root, unit, hot, onSelectFunc, onTransform }: Props) 
             aria-expanded={r.hasChildren ? r.expanded : undefined}
             aria-selected={r.key === selected}
             aria-label={`${r.node.name}${isHot ? ', on the hot path' : ''}`}
+            style={grid}
             onClick={() => setSelected(r.key)}
           >
             <span className="tree-fn" style={indent}>
@@ -153,6 +157,7 @@ export function CallTree({ root, unit, hot, onSelectFunc, onTransform }: Props) 
             <span className="num">{formatValue(r.node.selfValue, unit)}</span>
             <span className="num">{formatValue(r.node.total, unit)}</span>
             <span className="num">{pct(r.node.total)}</span>
+            {extra && <span className="num">{extra.cell(r.node)}</span>}
           </div>
         )
       })}

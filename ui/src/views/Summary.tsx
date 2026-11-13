@@ -8,6 +8,7 @@ import { hotPath, hotPathEndsTruncated } from '../analysis/hotPath'
 import { formatPct, formatValue } from '../format'
 import type { ViewState } from '../url'
 import { FidelityBadge, fidelityTip } from './FidelityBadge'
+import { PivotPanel } from './PivotPanel'
 
 type Props = {
   profileRef: string
@@ -133,6 +134,12 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
                   <button onClick={() => navigate({ view: 'tree', hot: true })}>Open in call tree</button>
                 </div>
               </section>
+              <PivotPanel
+                sessionId={record.session_id}
+                functionName={data.bySelf[0]?.name ?? null}
+                currentProfileId={record.id}
+                navigate={navigate}
+              />
               <section className="card" aria-label="What to look at">
                 <h2>What to look at: {guide.title}</h2>
                 <ul>{guide.questions.map((q) => <li key={q}>{q}</li>)}</ul>

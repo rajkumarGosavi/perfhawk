@@ -10,6 +10,7 @@ import { FlameGraph } from '../flame/FlameGraph'
 import type { ViewName, ViewState } from '../url'
 import { CallTree } from './CallTree'
 import { Groups } from './Groups'
+import { PivotPanel } from './PivotPanel'
 import { Sandwich } from './Sandwich'
 import { Summary } from './Summary'
 import { FidelityBadge } from './FidelityBadge'
@@ -247,7 +248,15 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           onSort={(s) => pushView({ sort: s === 'self' ? undefined : s })} onSelect={(f) => pushView({ view: 'sandwich', func: f })} />
       )}
       {data?.kind === 'sandwich' && view === 'sandwich' && (
-        <Sandwich data={data.data} unit={unit} search={state.search} onSelectFunc={(f) => pushView({ func: f })} />
+        <>
+          <PivotPanel
+            sessionId={record?.session_id ?? null}
+            functionName={data.data.callees.name || null}
+            currentProfileId={record?.id ?? ''}
+            navigate={navigate}
+          />
+          <Sandwich data={data.data} unit={unit} search={state.search} onSelectFunc={(f) => pushView({ func: f })} />
+        </>
       )}
       {data?.kind === 'groups' && view === 'groups' && (
         <Groups rows={data.rows} unit={unit} by={groupBy} onBy={(by) => pushView({ groupBy: by })} />

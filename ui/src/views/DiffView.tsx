@@ -7,8 +7,21 @@ import { diffColor } from '../flame/diffColor'
 import { FlameGraph } from '../flame/FlameGraph'
 import { formatPct, formatValue } from '../format'
 import type { ViewState } from '../url'
+import { CallTree } from './CallTree'
+import { diffStatus, filterDiffTree, filterRows, toSideTree } from './diffHelpers'
 import { toFlameNodes, type DiffFlameNode } from './diffTree'
+import { TransformBar } from './TransformBar'
 import { FidelityBadge } from './FidelityBadge'
+
+const PALETTE_KEY = 'prism.palette'
+
+function readPalette(): boolean {
+  try {
+    return localStorage.getItem(PALETTE_KEY) === 'cb'
+  } catch {
+    return false
+  }
+}
 
 type Nav = (patch: Partial<ViewState>, mode?: 'push' | 'replace', reset?: boolean) => void
 
@@ -35,6 +48,8 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
   const [top, setTop] = useState<DiffTop | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [tab, setTab] = useState<'flame' | 'tree'>('flame')
+  const [cb, setCb] = useState(readPalette)
 
   useEffect(() => {
     getProfile(headRef).then(setHead, (e: ApiError) => setError(e.message))
@@ -45,13 +60,27 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
     if (baseRef) getProfile(baseRef).then(setBase, (e: ApiError) => setError(e.message))
   }, [baseRef])
 
-  const { focus, exclude, hide, depth } = state
+  const { focus, exclude, hide, depth, tx, diffFilter, diffSort, diffLayout } = state
+  useEffect(() => {
+    if (cb) document.documentElement.setAttribute('data-palette', 'cb')
+    else document.documentElement.removeAttribute('data-palette')
+    return () => document.documentElement.removeAttribute('data-palette')
+  }, [cb])
+  const setPalette = (on: boolean) => {
+    setCb(on)
+    try {
+      if (on) localStorage.setItem(PALETTE_KEY, 'cb')
+      else localStorage.removeItem(PALETTE_KEY)
+    } catch {
+      /* storage unavailable: the choice lasts for this page only */
+    }
+  }
   useEffect(() => {
     if (!baseRef) return
     let stale = false
     setLoading(true)
-    const q = { st: stName, normalize: (normalize ?? 'none') as 'none' | 'total', focus, exclude, hide, depth, min: 0.0005 }
-    Promise.all([getDiffFlame(baseRef, headRef, q), getDiffTop(baseRef, headRef, { ...q, limit: 50 })]).then(
+    const q = { st: stName, normalize: (normalize ?? 'none') as 'none' | 'total', focus, exclude, hide, depth, tx, min: 0.0005 }
+    Promise.all([getDiffFlame(baseRef, headRef, q), getDiffTop(baseRef, headRef, { ...q, limit: 50, sort: diffSort === 'percent' ? 'percent' : 'delta' })]).then(
       ([f, t]) => {
         if (stale) return
         setFlame(f)
@@ -70,7 +99,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
     return () => {
       stale = true
     }
-  }, [baseRef, headRef, stName, normalize, focus, exclude, hide, depth])
+  }, [baseRef, headRef, stName, normalize, focus, exclude, hide, depth, tx, diffSort])
 
   const common = useMemo(() => {
     if (!head || !base) return []
@@ -79,6 +108,21 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
 
   const tree = useMemo(() => (flame ? toFlameNodes(flame.root) : null), [flame])
   const unit = flame?.sampleType.unit ?? 'count'
+  const treeFiltered = useMemo(() => (flame ? toFlameNodes(filterDiffTree(flame.root, diffFilter)) : null), [flame, diffFilter])
+  const sides = useMemo(
+    () => (flame && diffLayout === 'side' ? { base: toSideTree(flame.root, 'base'), head: toSideTree(flame.root, 'head') } : null),
+    [flame, diffLayout],
+  )
+  const rows = useMemo(() => (top ? filterRows(top.rows, diffFilter) : []), [top, diffFilter])
+  const colorOf = (n: unknown) => diffColor((n as DiffFlameNode).base, (n as DiffFlameNode).head)
+  const tooltipExtra = (n: unknown) => {
+    const d = n as DiffFlameNode
+    return (
+      <div>
+        base {formatValue(d.base, unit)} → head {formatValue(d.head, unit)} · {delta(d.base, d.head, unit)}
+      </div>
+    )
+  }
 
   return (
     <section aria-label="Diff">
@@ -138,7 +182,22 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
           />
           Normalize to head total
         </label>
+        <div className="tabs" role="group" aria-label="Diff filter">
+          <button aria-pressed={diffFilter === 'regressions'} onClick={() => navigate({ diffFilter: diffFilter === 'regressions' ? undefined : 'regressions' }, 'replace')}>Regressions only</button>
+          <button aria-pressed={diffFilter === 'improvements'} onClick={() => navigate({ diffFilter: diffFilter === 'improvements' ? undefined : 'improvements' }, 'replace')}>Improvements only</button>
+        </div>
+        <button aria-pressed={diffSort === 'percent'} onClick={() => navigate({ diffSort: diffSort === 'percent' ? undefined : 'percent' }, 'replace')}>Sort changes by %</button>
+        <button aria-pressed={diffLayout === 'side'} onClick={() => navigate({ diffLayout: diffLayout === 'side' ? undefined : 'side' }, 'replace')}>Side by side</button>
+        <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={cb} onChange={(e) => setPalette(e.target.checked)} />
+          Colour-blind palette
+        </label>
+        <div className="tabs" role="group" aria-label="Diff view">
+          <button aria-pressed={tab === 'flame'} onClick={() => setTab('flame')}>Flame</button>
+          <button aria-pressed={tab === 'tree'} onClick={() => setTab('tree')}>Call tree</button>
+        </div>
       </div>
+      <TransformBar tx={tx} onChange={(next) => navigate({ tx: next }, 'push')} />
       {error && <div className="banner" role="alert">{error}</div>}
       {!baseRef && <p className="muted">Pick a base profile to compare against.</p>}
       {loading && !error && <p className="muted" role="status">Loading...</p>}
@@ -149,20 +208,28 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
         · width = larger of base and head
       </div>
       <div style={{ opacity: loading ? 0.5 : 1 }}>
-        {tree && (
-          <FlameGraph
-            root={tree}
+        {tab === 'flame' && !sides && tree && (
+          <FlameGraph root={tree} unit={unit} inverted={false} colorOf={colorOf} tooltipExtra={tooltipExtra} />
+        )}
+        {tab === 'flame' && sides && (
+          <div className="diff-sides">
+            <div>
+              <div className="section-title">Base</div>
+              <FlameGraph root={sides.base} unit={unit} inverted={false} colorOf={colorOf} tooltipExtra={tooltipExtra} />
+            </div>
+            <div>
+              <div className="section-title">Head</div>
+              <FlameGraph root={sides.head} unit={unit} inverted={false} colorOf={colorOf} tooltipExtra={tooltipExtra} />
+            </div>
+          </div>
+        )}
+        {tab === 'tree' && treeFiltered && (
+          <CallTree
+            root={treeFiltered}
             unit={unit}
-            inverted={false}
-            colorOf={(n) => diffColor((n as DiffFlameNode).base, (n as DiffFlameNode).head)}
-            tooltipExtra={(n) => {
-              const d = n as DiffFlameNode
-              return (
-                <div>
-                  base {formatValue(d.base, unit)} → head {formatValue(d.head, unit)} · {delta(d.base, d.head, unit)}
-                </div>
-              )
-            }}
+            hot={false}
+            onSelectFunc={() => {}}
+            extra={{ header: 'Δ (head − base)', cell: (n) => signed((n as DiffFlameNode).head - (n as DiffFlameNode).base, unit) }}
           />
         )}
         {top && (
@@ -174,23 +241,24 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
                   <tr>
                     <th>Function</th>
                     <th className="num">Δ self</th><th className="num">Base self</th><th className="num">Head self</th>
-                    <th className="num">Δ total</th><th className="num">Δ %</th>
+                    <th className="num">Δ total</th><th className="num">Δ %</th><th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {top.rows.map((r, i) => (
+                  {rows.map((r, i) => (
                     <tr key={`${r.name}|${r.file}|${i}`}>
                       <td className="name" title={r.file ? `${r.name}\n${r.file}` : r.name}>{r.name}</td>
                       <td className={`num ${r.deltaSelf > 0 ? 'up' : r.deltaSelf < 0 ? 'down' : ''}`}>{signed(r.deltaSelf, unit)}</td>
                       <td className="num">{formatValue(r.baseSelf, unit)}</td>
                       <td className="num">{formatValue(r.headSelf, unit)}</td>
                       <td className={`num ${r.deltaTotal > 0 ? 'up' : r.deltaTotal < 0 ? 'down' : ''}`}>{signed(r.deltaTotal, unit)}</td>
-                      <td className="num">{r.baseTotal > 0 ? formatPct((r.deltaTotal / r.baseTotal) * 100) : 'new'}</td>
+                      <td className="num">{r.baseTotal > 0 ? formatPct((r.deltaTotal / r.baseTotal) * 100) : ''}</td>
+                      <td>{(() => { const st = diffStatus(r.baseTotal, r.headTotal); return st === 'new' || st === 'gone' ? st : '' })()}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {top.rows.length === 0 && <p className="muted">No changes.</p>}
+              {rows.length === 0 && <p className="muted">No changes.</p>}
             </div>
           </>
         )}
