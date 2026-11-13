@@ -2,6 +2,7 @@
 //! views over a [`prism_model::Profile`], with pprof-compatible filters.
 
 mod diff;
+mod doctor;
 mod filter;
 mod findings;
 mod graph;
@@ -17,6 +18,10 @@ mod tree;
 pub use diff::{
     diff_flame, diff_flame_sides, diff_top, diff_top_sorted, diff_top_sorted_sides,
     match_sample_type, DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow, DiffSort,
+};
+pub use doctor::{
+    diagnose, Confidence, Diagnosis, DoctorConfig, DoctorFinding, DoctorInput, DoctorProfile,
+    FollowUp, NextStep, Verdict,
 };
 pub use filter::{Filter, Window};
 pub use findings::{findings, Evidence, Finding, FindingAction, RuleConfig, Severity};
