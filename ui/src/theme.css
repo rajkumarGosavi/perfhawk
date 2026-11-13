@@ -179,3 +179,8 @@ td.down { color: var(--diff-down-3); }
     --diff-down-0: #1c3a5a; --diff-down-1: #24507d; --diff-down-2: #2f69a2; --diff-down-3: #4a8bcf; --diff-down-4: #70aef0;
   }
 }
+.findings ul { list-style: none; margin: 0; padding: 0; }
+.finding { padding: 6px 0; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+.finding p { margin: 2px 0; }
+.finding .sev { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border: 1px solid currentColor; border-radius: 3px; }
+.finding.sev-high .sev { font-weight: 700; }

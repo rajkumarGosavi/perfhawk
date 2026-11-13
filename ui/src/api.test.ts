@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  ApiError, deleteProfile, deleteSession, getDiffFlame, getDiffTop, getFlame, getGroups, getPivot, listSessions,
+  ApiError, deleteProfile, deleteSession, getDiffFlame, getDiffTop, getFlame, getFindings, getGroups, getPivot, listSessions,
 } from './api'
 
 function stub(status: number, body?: unknown) {
@@ -88,5 +88,15 @@ describe('v2 api', () => {
     expect(u).toContain('by=site')
     await getPivot('s 1', 'a/b c')
     expect((f.mock.calls[1] as unknown as [string])[0]).toBe('/api/sessions/s%201/pivot?name=a%2Fb+c')
+  })
+})
+
+describe('findings api', () => {
+  it('getFindings URL includes tx', async () => {
+    const f = stub(200, [])
+    await getFindings('p1', { tx: 'rec', st: 1 })
+    const u = (f.mock.calls[0] as unknown as [string])[0]
+    expect(u).toContain('/api/profiles/p1/findings?')
+    expect(u).toContain('tx=rec')
   })
 })

@@ -113,6 +113,26 @@ export type PivotRow = {
   totalPct: number
 }
 
+export type FindingAction = {
+  label: string
+  view: string
+  funcId: number | null
+  focus: string | null
+  tx: string | null
+  sort: string | null
+  groupBy: string | null
+}
+export type Finding = {
+  id: string
+  rule: string
+  severity: 'info' | 'warn' | 'high'
+  score: number
+  title: string
+  detail: string
+  evidence: { funcId: number | null; name: string | null; value: number; pct: number }
+  action: FindingAction
+}
+
 export class ApiError extends Error {
   code: string
   constructor(code: string, message: string) {
@@ -171,6 +191,8 @@ export const getSandwich = (ref: string, func: number, q: AnalysisQuery = {}) =>
   request<Sandwich>(`${p(ref)}/sandwich${qs({ ...q, func })}`)
 export const getGroups = (ref: string, q: AnalysisQuery & { by: 'stack' | 'site'; limit?: number }) =>
   request<GroupRow[]>(`${p(ref)}/groups${qs(q)}`)
+export const getFindings = (ref: string, q: AnalysisQuery = {}) =>
+  request<Finding[]>(`${p(ref)}/findings${qs(q)}`)
 export const getPivot = (sessionRef: string, name: string) =>
   request<PivotRow[]>(`/api/sessions/${encodeURIComponent(sessionRef)}/pivot${qs({ name })}`)
 export const deleteProfile = (ref: string) => request<void>(p(ref), DELETE_INIT)

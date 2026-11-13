@@ -8,6 +8,7 @@ import { hotPath, hotPathEndsTruncated } from '../analysis/hotPath'
 import { formatPct, formatValue } from '../format'
 import type { ViewState } from '../url'
 import { FidelityBadge, fidelityTip } from './FidelityBadge'
+import { Findings } from './Findings'
 import { PivotPanel } from './PivotPanel'
 
 type Props = {
@@ -112,6 +113,7 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
               <ul>{warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
             </div>
           )}
+          <Findings profileRef={profileRef} query={query} navigate={navigate} />
           {empty ? (
             <p className="muted">No samples in this view.</p>
           ) : (
