@@ -7,6 +7,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use prism_model::ProfileKind;
 use prism_store::{default_home, ImportOptions, Store};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -69,6 +70,74 @@ enum Command {
         #[arg(long)]
         no_browser: bool,
     },
+    /// Capture profiles from a live Go or .NET process
+    Record {
+        /// Attach to a process id
+        #[arg(long)]
+        pid: Option<u32>,
+        /// Attach to a Go net/http/pprof endpoint
+        #[arg(long, value_name = "URL")]
+        url: Option<String>,
+        /// Profile `go test` for a package (test arguments after `--`)
+        #[arg(long, value_name = "PKG")]
+        go_test: Option<String>,
+        /// Kinds to capture, comma separated (default: everything available)
+        #[arg(long, value_delimiter = ',', value_parser = parse_kind)]
+        kinds: Vec<ProfileKind>,
+        /// Capture window: <n>ms|s|m, 1s to 10m
+        #[arg(long, default_value = "30s", value_parser = prism_capture::parse_duration)]
+        duration: Duration,
+        /// Session name
+        #[arg(long)]
+        name: Option<String>,
+        /// Tag to attach (repeatable)
+        #[arg(long = "tag")]
+        tags: Vec<String>,
+        /// Open the UI on the new session afterwards
+        #[arg(long)]
+        open: bool,
+        #[arg(long, default_value_t = 7878)]
+        port: u16,
+        /// Program to launch and its arguments
+        #[arg(last = true, value_name = "PROGRAM")]
+        program: Vec<String>,
+    },
+    /// List recording targets (Go agents, .NET processes)
+    Targets {
+        #[arg(long)]
+        json: bool,
+    },
+    /// List recording sessions
+    Sessions {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Compare two profiles
+    Diff {
+        base: String,
+        head: String,
+        /// Sample type name
+        #[arg(long)]
+        st: Option<String>,
+        /// Scale the base to the head total before comparing
+        #[arg(long, value_enum, default_value_t = NormalizeArg::None)]
+        normalize: NormalizeArg,
+        #[arg(long, default_value_t = 20)]
+        top: usize,
+        #[arg(long, value_name = "RE")]
+        focus: Option<String>,
+        #[arg(long, value_name = "RE")]
+        exclude: Option<String>,
+        #[arg(long, value_name = "RE")]
+        hide: Option<String>,
+    },
+    /// Delete profiles (or whole sessions with --session)
+    Rm {
+        #[arg(required = true, value_name = "REF")]
+        refs: Vec<String>,
+        #[arg(long)]
+        session: bool,
+    },
     /// Serve the UI (profile list)
     Ui {
         #[arg(long, default_value_t = 7878)]
@@ -76,6 +145,12 @@ enum Command {
         #[arg(long)]
         no_browser: bool,
     },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum NormalizeArg {
+    None,
+    Total,
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -111,6 +186,31 @@ async fn main() -> ExitCode {
                     clap::error::ErrorKind::ArgumentConflict,
                     "--name can only be used with a single file",
                 )
+                .print();
+            return ExitCode::from(2);
+        }
+    }
+    if let Command::Record {
+        pid,
+        url,
+        go_test,
+        program,
+        ..
+    } = &cli.command
+    {
+        let probe = cmd::record::Args {
+            pid: *pid,
+            url: url.clone(),
+            go_test: go_test.clone(),
+            trailing: program.clone(),
+            kinds: vec![],
+            duration: Duration::from_secs(1),
+            name: None,
+            tags: vec![],
+        };
+        if let Err(m) = cmd::record::build_target(&probe) {
+            let _ = Cli::command()
+                .error(clap::error::ErrorKind::ArgumentConflict, m)
                 .print();
             return ExitCode::from(2);
         }
@@ -180,13 +280,79 @@ async fn main() -> ExitCode {
                     .map_err(|e| e.to_string())
             };
             match short {
-                Ok(id) => done(cmd::serve::run(store, port, Some(id), no_browser).await),
+                Ok(id) => done(
+                    cmd::serve::run(store, port, Some(format!("profile={id}")), no_browser).await,
+                ),
                 Err(e) => fail(e),
             }
         }
         Command::Ui { port, no_browser } => {
             done(cmd::serve::run(store, port, None, no_browser).await)
         }
+        Command::Record {
+            pid,
+            url,
+            go_test,
+            kinds,
+            duration,
+            name,
+            tags,
+            open,
+            port,
+            program,
+        } => {
+            let args = cmd::record::Args {
+                pid,
+                url,
+                go_test,
+                trailing: program,
+                kinds,
+                duration,
+                name,
+                tags,
+            };
+            let target = match cmd::record::build_target(&args) {
+                Ok(t) => t,
+                Err(m) => return fail(m),
+            };
+            let (code, short) = cmd::record::run(&store, args, target);
+            if open && code == 0 {
+                if let Some(id) = short {
+                    return done(
+                        cmd::serve::run(store, port, Some(format!("session={id}")), false).await,
+                    );
+                }
+            }
+            ExitCode::from(code)
+        }
+        Command::Targets { json } => done(cmd::targets::run(json)),
+        Command::Sessions { json } => done(cmd::sessions::run(&store, json)),
+        Command::Diff {
+            base,
+            head,
+            st,
+            normalize,
+            top,
+            focus,
+            exclude,
+            hide,
+        } => done(cmd::diff::run(
+            &store,
+            cmd::diff::Args {
+                base,
+                head,
+                st,
+                normalize: match normalize {
+                    NormalizeArg::None => prism_analysis::DiffNormalize::None,
+                    NormalizeArg::Total => prism_analysis::DiffNormalize::Total,
+                },
+                top,
+                focus,
+                exclude,
+                hide,
+            },
+        )),
+        Command::Rm { refs, session } => ExitCode::from(cmd::rm::run(&store, refs, session)),
     }
 }
 

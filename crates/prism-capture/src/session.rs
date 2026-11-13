@@ -84,6 +84,19 @@ pub fn record(
     let started = Instant::now();
     let elapsed_ms = |s: Instant| s.elapsed().as_millis() as i64;
 
+    let kind_list: Vec<&str> = kinds.iter().map(|k| k.as_str()).collect();
+    let what = match (rt.pid, &rt.url, &rt.command) {
+        (Some(pid), _, _) => format!("pid {pid}"),
+        (None, Some(u), _) => u.clone(),
+        (None, None, Some(c)) => c.clone(),
+        _ => "target".into(),
+    };
+    progress(&format!(
+        "[{}] capturing {} for {}s ({what})",
+        rt.provider,
+        kind_list.join(", "),
+        req.plan.duration.as_secs()
+    ));
     let outcome = match provider.capture(&rt, &req.target, &plan, cancel, progress) {
         Ok(o) => o,
         Err(e) => {

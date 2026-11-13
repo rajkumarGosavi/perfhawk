@@ -60,8 +60,9 @@ pub fn run(store: &Store, a: Args) -> Result<(), String> {
 
     println!("{}", rec.name);
     println!(
-        "kind: {}  sample type: {}  total: {}",
+        "kind: {}  fidelity: {}  sample type: {}  total: {}",
         super::kind_str(&rec.kind),
+        super::kind_str(&rec.fidelity),
         profile.sample_types[st].name,
         total
     );
