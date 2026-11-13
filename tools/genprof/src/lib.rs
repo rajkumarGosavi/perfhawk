@@ -2,9 +2,11 @@
 //!
 //! Model: 50 000 functions (one location each) drawn Zipf-distributed. Call
 //! paths come from a tree of 10 000 "templates" (each forks a parent's prefix,
-//! like handlers under a shared server loop) and 16 recursion patterns (a
-//! prefix plus a 1–4 function cycle). 90 % of samples are 5–200 frames deep and
-//! follow a template; 10 % are 1 000–5 000 deep and follow a recursion pattern.
+//! like handlers under a shared server loop) and 512 recursion patterns (a
+//! template prefix plus a cycle of 1–4 uniformly chosen functions, picked
+//! uniformly so no single recursion dominates). 90 % of samples are 5–200
+//! frames deep and follow a Zipf-chosen template; 10 % are 1 000–5 000 deep
+//! and follow a recursion pattern.
 //! Every sample's last 1–3 frames are fresh Zipf draws (leaf variety). Two
 //! sample types: `samples/count` and `cpu/nanoseconds`. Output is uncompressed
 //! protobuf, written streaming until it reaches the requested size.
@@ -18,7 +20,7 @@ use std::path::Path;
 const FUNCS: usize = 50_000;
 const TEMPLATES: usize = 10_000;
 const TEMPLATE_LEN: usize = 200;
-const RECURSIONS: usize = 16;
+const RECURSIONS: usize = 512;
 const RECURSION_LEN: usize = 5_000;
 const PERIOD_NS: i64 = 10_000_000;
 
@@ -36,7 +38,7 @@ impl Rng {
 
     /// Uniform in `0..n`.
     fn below(&mut self, n: usize) -> usize {
-        ((self.next() >> 11) as u128 * n as u128 >> 53) as usize
+        (((self.next() >> 11) as u128 * n as u128) >> 53) as usize
     }
 
     fn unit(&mut self) -> f64 {
@@ -167,14 +169,15 @@ pub fn generate(out: &Path, target_mb: u64, seed: u64) -> std::io::Result<()> {
         .map(|_| {
             let base = &templates[rng.below(TEMPLATES)];
             let prefix = 5 + rng.below(25);
-            let cycle: Vec<u32> = (0..1 + rng.below(4)).map(|_| draw(&mut rng)).collect();
+            let cycle: Vec<u32> = (0..1 + rng.below(4))
+                .map(|_| rng.below(FUNCS) as u32)
+                .collect();
             let mut path = base[..prefix].to_vec();
             path.extend(cycle.iter().cycle().take(RECURSION_LEN - prefix));
             path
         })
         .collect();
     let pick_template = Zipf::new(TEMPLATES);
-    let pick_recursion = Zipf::new(RECURSIONS);
 
     let mut w = BufWriter::with_capacity(1 << 20, File::create(out)?);
     let head = header().encode_to_vec();
@@ -185,10 +188,7 @@ pub fn generate(out: &Path, target_mb: u64, seed: u64) -> std::io::Result<()> {
     let mut buf = Vec::with_capacity(64 * 1024);
     while written < target {
         let (base, depth) = if rng.below(10) == 0 {
-            (
-                &recursions[pick_recursion.sample(&mut rng)],
-                1_000 + rng.below(4_001),
-            )
+            (&recursions[rng.below(RECURSIONS)], 1_000 + rng.below(4_001))
         } else {
             (
                 &templates[pick_template.sample(&mut rng)],
