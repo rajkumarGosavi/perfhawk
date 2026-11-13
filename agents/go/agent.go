@@ -94,6 +94,7 @@ func Start(opts Options) (*Agent, error) {
 	})
 	mux.Handle("/debug/prism/wall", fgprof.Handler())
 	mux.HandleFunc("/debug/prism/contention", contentionHandler)
+	mux.HandleFunc("/debug/prism/cpu-windows", cpuWindowsHandler)
 
 	a := &Agent{
 		srv: &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second},

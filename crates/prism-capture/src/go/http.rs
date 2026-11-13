@@ -8,6 +8,8 @@ use std::io::Read;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+/// CPU timeline resolution for Go: pprof windows of this length (see docs/perf/timestamps.md).
+const WINDOW_MS: u64 = 250;
 const MAX_BODY: u64 = 512 * 1024 * 1024;
 /// How long snapshot kinds (heap, goroutines) may take after a cancel.
 const CANCEL_GRACE: Duration = Duration::from_secs(3);
@@ -117,20 +119,51 @@ pub(crate) fn capture_http(
     let mut pending: HashMap<ProfileKind, bool> = HashMap::new(); // kind -> windowed
 
     for &kind in &plan.kinds {
-        let Some((path, windowed)) = endpoint(kind, has_agent, secs) else {
+        let Some((plain_path, windowed)) = endpoint(kind, has_agent, secs) else {
             warnings.push(format!("{kind}: not supported for Go targets"));
             continue;
+        };
+        // With the agent, CPU can be captured in short windows to get a timeline.
+        let use_windows = kind == ProfileKind::Cpu && has_agent && plan.timeline;
+        let path = if use_windows {
+            format!("/debug/prism/cpu-windows?seconds={secs}&window_ms={WINDOW_MS}")
+        } else {
+            plain_path.clone()
         };
         progress(&format!("capturing {kind} from {path}"));
         pending.insert(kind, windowed);
         let (tx, cancel, url) = (tx.clone(), cancel.clone(), format!("{base}{path}"));
+        let fallback_url = format!("{base}{plain_path}");
         std::thread::spawn(move || {
             if !windowed {
                 // Snapshot kinds are taken at the end of the window, or at once on cancel.
                 cancel.wait_timeout(Duration::from_secs(secs));
             }
-            let msg = match fetch(&url, timeout) {
+            let started_ns = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos() as i64);
+            let mut got_windows = use_windows;
+            let mut result = fetch(&url, timeout);
+            if use_windows && matches!(result, Err(FetchError::Status(404, _))) {
+                // An older agent without the windowed endpoint: plain CPU, no timeline.
+                got_windows = false;
+                result = fetch(&fallback_url, timeout);
+            }
+            let msg = match result {
                 Ok(bytes) => {
+                    let timeline = if got_windows {
+                        prism_import::import_bytes(&bytes, &prism_import::ImportHints::default())
+                            .ok()
+                            .and_then(|p| {
+                                crate::timeline::timeline_from_labels(
+                                    &p,
+                                    WINDOW_MS * 1_000_000,
+                                    started_ns,
+                                )
+                            })
+                    } else {
+                        None
+                    };
                     let warning = if !has_agent && is_empty_profile(&bytes) {
                         disabled_warning(kind).map(str::to_string)
                     } else {
@@ -142,7 +175,7 @@ pub(crate) fn capture_http(
                         file_name: format!("{kind}.pb.gz"),
                         bytes,
                         warning,
-                        timeline: None,
+                        timeline,
                     })
                 }
                 Err(FetchError::Gone(text)) => Msg::Failed {

@@ -658,3 +658,93 @@ fn discovery_ignores_non_loopback_addresses() {
         m.hits.lock().unwrap()
     );
 }
+
+// ---- V5 windowed CPU timelines ----
+
+const WINDOWS: &[u8] = include_bytes!("fixtures/cpu-windows.pb.gz");
+
+fn timeline_plan(kinds: Vec<ProfileKind>, on: bool) -> CapturePlan {
+    CapturePlan {
+        kinds,
+        duration: Duration::from_secs(1),
+        timeline: on,
+    }
+}
+
+fn run_capture(m: &Mock, p: &GoProvider, rt: &RuntimeInfo, plan: CapturePlan) -> CaptureOutcome {
+    p.capture(
+        rt,
+        &Target::Url(m.base.clone()),
+        &plan,
+        &CancelToken::new(),
+        &|_| {},
+    )
+    .unwrap()
+}
+
+fn windows_routes() -> Vec<(&'static str, Route)> {
+    let mut r = agent_routes();
+    r.push(("/debug/prism/cpu-windows", ok(WINDOWS, true)));
+    r
+}
+
+#[test]
+fn cpu_with_timeline_uses_windows_and_returns_a_valid_timeline() {
+    let m = mock(windows_routes());
+    let (p, rt) = detect_url(&m);
+    let out = run_capture(&m, &p, &rt, timeline_plan(vec![ProfileKind::Cpu], true));
+    let a = kind_of(&out, ProfileKind::Cpu);
+    let t = a.timeline.as_ref().expect("timeline");
+    let n = prism_import::import_bytes(&a.bytes, &prism_import::ImportHints::default())
+        .unwrap()
+        .samples
+        .len();
+    assert!(
+        t.validate(n),
+        "{} entries for {n} samples",
+        t.sample_bucket.len()
+    );
+    assert_eq!(t.bucket_ns, 250_000_000);
+    assert!(t.bucket_count() >= 5, "{}", t.bucket_count());
+    let hits = m.hits.lock().unwrap().clone();
+    assert!(
+        hits.iter()
+            .any(|h| h.starts_with("/debug/prism/cpu-windows?") && h.contains("window_ms=250")),
+        "{hits:?}"
+    );
+    assert!(
+        hits.iter().all(|h| !h.starts_with("/debug/pprof/profile")),
+        "{hits:?}"
+    );
+}
+
+#[test]
+fn cpu_without_timeline_uses_the_plain_endpoint() {
+    let m = mock(windows_routes());
+    let (p, rt) = detect_url(&m);
+    let out = run_capture(&m, &p, &rt, timeline_plan(vec![ProfileKind::Cpu], false));
+    assert!(kind_of(&out, ProfileKind::Cpu).timeline.is_none());
+    let hits = m.hits.lock().unwrap().clone();
+    assert!(
+        hits.iter().any(|h| h.starts_with("/debug/pprof/profile")),
+        "{hits:?}"
+    );
+}
+
+#[test]
+fn an_older_agent_without_windows_falls_back_to_plain_cpu() {
+    let m = mock(agent_routes());
+    let (p, rt) = detect_url(&m);
+    let out = run_capture(&m, &p, &rt, timeline_plan(vec![ProfileKind::Cpu], true));
+    let a = kind_of(&out, ProfileKind::Cpu);
+    assert!(a.timeline.is_none());
+    assert!(!a.bytes.is_empty());
+}
+
+#[test]
+fn go_wall_has_no_timeline() {
+    let m = mock(windows_routes());
+    let (p, rt) = detect_url(&m);
+    let out = run_capture(&m, &p, &rt, timeline_plan(vec![ProfileKind::Wall], true));
+    assert!(kind_of(&out, ProfileKind::Wall).timeline.is_none());
+}

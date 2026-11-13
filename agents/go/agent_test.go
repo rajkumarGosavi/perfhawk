@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"sync"
 	"testing"
 	"time"
@@ -296,4 +297,108 @@ func TestStartSucceedsWhenDiscoveryCannotBeWritten(t *testing.T) {
 	}
 	defer a.Close()
 	get(t, "http://"+a.Addr()+"/debug/prism/info")
+}
+
+func busyLoop(stop <-chan struct{}) {
+	go func() {
+		x := 0
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				for i := 0; i < 1_000_000; i++ {
+					x += i * i
+				}
+				if x == -1 {
+					fmt.Println(x)
+				}
+			}
+		}
+	}()
+}
+
+func TestCPUWindowsReturnsLabelledWindows(t *testing.T) {
+	a := start(t, Options{DisableDiscovery: true})
+	stop := make(chan struct{})
+	defer close(stop)
+	busyLoop(stop)
+	body := get(t, "http://"+a.Addr()+"/debug/prism/cpu-windows?seconds=1&window_ms=100")
+	p, err := profile.ParseData(body)
+	if err != nil {
+		t.Fatalf("not a pprof: %v", err)
+	}
+	if len(p.Sample) == 0 {
+		t.Fatal("no samples")
+	}
+	seen := map[int64]bool{}
+	for _, s := range p.Sample {
+		v, ok := s.NumLabel["prism.bucket"]
+		if !ok || len(v) != 1 {
+			t.Fatalf("sample without prism.bucket label: %+v", s.NumLabel)
+		}
+		seen[v[0]] = true
+	}
+	if len(seen) < 5 {
+		t.Fatalf("want at least 5 distinct windows in 1 s at 100 ms, got %d: %v", len(seen), seen)
+	}
+	for b := range seen {
+		if b < 0 || b > 20 {
+			t.Fatalf("bucket %d out of range", b)
+		}
+	}
+}
+
+func TestCPUWindowsBadParams(t *testing.T) {
+	a := start(t, Options{DisableDiscovery: true})
+	for _, q := range []string{"", "?seconds=0", "?seconds=601", "?seconds=x", "?seconds=1&window_ms=10", "?seconds=1&window_ms=99999"} {
+		resp, err := http.Get("http://" + a.Addr() + "/debug/prism/cpu-windows" + q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 400 {
+			t.Fatalf("%q: want 400, got %d", q, resp.StatusCode)
+		}
+	}
+}
+
+func TestCPUWindowsConflictsWithRunningProfile(t *testing.T) {
+	a := start(t, Options{DisableDiscovery: true})
+	var sink bytes.Buffer
+	if err := pprof.StartCPUProfile(&sink); err != nil {
+		t.Skipf("cannot start a CPU profile here: %v", err)
+	}
+	defer pprof.StopCPUProfile()
+	resp, err := http.Get("http://" + a.Addr() + "/debug/prism/cpu-windows?seconds=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 409 {
+		t.Fatalf("want 409 while another CPU profile runs, got %d", resp.StatusCode)
+	}
+}
+
+func TestCPUWindowsCancelledRequestFreesTheProfiler(t *testing.T) {
+	a := start(t, Options{DisableDiscovery: true})
+	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", "http://"+a.Addr()+"/debug/prism/cpu-windows?seconds=30&window_ms=100", nil)
+	if resp, err := http.DefaultClient.Do(req); err == nil {
+		resp.Body.Close()
+	}
+	// The profiler must be usable again shortly after the connection drops.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		var sink bytes.Buffer
+		if err := pprof.StartCPUProfile(&sink); err == nil {
+			pprof.StopCPUProfile()
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("CPU profiler still busy after the request was cancelled")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
