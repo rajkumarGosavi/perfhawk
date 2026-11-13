@@ -22,6 +22,7 @@ pub fn run(
                             file_name: path.file_name().map(|n| n.to_string_lossy().into_owned()),
                             kind_override: kind,
                             tags: tags.clone(),
+                            ..Default::default()
                         },
                     )
                     .map_err(|e| e.to_string())

@@ -164,6 +164,7 @@ async fn upload(
         file_name: q.file_name,
         kind_override,
         tags: vec![],
+        ..Default::default()
     };
     let store = s.store.clone();
     let (record, created) = blocking(move || store.import(&body, opts)).await?;

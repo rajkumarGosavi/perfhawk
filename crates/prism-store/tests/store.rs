@@ -167,7 +167,7 @@ fn newer_schema_version_is_rejected() {
     let tmp = tempfile::TempDir::new().unwrap();
     drop(Store::open(tmp.path()).unwrap());
     let raw = rusqlite::Connection::open(tmp.path().join("prism.db")).unwrap();
-    raw.execute_batch("PRAGMA user_version = 2;").unwrap();
+    raw.execute_batch("PRAGMA user_version = 3;").unwrap();
     drop(raw);
     assert!(matches!(
         Store::open(tmp.path()),
