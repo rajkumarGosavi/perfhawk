@@ -14,8 +14,18 @@ use serde::Serialize;
 const IO_PATTERN: &str = r"^(syscall\.(Read|Write|Pread|Pwrite|FlushFileBuffers|Fsync)|internal/poll\.\(\*FD\)\.(Read|Write|Fsync)|os\.\(\*File\)\.(Read|Write|Sync)|System\.IO\.)";
 
 /// A goroutine parked in `runtime.gopark` is idle unless one of its frames says it is
-/// waiting on something that costs the program time (a mutex or a sleep).
-const WAIT_PATTERN: &str = r"^(sync\.\(\*(Mutex|RWMutex)\)\.|sync\.runtime_Semacquire|time\.Sleep$)";
+/// waiting on a mutex, which costs the program time. Sleeping and `WaitGroup.Wait` are
+/// idle: they are not evidence of a bottleneck.
+const WAIT_PATTERN: &str =
+    r"^sync\.(\(\*(Mutex|RWMutex)\)\.|runtime_Semacquire(RW)?Mutex)";
+
+/// .NET threads waiting for work (thread-pool workers, the finalizer, event waits). The
+/// .NET helper samples every managed thread every tick, so these must not count as busy.
+const DOTNET_IDLE_PATTERN: &str = r"(^|\.)(LowLevelLifoSemaphore\.(WaitForSignal|WaitNative)|WaitHandle\.WaitOne\w*|Monitor\.Wait|SemaphoreSlim\.Wait|ManualResetEventSlim\.Wait)$";
+
+/// Leaf frames of a thread that is blocked, not running or waiting for a CPU. A busy
+/// (non-idle) wall sample with any other leaf is running or runnable.
+const BLOCKING_LEAF_PATTERN: &str = r"^(runtime\.(gopark|goparkunlock|notetsleepg|cgocall|usleep|futex\w*|netpoll\w*|semasleep|selectgo|chanrecv\w*|chansend\w*|timeSleep)|syscall\.|internal/poll\.|os\.|net\.|sync\.|time\.Sleep$|System\.Threading\.|System\.IO\.|System\.Net\.|Interop\.)";
 
 pub struct DoctorProfile<'a> {
     pub kind: ProfileKind,
@@ -255,15 +265,24 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
     // part of it that ends in file I/O, as a fallback estimate.
     let io_re = Regex::new(IO_PATTERN).expect("static regex");
     let wait_re = Regex::new(WAIT_PATTERN).expect("static regex");
+    let dotnet_idle_re = Regex::new(DOTNET_IDLE_PATTERN).expect("static regex");
+    let blocking_re = Regex::new(BLOCKING_LEAF_PATTERN).expect("static regex");
+    let mut runnable_ns = 0i64;
     let st = wall_dp.profile.default_sample_type;
     let mut idle_ns = 0i64;
     let mut io_guess_ns = 0i64;
     let name_of = |f: prism_model::FuncId| wall_dp.profile.str(wall_dp.profile.functions[f.0 as usize].name);
     for_each_sample(wall_dp.profile, st, &Filter::default(), |funcs, v| {
         if let Some(&leaf) = funcs.last() {
-            if IDLE_NAMES.contains(&name_of(leaf)) && !funcs.iter().any(|&f| wait_re.is_match(name_of(f))) {
+            let leaf_name = name_of(leaf);
+            let parked = IDLE_NAMES.contains(&leaf_name)
+                && !funcs.iter().any(|&f| wait_re.is_match(name_of(f)));
+            if parked || dotnet_idle_re.is_match(leaf_name) {
                 idle_ns = idle_ns.saturating_add(v);
                 return;
+            }
+            if !blocking_re.is_match(leaf_name) {
+                runnable_ns = runnable_ns.saturating_add(v);
             }
         }
         if funcs.iter().any(|&f| io_re.is_match(name_of(f))) {
@@ -376,21 +395,40 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
     match cpu {
         Some((cpu_total, cpu_dp)) => {
             let cpu_share = pct(cpu_total.min(busy_ns), busy_ns);
-            if cpu_share >= cfg.cpu_bound_pct {
+            // More runnable goroutines than cores: wall time in user code is a multiple of
+            // CPU time, but those threads are waiting for a CPU, not for anything else.
+            let runnable_share = pct(runnable_ns, busy_ns);
+            let saturated = cpu_share < cfg.cpu_bound_pct && runnable_share >= cfg.cpu_bound_pct;
+            if cpu_share >= cfg.cpu_bound_pct || saturated {
                 let fid = weakest(&[&cpu_dp.fidelity, wall_f]);
+                let (share, conf, title, detail) = if saturated {
+                    (
+                        runnable_share,
+                        Confidence::Low,
+                        format!("CPU-bound: {runnable_share:.0}% of busy time is running or waiting for a CPU"),
+                        "Wall time in program code is far above CPU time: more threads are runnable than there are cores.",
+                    )
+                } else {
+                    (
+                        cpu_share,
+                        confidence(cpu_share, cfg.cpu_bound_pct, &fid),
+                        format!("CPU-bound: {cpu_share:.0}% of busy time is on-CPU"),
+                        "Threads are running, not waiting; the top self-time functions are the cost.",
+                    )
+                };
                 findings.push(DoctorFinding {
                     rule: "cpu_bound",
-                    confidence: confidence(cpu_share, cfg.cpu_bound_pct, &fid),
+                    confidence: conf,
                     fidelity: fid,
-                    share_pct: cpu_share,
-                    title: format!("CPU-bound: {cpu_share:.0}% of busy time is on-CPU"),
-                    detail: "Threads are running, not waiting; the top self-time functions are the cost.".into(),
+                    share_pct: share,
+                    title,
+                    detail: detail.into(),
                     next: vec![ctx.show(cpu_dp.short_id, "", "Hottest functions")],
                     hints: vec!["Optimise the top self-time functions; use `prism diff` after a change.".into()],
                 });
-                triggered.push((Verdict::CpuBound, cpu_share));
+                triggered.push((Verdict::CpuBound, share));
             }
-            let wait_share = 100.0 - cpu_share;
+            let wait_share = 100.0 - cpu_share.max(runnable_share);
             if wait_share >= cfg.wait_pct && !io_hit && !lock_hit {
                 let fid = weakest(&[&cpu_dp.fidelity, wall_f]);
                 let conf = if fidelity_rank(&fid) <= 1 { Confidence::Low } else { Confidence::Medium };

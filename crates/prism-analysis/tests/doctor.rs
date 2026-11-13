@@ -212,6 +212,66 @@ fn runtime_internal_lock_contention_is_ignored() {
 }
 
 #[test]
+fn idle_dotnet_threads_are_not_busy() {
+    // The .NET helper samples every managed thread every tick, waiting or not.
+    let idle: &[&str] = &[
+        "System.Threading.Thread.StartCallback",
+        "System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart",
+        "System.Threading.LowLevelLifoSemaphore.WaitForSignal",
+    ];
+    let hot: &[&str] = &["Program.Main", "Program.Work"];
+    let wall = ns(ProfileKind::Wall, &[(idle, 11_000_000_000), (hot, 1_000_000_000)]);
+    let cpu = ns(ProfileKind::Cpu, &[(hot, 900_000_000)]);
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+        ],
+        None,
+    );
+    assert!((d.busy_threads - 0.1).abs() < 0.01, "{}", d.busy_threads);
+    assert_eq!(d.verdict, Verdict::CpuBound);
+
+    let only_idle = ns(ProfileKind::Wall, &[(idle, 12_000_000_000)]);
+    let d = run(&[(ProfileKind::Wall, "w", &only_idle, Fidelity::Derived)], None);
+    assert_eq!(d.verdict, Verdict::Idle);
+}
+
+#[test]
+fn idle_go_service_with_waitgroup_and_sleep_is_idle() {
+    // main in wg.Wait, a flusher sleeping between ticks: neither is work.
+    let wall = ns(
+        ProfileKind::Wall,
+        &[
+            (
+                &["main", "sync.(*WaitGroup).Wait", "sync.runtime_SemacquireWaitGroup", "runtime.gopark"],
+                9_900_000_000,
+            ),
+            (&["main", "flush", "time.Sleep", "runtime.timeSleep", "runtime.gopark"], 9_900_000_000),
+            (&["main", "work"], 10_000_000),
+        ],
+    );
+    let d = run(&[(ProfileKind::Wall, "w", &wall, Fidelity::Derived)], None);
+    assert_eq!(d.verdict, Verdict::Idle, "{:?}", d.summary);
+}
+
+#[test]
+fn cpu_saturated_service_with_more_goroutines_than_cores_is_cpu_bound() {
+    // 16 runnable goroutines on 4 cores: goroutine-seconds in user code are 4x the CPU time.
+    let wall = ns(ProfileKind::Wall, &[(&["main", "handler", "checksum"], 16_000_000_000)]);
+    let cpu = ns(ProfileKind::Cpu, &[(&["main", "handler", "checksum"], 4_000_000_000)]);
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+        ],
+        Some("--pid 1"),
+    );
+    assert_eq!(d.verdict, Verdict::CpuBound, "{}", d.summary);
+    assert!(d.findings.iter().all(|f| f.rule != "waiting_unknown"));
+}
+
+#[test]
 fn fsync_waits_count_as_io() {
     let wall = ns(
         ProfileKind::Wall,
