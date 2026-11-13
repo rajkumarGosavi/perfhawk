@@ -170,7 +170,7 @@ Starts the UI on the profile list.
 
 ## 4a. Recording
 
-### `prism record [TARGET] [--kinds K,...] [--duration 30s] [--name N] [--tag T]... [--open] [--port P]`
+### `prism record [TARGET] [--kinds K,...] [--duration 30s] [--name N] [--tag T]... [--timeline|--no-timeline] [--open] [--port P]`
 
 Captures profiles from a live process and stores them as one session. Choose
 **exactly one** target:
@@ -259,6 +259,11 @@ the head spends more. `--normalize total` scales the base to the head's total
 first, which separates "this function got slower" from "the whole run was
 longer". Profiles with no common sample type (for example CPU vs heap) give an
 error listing both sets. Diffing a profile against itself gives all-zero deltas.
+
+### `prism check <HEAD> --baseline <BASE> [--sample-type NAME] [--threshold PCT] [--min-value POINTS] [--limit N] [--json]`
+
+Compares a profile with a baseline and exits 0 (no regression), 1 (a function
+regressed) or 2 (bad input). Meant for CI; see [CI.md](CI.md).
 
 ### `prism rm <REF>... [--session]`
 
@@ -563,6 +568,7 @@ profiles or sessions. Temporary agent discovery files live in
 
 ## 10. Coming next
 
-- **Phase 2:** block I/O and off-CPU via eBPF (Linux) and ETW (Windows), and a timeline view.
+- **Phase 2:** block I/O and off-CPU via eBPF (Linux) and ETW (Windows), and per-thread timeline tracks. The time heat map and session timeline already exist (see Time); tracks need thread and state events that capture does not record yet.
+- **Later:** a query tab, source annotation, and PR comments for `prism check`.
 
 See [PLAN.md](PLAN.md) for the full roadmap.

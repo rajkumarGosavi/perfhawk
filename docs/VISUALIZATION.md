@@ -1,6 +1,6 @@
 # Visualization & "find it faster" plan
 
-**Status:** proposal, 2026-11-13 · **Scope:** the analysis UI/CLI for every profile kind prism captures · **Relates to:** [PLAN.md](PLAN.md) §3 (views), §7 (phases), [FOLLOWUPS.md](FOLLOWUPS.md)
+**Status:** V1–V6 delivered (see §7), 2026-11-13 · **Scope:** the analysis UI/CLI for every profile kind prism captures · **Relates to:** [PLAN.md](PLAN.md) §3 (views), §7 (phases), [FOLLOWUPS.md](FOLLOWUPS.md)
 
 Goal: a user opens any profile (CPU, wall, memory, lock, blocking, threads, later block I/O) and gets to *"this function, this call path, this moment is the problem"* in seconds, without knowing the language's own tooling.
 
