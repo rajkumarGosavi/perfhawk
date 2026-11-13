@@ -11,6 +11,29 @@ export type ProfileRecord = {
   default_total: number
   imported_at_unix_ms: number
   tags: string[]
+  fidelity: Fidelity
+  session_id: string | null
+}
+export type Fidelity = 'native' | 'approximate' | 'derived' | 'sampled_external' | 'unknown'
+export type SessionStatus = 'running' | 'complete' | 'partial' | 'cancelled' | 'failed'
+export type SessionRecord = {
+  id: string
+  short_id: string
+  name: string
+  target: {
+    runtime: string
+    pid: number | null
+    command: string | null
+    url: string | null
+    runtime_version: string | null
+  }
+  status: SessionStatus
+  started_at_unix_ms: number
+  duration_ms: number | null
+  requested_kinds: string[]
+  warnings: string[]
+  tags: string[]
+  profile_ids: string[]
 }
 export type FlameNode = {
   funcId: number | null
@@ -18,8 +41,41 @@ export type FlameNode = {
   file: string
   selfValue: number
   total: number
+  /** Deeper frames were folded into this node by the server's depth cap. */
+  truncated?: boolean
   children: FlameNode[]
 }
+export type DiffNode = {
+  name: string
+  file: string
+  baseSelf: number
+  baseTotal: number
+  headSelf: number
+  headTotal: number
+  children: DiffNode[]
+}
+export type DiffRow = {
+  name: string
+  file: string
+  baseSelf: number
+  headSelf: number
+  deltaSelf: number
+  baseTotal: number
+  headTotal: number
+  deltaTotal: number
+}
+export type DiffQuery = {
+  st?: string
+  normalize?: 'none' | 'total'
+  min?: number
+  depth?: number
+  limit?: number
+  focus?: string
+  exclude?: string
+  hide?: string
+}
+export type DiffFlame = { base: ProfileRecord; head: ProfileRecord; sampleType: SampleTypeInfo; root: DiffNode }
+export type DiffTop = { base: ProfileRecord; head: ProfileRecord; sampleType: SampleTypeInfo; rows: DiffRow[] }
 export type TopRow = {
   funcId: number
   name: string
@@ -30,7 +86,7 @@ export type TopRow = {
   totalPct: number
 }
 export type Sandwich = { callers: FlameNode; callees: FlameNode }
-export type AnalysisQuery = { st?: number; focus?: string; exclude?: string; hide?: string; min?: number }
+export type AnalysisQuery = { st?: number; focus?: string; exclude?: string; hide?: string; min?: number; depth?: number }
 
 export class ApiError extends Error {
   code: string
@@ -71,8 +127,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(code, message)
   }
+  if (res.status === 204) return undefined as T
   return (await res.json()) as T
 }
+
+/** Deletes must carry a custom header: it forces a CORS preflight that the server never approves. */
+const DELETE_INIT: RequestInit = { method: 'DELETE', headers: { 'X-Prism-Request': '1' } }
 
 const p = (ref: string) => `/api/profiles/${encodeURIComponent(ref)}`
 
@@ -84,6 +144,15 @@ export const getTop = (ref: string, q: AnalysisQuery & { limit?: number; sort?: 
   request<TopRow[]>(`${p(ref)}/top${qs(q)}`)
 export const getSandwich = (ref: string, func: number, q: AnalysisQuery = {}) =>
   request<Sandwich>(`${p(ref)}/sandwich${qs({ ...q, func })}`)
+export const deleteProfile = (ref: string) => request<void>(p(ref), DELETE_INIT)
+export const listSessions = () => request<SessionRecord[]>('/api/sessions')
+export const getSession = (ref: string) => request<SessionRecord>(`/api/sessions/${encodeURIComponent(ref)}`)
+export const deleteSession = (ref: string) =>
+  request<{ removed: number }>(`/api/sessions/${encodeURIComponent(ref)}`, DELETE_INIT)
+export const getDiffFlame = (base: string, head: string, q: DiffQuery = {}) =>
+  request<DiffFlame>(`/api/diff${qs({ base, head, ...q, view: 'flame' })}`)
+export const getDiffTop = (base: string, head: string, q: DiffQuery = {}) =>
+  request<DiffTop>(`/api/diff${qs({ base, head, ...q, view: 'top' })}`)
 export const uploadProfile = async (file: File) => {
   const r = await request<{ record: ProfileRecord; created: boolean }>(
     `/api/profiles${qs({ file_name: file.name })}`,

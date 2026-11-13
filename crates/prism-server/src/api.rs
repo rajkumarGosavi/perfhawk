@@ -2,14 +2,17 @@ use crate::AppState;
 use axum::{
     body::Bytes,
     extract::{rejection::BytesRejection, DefaultBodyLimit, FromRequestParts, Path, Query, State},
-    http::{header, request::Parts, StatusCode},
+    http::{header, request::Parts, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
-use prism_analysis::{flame, inverted_flame, sandwich, top, Filter, TopSort};
+use prism_analysis::{
+    diff_flame, diff_top, flame_with, inverted_flame_with, match_sample_type, sandwich, top,
+    DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow, Filter, FlameOptions, TopSort,
+};
 use prism_model::{FuncId, Profile, ProfileKind};
-use prism_store::{ImportOptions, StoreError};
+use prism_store::{ImportOptions, ProfileRecord, SampleTypeInfo, StoreError};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -103,7 +106,16 @@ pub fn not_found_response() -> Response {
 pub fn routes() -> Router<St> {
     Router::new()
         .route("/api/profiles", get(list).post(upload))
-        .route("/api/profiles/{reference}", get(get_one))
+        .route(
+            "/api/profiles/{reference}",
+            get(get_one).delete(delete_profile),
+        )
+        .route("/api/sessions", get(list_sessions))
+        .route(
+            "/api/sessions/{reference}",
+            get(get_session).delete(delete_session),
+        )
+        .route("/api/diff", get(diff_h))
         .route("/api/profiles/{reference}/flame", get(flame_h))
         .route("/api/profiles/{reference}/top", get(top_h))
         .route("/api/profiles/{reference}/sandwich", get(sandwich_h))
@@ -117,6 +129,65 @@ async fn blocking<T: Send + 'static>(
         .await
         .map_err(ApiError::internal)?
         .map_err(ApiError::from)
+}
+
+/// Deletes need `X-Prism-Request: 1`: a custom header forces a CORS preflight,
+/// which prism never approves, so other web pages cannot delete data.
+fn require_custom_header(h: &HeaderMap) -> ApiResult<()> {
+    if h.get("x-prism-request").and_then(|v| v.to_str().ok()) == Some("1") {
+        Ok(())
+    } else {
+        Err(ApiError::forbidden("missing X-Prism-Request header"))
+    }
+}
+
+async fn delete_profile(
+    State(s): State<St>,
+    Path(r): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
+    require_custom_header(&headers)?;
+    let store = s.store.clone();
+    let id = blocking(move || {
+        let rec = store.resolve(&r)?;
+        store.remove_profile(&rec.id)?;
+        Ok(rec.id)
+    })
+    .await?;
+    s.cache.lock().unwrap().pop(&id);
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+async fn list_sessions(State(s): State<St>) -> ApiResult<Response> {
+    let store = s.store.clone();
+    Ok(Json(blocking(move || store.list_sessions()).await?).into_response())
+}
+
+async fn get_session(State(s): State<St>, Path(r): Path<String>) -> ApiResult<Response> {
+    let store = s.store.clone();
+    Ok(Json(blocking(move || store.resolve_session(&r)).await?).into_response())
+}
+
+async fn delete_session(
+    State(s): State<St>,
+    Path(r): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
+    require_custom_header(&headers)?;
+    let store = s.store.clone();
+    let (ids, removed) = blocking(move || {
+        let sess = store.resolve_session(&r)?;
+        let removed = store.remove_session(&sess.id)?;
+        Ok((sess.profile_ids, removed))
+    })
+    .await?;
+    {
+        let mut cache = s.cache.lock().unwrap();
+        for id in &ids {
+            cache.pop(id);
+        }
+    }
+    Ok(Json(json!({ "removed": removed })).into_response())
 }
 
 async fn list(State(s): State<St>) -> ApiResult<Response> {
@@ -164,6 +235,7 @@ async fn upload(
         file_name: q.file_name,
         kind_override,
         tags: vec![],
+        ..Default::default()
     };
     let store = s.store.clone();
     let (record, created) = blocking(move || store.import(&body, opts)).await?;
@@ -186,6 +258,20 @@ struct AnalysisQuery {
     limit: Option<usize>,
     func: Option<u32>,
     sort: Option<String>,
+    depth: Option<usize>,
+}
+
+const DEFAULT_DEPTH: usize = 1000;
+const MAX_DEPTH: usize = 10_000;
+
+fn check_depth(depth: Option<usize>) -> ApiResult<usize> {
+    let d = depth.unwrap_or(DEFAULT_DEPTH);
+    if !(1..=MAX_DEPTH).contains(&d) {
+        return Err(ApiError::bad(format!(
+            "depth must be within 1..={MAX_DEPTH}"
+        )));
+    }
+    Ok(d)
 }
 
 impl AnalysisQuery {
@@ -251,14 +337,19 @@ async fn flame_h(
 ) -> ApiResult<Response> {
     let filter = q.filter()?;
     let min = q.min()?;
+    let depth = check_depth(q.depth)?;
     let p = load_profile(&s, r).await?;
     let st = q.sample_type(&p)?;
     let inv = q.inverted.unwrap_or(false);
+    let opts = FlameOptions {
+        min_fraction: min,
+        max_depth: Some(depth),
+    };
     tokio::task::spawn_blocking(move || {
         let node = if inv {
-            inverted_flame(&p, st, &filter, min)
+            inverted_flame_with(&p, st, &filter, &opts)
         } else {
-            flame(&p, st, &filter, min)
+            flame_with(&p, st, &filter, &opts)
         };
         json_bytes(&node)
     })
@@ -299,4 +390,138 @@ async fn sandwich_h(
     tokio::task::spawn_blocking(move || json_bytes(&sandwich(&p, st, &filter, FuncId(func), min)))
         .await
         .map_err(ApiError::internal)?
+}
+
+#[derive(Deserialize, Default)]
+struct DiffQuery {
+    base: Option<String>,
+    head: Option<String>,
+    st: Option<String>,
+    normalize: Option<String>,
+    view: Option<String>,
+    min: Option<f64>,
+    depth: Option<usize>,
+    limit: Option<usize>,
+    focus: Option<String>,
+    exclude: Option<String>,
+    hide: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct SampleTypeOut {
+    name: String,
+    unit: String,
+}
+
+#[derive(serde::Serialize)]
+struct DiffFlameOut<'a> {
+    base: &'a ProfileRecord,
+    head: &'a ProfileRecord,
+    #[serde(rename = "sampleType")]
+    sample_type: SampleTypeOut,
+    root: DiffNode,
+}
+
+#[derive(serde::Serialize)]
+struct DiffTopOut<'a> {
+    base: &'a ProfileRecord,
+    head: &'a ProfileRecord,
+    #[serde(rename = "sampleType")]
+    sample_type: SampleTypeOut,
+    rows: Vec<DiffRow>,
+}
+
+async fn record_and_profile(s: &St, reference: String) -> ApiResult<(ProfileRecord, Arc<Profile>)> {
+    let store = s.store.clone();
+    let r2 = reference.clone();
+    let rec = blocking(move || store.resolve(&r2)).await?;
+    let p = load_profile(s, rec.id.clone()).await?;
+    Ok((rec, p))
+}
+
+async fn diff_h(State(s): State<St>, Q(q): Q<DiffQuery>) -> ApiResult<Response> {
+    let base_ref = q
+        .base
+        .clone()
+        .ok_or_else(|| ApiError::bad("missing required query parameter 'base'"))?;
+    let head_ref = q
+        .head
+        .clone()
+        .ok_or_else(|| ApiError::bad("missing required query parameter 'head'"))?;
+    let normalize = match q.normalize.as_deref() {
+        None | Some("none") => DiffNormalize::None,
+        Some("total") => DiffNormalize::Total,
+        Some(o) => {
+            return Err(ApiError::bad(format!(
+                "unknown normalize '{o}' (expected none or total)"
+            )))
+        }
+    };
+    let top_view = match q.view.as_deref() {
+        None | Some("flame") => false,
+        Some("top") => true,
+        Some(o) => {
+            return Err(ApiError::bad(format!(
+                "unknown view '{o}' (expected flame or top)"
+            )))
+        }
+    };
+    let min = {
+        let m = q.min.unwrap_or(0.0005);
+        if m.is_nan() || !(0.0..=1.0).contains(&m) {
+            return Err(ApiError::bad("min must be within 0..=1"));
+        }
+        m
+    };
+    let depth = check_depth(q.depth)?;
+    let limit = q.limit.unwrap_or(100).min(10_000);
+    let filter = Filter::parse(q.focus.as_deref(), q.exclude.as_deref(), q.hide.as_deref())
+        .map_err(|e| ApiError::bad(e.to_string()))?;
+
+    let (brec, bp) = record_and_profile(&s, base_ref).await?;
+    let (hrec, hp) = record_and_profile(&s, head_ref).await?;
+    if let Some(n) = &q.st {
+        if bp.sample_type_index(n).is_none() || hp.sample_type_index(n).is_none() {
+            return Err(ApiError::bad(format!(
+                "sample type '{n}' is not present in both profiles"
+            )));
+        }
+    }
+    let (bi, hi) = match_sample_type(&bp, &hp, q.st.as_deref()).map_err(|e| match e {
+        DiffError::NoCommonSampleType { .. } => ApiError::bad(e.to_string()),
+    })?;
+    let info: SampleTypeInfo = brec.sample_types[bi].clone();
+    let sample_type = SampleTypeOut {
+        name: info.name,
+        unit: info.unit,
+    };
+    tokio::task::spawn_blocking(move || {
+        let base = DiffInput {
+            profile: &bp,
+            sample_type: bi,
+        };
+        let head = DiffInput {
+            profile: &hp,
+            sample_type: hi,
+        };
+        if top_view {
+            let rows = diff_top(base, head, &filter, normalize, limit);
+            json_bytes(&DiffTopOut {
+                base: &brec,
+                head: &hrec,
+                sample_type,
+                rows,
+            })
+        } else {
+            let root = diff_flame(base, head, &filter, normalize, min, Some(depth));
+            json_bytes(&DiffFlameOut {
+                base: &brec,
+                head: &hrec,
+                sample_type,
+                root,
+            })
+        }
+    })
+    .await
+    .map_err(ApiError::internal)?
 }

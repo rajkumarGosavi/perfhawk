@@ -10,7 +10,26 @@ pub struct FlameNode {
     pub file: String,
     pub self_value: i64,
     pub total: i64,
+    /// Deeper frames were folded into this node by a depth cap.
+    pub truncated: bool,
     pub children: Vec<FlameNode>,
+}
+
+/// Options for [`flame_with`] / [`inverted_flame_with`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlameOptions {
+    pub min_fraction: f64,
+    /// Nodes at this depth (root = 0) lose their children; their cost folds into self.
+    pub max_depth: Option<usize>,
+}
+
+impl Default for FlameOptions {
+    fn default() -> Self {
+        FlameOptions {
+            min_fraction: 0.0005,
+            max_depth: None,
+        }
+    }
 }
 
 impl Drop for FlameNode {
@@ -28,12 +47,15 @@ impl Serialize for FlameNode {
         // Serialization recurses through serde; grow the stack on demand so
         // depth is bounded by memory rather than the thread stack.
         stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
-            let mut st = ser.serialize_struct("FlameNode", 6)?;
+            let mut st = ser.serialize_struct("FlameNode", 6 + self.truncated as usize)?;
             st.serialize_field("funcId", &self.func_id)?;
             st.serialize_field("name", &self.name)?;
             st.serialize_field("file", &self.file)?;
             st.serialize_field("selfValue", &self.self_value)?;
             st.serialize_field("total", &self.total)?;
+            if self.truncated {
+                st.serialize_field("truncated", &true)?;
+            }
             st.serialize_field("children", &self.children)?;
             st.end()
         })
@@ -223,9 +245,20 @@ impl Arena {
 
     /// Converts to an owned tree without recursion, pruning children whose
     /// total is below `min_fraction * root.total` and sorting by total desc, name asc, func id asc.
-    pub(crate) fn into_flame(self, p: &Profile, min_fraction: f64) -> FlameNode {
+    pub(crate) fn into_flame(
+        self,
+        p: &Profile,
+        min_fraction: f64,
+        max_depth: Option<usize>,
+    ) -> FlameNode {
         let threshold = min_fraction * self.nodes[0].total as f64;
         let n = self.nodes.len();
+        // Children always have a larger index than their parent.
+        let mut depth = vec![0usize; n];
+        for i in 1..n {
+            depth[i] = depth[self.nodes[i].parent as usize] + 1;
+        }
+        let capped = |i: usize| max_depth.is_some_and(|m| depth[i] >= m);
         // A node survives if it and all its ancestors pass the threshold;
         // only survivors get a slot (and allocate names).
         let mut slot = vec![NONE; n];
@@ -233,7 +266,8 @@ impl Arena {
         let mut kept = 1u32;
         for i in 1..n {
             let node = &self.nodes[i];
-            if slot[node.parent as usize] != NONE && (node.total as f64) >= threshold {
+            let parent = node.parent as usize;
+            if slot[parent] != NONE && !capped(parent) && (node.total as f64) >= threshold {
                 slot[i] = kept;
                 kept += 1;
             }
@@ -268,12 +302,18 @@ impl Arena {
                 }
                 None => (None, "root".to_string(), String::new()),
             };
+            let truncated = capped(i) && node.first_child != NONE;
             built[slot[i] as usize] = Some(FlameNode {
                 func_id,
                 name,
                 file,
-                self_value: node.self_value,
+                self_value: if truncated {
+                    node.total
+                } else {
+                    node.self_value
+                },
                 total: node.total,
+                truncated,
                 children,
             });
         }
@@ -427,15 +467,32 @@ fn slow_arena(p: &Profile, sample_type: usize, filter: &Filter) -> Arena {
 }
 
 pub fn flame(p: &Profile, sample_type: usize, filter: &Filter, min_fraction: f64) -> FlameNode {
+    flame_with(
+        p,
+        sample_type,
+        filter,
+        &FlameOptions {
+            min_fraction,
+            max_depth: None,
+        },
+    )
+}
+
+pub fn flame_with(
+    p: &Profile,
+    sample_type: usize,
+    filter: &Filter,
+    opts: &FlameOptions,
+) -> FlameNode {
     let trie = filter
         .is_empty()
         .then(|| StackTrie::new(p, sample_type))
         .flatten();
     let arena = match trie {
-        Some(t) => Arena::from_trie(p, &t, min_fraction * t.root_total as f64),
+        Some(t) => Arena::from_trie(p, &t, opts.min_fraction * t.root_total as f64),
         None => slow_arena(p, sample_type, filter),
     };
-    arena.into_flame(p, min_fraction)
+    arena.into_flame(p, opts.min_fraction, opts.max_depth)
 }
 
 pub fn inverted_flame(
@@ -444,9 +501,26 @@ pub fn inverted_flame(
     filter: &Filter,
     min_fraction: f64,
 ) -> FlameNode {
+    inverted_flame_with(
+        p,
+        sample_type,
+        filter,
+        &FlameOptions {
+            min_fraction,
+            max_depth: None,
+        },
+    )
+}
+
+pub fn inverted_flame_with(
+    p: &Profile,
+    sample_type: usize,
+    filter: &Filter,
+    opts: &FlameOptions,
+) -> FlameNode {
     let mut arena = Arena::new(None);
     for_each_sample(p, sample_type, filter, |funcs, v| {
         arena.insert(funcs.iter().rev().copied(), v)
     });
-    arena.into_flame(p, min_fraction)
+    arena.into_flame(p, opts.min_fraction, opts.max_depth)
 }

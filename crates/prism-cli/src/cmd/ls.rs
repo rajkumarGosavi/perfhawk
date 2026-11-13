@@ -10,13 +10,14 @@ pub fn run(store: &Store, json: bool) -> Result<(), String> {
         );
         return Ok(());
     }
-    let mut rows: Vec<[String; 7]> = vec![[
+    let mut rows: Vec<[String; 8]> = vec![[
         "ID",
         "KIND",
         "FORMAT",
         "SAMPLES",
         "TOTAL",
         "NAME",
+        "SESSION",
         "IMPORTED (UTC)",
     ]
     .map(String::from)];
@@ -33,10 +34,14 @@ pub fn run(store: &Store, json: bool) -> Result<(), String> {
             r.sample_count.to_string(),
             format_value(r.default_total as f64, unit),
             r.name.clone(),
+            r.session_id
+                .as_deref()
+                .map(|s| s.chars().take(12).collect())
+                .unwrap_or_else(|| "-".into()),
             imported(r.imported_at_unix_ms),
         ]);
     }
-    let mut widths = [0usize; 7];
+    let mut widths = [0usize; 8];
     for row in &rows {
         for (w, c) in widths.iter_mut().zip(row) {
             *w = (*w).max(c.chars().count());
@@ -45,7 +50,7 @@ pub fn run(store: &Store, json: bool) -> Result<(), String> {
     for row in &rows {
         let mut line = String::new();
         for (i, c) in row.iter().enumerate() {
-            if i == 6 {
+            if i == 7 {
                 line.push_str(c);
                 continue;
             }

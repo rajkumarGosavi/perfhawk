@@ -9,6 +9,7 @@ license.workspace = true
 prism-model = { path = "../prism-model" }
 regex.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 stacker.workspace = true
 rustc-hash.workspace = true
 

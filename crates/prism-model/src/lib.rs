@@ -12,7 +12,7 @@ pub struct FrameId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct StackId(pub u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProfileKind {
     Cpu,
@@ -23,6 +23,43 @@ pub enum ProfileKind {
     BlockIo,
     Threads,
     Unknown,
+}
+
+impl ProfileKind {
+    pub const ALL: [ProfileKind; 8] = [
+        ProfileKind::Cpu,
+        ProfileKind::Wall,
+        ProfileKind::Memory,
+        ProfileKind::Lock,
+        ProfileKind::Blocking,
+        ProfileKind::BlockIo,
+        ProfileKind::Threads,
+        ProfileKind::Unknown,
+    ];
+
+    /// The serialized (snake_case) name.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ProfileKind::Cpu => "cpu",
+            ProfileKind::Wall => "wall",
+            ProfileKind::Memory => "memory",
+            ProfileKind::Lock => "lock",
+            ProfileKind::Blocking => "blocking",
+            ProfileKind::BlockIo => "block_io",
+            ProfileKind::Threads => "threads",
+            ProfileKind::Unknown => "unknown",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<ProfileKind> {
+        Self::ALL.into_iter().find(|k| k.as_str() == s)
+    }
+}
+
+impl std::fmt::Display for ProfileKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -52,6 +89,37 @@ pub enum Fidelity {
     Derived,
     Approximate,
     Unknown,
+}
+
+impl Fidelity {
+    /// The serialized (snake_case) name.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Fidelity::Native => "native",
+            Fidelity::SampledExternal => "sampled_external",
+            Fidelity::Derived => "derived",
+            Fidelity::Approximate => "approximate",
+            Fidelity::Unknown => "unknown",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Fidelity> {
+        [
+            Fidelity::Native,
+            Fidelity::SampledExternal,
+            Fidelity::Derived,
+            Fidelity::Approximate,
+            Fidelity::Unknown,
+        ]
+        .into_iter()
+        .find(|f| f.as_str() == s)
+    }
+}
+
+impl std::fmt::Display for Fidelity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

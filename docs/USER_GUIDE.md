@@ -1,16 +1,16 @@
 # Prism User Guide
 
-**Applies to:** Phase 0 (Foundations) · updated 2026-11-13
+**Applies to:** Phase 1 (Capture) · updated 2026-11-13
 
 Prism is a local-first profiling workbench. It brings profiles from different
 languages and tools into one model, then lets you explore them through one CLI and
 one browser UI. Nothing leaves your machine: data is stored locally, and the UI
 server only listens on `127.0.0.1`.
 
-> **Phase 0 scope.** Prism **imports** existing profile files: Go pprof,
-> collapsed/folded stacks, and speedscope JSON (including `dotnet-trace`
-> exports). Recording directly from a running Go or .NET process comes in
-> Phase 1. See [PLAN.md](PLAN.md) §7.
+> **Scope.** Prism **imports** profile files (Go pprof, collapsed/folded stacks,
+> speedscope JSON, `.nettrace`) and **records** directly from live Go and .NET
+> processes (`prism record`) into *sessions*. Two profiles can be diffed in the
+> CLI and the UI. See [PLAN.md](PLAN.md) §7.
 
 ---
 
@@ -60,6 +60,15 @@ Click a profile to explore it. Stop the server with **Ctrl+C**.
 
 For .NET, see [examples/README.md](../examples/README.md).
 
+To record instead of importing, run the demo live and attach (see §4a):
+
+```bash
+cd examples/go-demo
+go run . -files=false -duration 60s &      # prints its pid
+prism record --pid <pid> --duration 10s
+prism ui
+```
+
 ## 3. Concepts
 
 | Term | Meaning |
@@ -68,6 +77,8 @@ For .NET, see [examples/README.md](../examples/README.md).
 | **Kind** | What the profile measures: `cpu`, `wall`, `memory`, `lock`, `blocking`, `block_io`, `threads`, or `unknown`. Kind is detected from the data and can be overridden with `--kind`. |
 | **Sample type** | One measured value per sample. A Go heap profile has four: `alloc_objects`, `alloc_space`, `inuse_objects` and `inuse_space`. Each has a unit (`nanoseconds`, `bytes` or `count`). |
 | **Self / Total** | *Self* is the cost spent in the function itself. *Total* also includes everything it calls. A recursive function is counted once per sample in Total. |
+| **Session** | One `prism record` run. It groups the profiles captured together (one per kind), plus the target, status (`complete`, `partial`, `cancelled`, `failed`), duration and any warnings. |
+| **Fidelity** | How a profile's numbers were obtained: `native` (reported by the runtime's own profiler), `approximate` (reconstructed, treat absolute values as estimates), `derived` (computed from other data, for example wall-clock from stack sampling), `sampled external` (sampled from outside the process), or `unknown` (an imported file). Shown as a badge next to the kind everywhere. |
 | **Reference** | How you name a profile in commands: `last` (most recent), a full id, a unique id prefix of at least 4 hex characters, or the exact display name. If a name matches several profiles (for example after re-running a demo), prism lists the candidates; use the short id from `prism ls`. |
 
 ### How kinds are detected
@@ -140,6 +151,13 @@ prism show cpu --focus 'main\.' --hide 'runtime\.'
 
 The filters are regular expressions matched against function names (see §6).
 
+### `prism import trace.nettrace`
+
+A `.nettrace` file (from `dotnet-trace` or the EventPipe) is converted by the
+.NET helper into one profile per kind (`cpu`, `wall`, `memory`, `lock`,
+`threads`), named `<file>-<kind>` and tagged `nettrace`. It needs the helper
+(see §4a).
+
 ### `prism open [REF_OR_FILE] [--port P] [--no-browser]`
 
 Starts the UI on a profile. If the argument is an existing file, it is imported
@@ -150,12 +168,133 @@ command. The default port is 7878; `--port 0` picks a free port.
 
 Starts the UI on the profile list.
 
+## 4a. Recording
+
+### `prism record [TARGET] [--kinds K,...] [--duration 30s] [--name N] [--tag T]... [--open] [--port P]`
+
+Captures profiles from a live process and stores them as one session. Choose
+**exactly one** target:
+
+| Target | Meaning |
+|---|---|
+| `--pid N` | Attach to a running Go (with the prism agent) or .NET 8+ process. |
+| `--url http://127.0.0.1:6060` | Attach to a Go `net/http/pprof` endpoint (with or without the agent). |
+| `--go-test PKG [-- ARGS]` | Run `go test` for one package and profile it. |
+| `-- PROGRAM ARGS...` | Launch a program and profile it: a .NET program (`dotnet app.dll`, or an apphost with a `.runtimeconfig.json`) or a Go program that embeds the agent. |
+
+`--kinds` is a comma list of `cpu,wall,memory,lock,blocking,threads`; the default
+is every kind the target supports. `--duration` is `<n>ms|s|m` between `1s` and
+`10m` (default `30s`). Progress goes to stderr, a summary table to stdout:
+
+```
+session 3f9a1c2b7d10  go-1234  complete  30.2s
+ID            KIND      FIDELITY     SAMPLES     TOTAL  NOTE
+984dbaaf5c15  cpu       native          4575    87.3 s
+```
+
+Exit codes: `0` complete (also *partial*: the target exited before the window
+ended, and prism keeps what it captured), `130` cancelled with Ctrl-C (partial
+data is still imported), `1` failed, `2` usage error.
+
+What each runtime supports (no admin/root needed for any of it):
+
+| Kind | Go | .NET |
+|---|---|---|
+| cpu | native | approximate (managed-thread samples) |
+| wall | derived (needs the agent) | native |
+| memory | native | native (allocation ticks) |
+| lock | native | native |
+| blocking | native | not available in Phase 1 |
+| threads | native | native |
+
+**Go targets.** Add the agent to your program (`go get prism.dev/agent`, or use a
+`replace` directive while the module is unpublished):
+
+```go
+import "prism.dev/agent"
+
+func main() {
+    a, _ := agent.Start(agent.Options{}) // loopback only
+    defer a.Close()
+    ...
+}
+```
+
+or import it with `_ "prism.dev/agent"` and start the program with
+`PRISM_AGENT=1` (this is what `prism record -- ./myprog` does). The agent serves
+`net/http/pprof`, adds wall-clock profiling, raises the mutex/block sampling
+rates only for the capture window and restores them afterwards, and publishes
+`<temp>/prism-agents/<pid>.json` so `--pid` can find it. If your program enables
+block profiling itself, call `agent.SetBlockProfileRate` instead of
+`runtime.SetBlockProfileRate` so the agent can put your rate back. Without the
+agent, use `--url` against your own `net/http/pprof` endpoint; `wall` is then
+unavailable, and `lock`/`blocking` are empty unless your program sets
+`runtime.SetMutexProfileFraction` / `SetBlockProfileRate` (prism warns when
+that is the case). Go 1.22+.
+
+**.NET targets** (.NET 8+, same user, diagnostics enabled) are recorded through
+the `prism-dotnet` helper, which uses EventPipe. Prism looks for it in the
+`PRISM_DOTNET` environment variable (an executable, or a `.dll` run with
+`dotnet`), then next to the `prism` binary. Build it with:
+
+```bash
+dotnet publish helpers/prism-dotnet -c Release -o <dir>
+```
+
+### `prism targets [--json]`
+
+Lists what can be attached to: Go processes running the agent and .NET 8+
+processes, with runtime version when known.
+
+### `prism sessions [--json]`
+
+Lists sessions: id, name, status, start time (UTC), duration, profile count and
+target. Refer to a session by `last`, its id, a unique id prefix, or its name.
+
+### `prism diff <BASE> <HEAD> [--st NAME] [--normalize none|total] [--top N] [--focus RE] [--exclude RE] [--hide RE]`
+
+Compares two profiles that share a sample type (same name and unit) and prints
+the functions whose self value changed most. Positive deltas (a `+` sign) mean
+the head spends more. `--normalize total` scales the base to the head's total
+first, which separates "this function got slower" from "the whole run was
+longer". Profiles with no common sample type (for example CPU vs heap) give an
+error listing both sets. Diffing a profile against itself gives all-zero deltas.
+
+### `prism rm <REF>... [--session]`
+
+Deletes profiles, or whole sessions (and their profiles) with `--session`. It
+prints `removed <id> <name>` for each; an unknown reference is reported and the
+rest are still removed. This cannot be undone.
+
 ## 5. Using the UI
 
-### Profile list
-This view shows every imported profile with its kind, format, sample count,
-total and import time. You can **drag and drop** files onto the page (or use
-*Choose file*) to import without the CLI. Click a name to open it.
+### Home: Sessions and Profiles
+The home page has two tabs. **Sessions** (the default when any exist) lists
+recordings with a status pill, target, start time, duration and profile count; a
+warning icon lists any warnings. Expand a row to see its profiles, each with a
+fidelity badge; click one to open it. **Profiles** is the flat list of every
+profile with its kind, fidelity, format, sample count, total and import time.
+You can **drag and drop** files onto the page (or use *Choose file*) to import
+without the CLI. Both lists have a **Delete** button that asks for confirmation.
+`prism record --open` jumps straight to the new session (`/?session=<id>`).
+
+### Fidelity badges
+Next to every kind the UI shows `native`, `approximate`, `derived`,
+`sampled external` or `unknown`; hover for what it means (see §3).
+
+### Diff
+In any profile, **Compare with…** lists other profiles of the same kind (newest
+first) and opens the diff view with the current profile as the *head*. The flame
+graph is colored by change: red grew, green shrank, grey is unchanged, and the
+width of a frame is the larger of its base and head values. Hover for base, head
+and delta. Below it, **Top changes** lists the functions that moved most. You can
+**Swap** base and head, choose the sample type (only types both profiles have),
+and **Normalize to head total**.
+
+Very deep stacks are capped at 1000 frames by default (`depth=N` in the URL
+changes it): the frame at the cap is hatched and its tooltip says deeper frames
+were folded into it. If a graph is taller than the browser's canvas limit, the
+deepest rows are clipped with a notice; use Focus or zoom to see them.
 
 ### Toolbar
 - **Sample type**: choose which value to analyze, for example `inuse_space` or `alloc_space` for a Go heap profile.
@@ -229,8 +368,8 @@ at running code, set **Exclude** to `UNMANAGED_CODE_TIME`. In the demo,
 and `ReserveInventory` (spinning while holding the lock) dominates `lock`.
 
 **"Did my change help?"** Import the before and after profiles, tag them
-(`--tag before`, `--tag after`), and compare them in two browser tabs. A
-dedicated diff view arrives in Phase 1.
+(`--tag before`, `--tag after`) and compare them with `prism diff before after`
+or the UI's diff view.
 
 ## 8. Troubleshooting
 
@@ -242,16 +381,32 @@ dedicated diff view arrives in Phase 1.
 | `unknown format` on import | The file isn't pprof, collapsed or speedscope. Check that it isn't truncated, or convert it to one of these. |
 | A speedscope / collapsed profile shows kind `unknown` | Re-import with `--kind cpu` or `--kind wall` (identical bytes are deduplicated, so delete and re-import, or use a fresh `--home`). |
 | `is ambiguous (2 matches: ...)` | Several profiles share that name (for example after re-running a demo). Use the short id from `prism ls` instead of the name. |
-| Mutex profile is empty (Go) | Call `runtime.SetMutexProfileFraction(n)`. For block profiles, call `runtime.SetBlockProfileRate(n)`. |
+| Mutex profile is empty (Go) | Call `runtime.SetMutexProfileFraction(n)`. For block profiles, call `runtime.SetBlockProfileRate(n)`. When recording with the prism agent this is handled for you. |
+
+### Troubleshooting capture
+
+| Symptom | Fix |
+|---|---|
+| `Go process without the prism agent: start the agent or pass --url ...` | The pid is a Go program with no prism agent. Add `prism.dev/agent`, or expose `net/http/pprof` and use `--url`. (Detected on Linux only.) |
+| `pid N: not found among reachable .NET 8+ processes ...` | The process is not .NET, has `DOTNET_EnableDiagnostics=0`, runs as another user, or (Linux/macOS) uses a different `TMPDIR` than prism. Run prism as the same user with the same `TMPDIR`. |
+| `the target has DOTNET_EnableDiagnostics=0` | Restart the target without that variable (or set it to 1). |
+| `the target runs as another user, or TMPDIR differs` | Run prism as the target's user and with the target's `TMPDIR` (Linux/macOS). |
+| `pid N is not a .NET 8+ process` | Only .NET 8 and newer are supported. |
+| `the .NET helper (prism-dotnet) was not found` | Build it (`dotnet publish helpers/prism-dotnet -c Release -o <dir>`) and set `PRISM_DOTNET`, or put it next to `prism`. |
+| `prism-dotnet protocol X is not supported; rebuild the helper` | The helper and prism are from different versions; rebuild the helper. |
+| `program did not start the prism agent; import prism.dev/agent` | The launched Go program does not import the agent. |
+| `mutex profiling is disabled in the target ...` | A warning, not a failure: the profile is empty because the target has not enabled mutex/block sampling and no agent is present. |
+| Session is `partial` | The target exited before the window ended. Prism keeps what it captured. |
 
 ## 9. Where data lives
 
 `<home>/prism.db` (SQLite metadata) and `<home>/blobs/` (compressed profiles).
-Deleting the directory removes everything. There is no `prism rm` yet.
+Deleting the directory removes everything; `prism rm` removes individual
+profiles or sessions. Temporary agent discovery files live in
+`<temp>/prism-agents/`.
 
 ## 10. Coming next
 
-- **Phase 1:** recording from live Go and .NET processes (`prism record`), profile diff, `.nettrace` import.
 - **Phase 2:** block I/O and off-CPU via eBPF (Linux) and ETW (Windows), and a timeline view.
 
 See [PLAN.md](PLAN.md) for the full roadmap.

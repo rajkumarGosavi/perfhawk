@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { mergeViewState, readViewState, writeViewState, type ViewState } from './url'
-import { ProfileList } from './views/ProfileList'
+import { DiffView } from './views/DiffView'
+import { Home } from './views/Home'
 import { ProfileView } from './views/ProfileView'
 
 export default function App() {
@@ -40,10 +41,12 @@ export default function App() {
         <span className="muted">local profiling workbench</span>
       </header>
       <main>
-        {state.profile ? (
+        {state.profile && state.view === 'diff' ? (
+          <DiffView key={`${state.profile}|${state.base ?? ''}`} state={state} navigate={navigate} />
+        ) : state.profile ? (
           <ProfileView key={state.profile} state={state} navigate={navigate} />
         ) : (
-          <ProfileList onOpen={(id) => navigate({ profile: id }, 'push', true)} />
+          <Home session={state.session} onOpen={(id) => navigate({ profile: id }, 'push', true)} />
         )}
       </main>
     </>

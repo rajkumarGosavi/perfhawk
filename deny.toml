@@ -9,5 +9,7 @@ allow = [
     "Zlib",
     "Unicode-3.0",
     "Unicode-DFS-2016",
+    # webpki-roots (ureq https support): the Mozilla CA root list, under a permissive data licence.
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8

@@ -41,3 +41,23 @@ describe('mergeViewState', () => {
     expect(mergeViewState({ view: 'flame', focus: 'x' }, { focus: undefined })).toEqual({ view: 'flame' })
   })
 })
+
+describe('diff state', () => {
+  it('roundtrips profile, diff view, base and normalize', () => {
+    const s = { profile: 'head1', view: 'diff' as const, base: 'base1', normalize: 'total' as const }
+    const w = writeViewState(s)
+    expect(w).toContain('view=diff')
+    expect(w).toContain('base=base1')
+    expect(w).toContain('normalize=total')
+    expect(readViewState(w)).toEqual(s)
+  })
+  it('omits normalize when none and ignores bad values', () => {
+    expect(writeViewState({ profile: 'h', view: 'diff', base: 'b' })).not.toContain('normalize')
+    expect(readViewState('?view=diff&normalize=bogus').normalize).toBeUndefined()
+  })
+  it('roundtrips session and depth', () => {
+    const s = { session: 'abc123', view: 'flame' as const, depth: 3 }
+    expect(readViewState(writeViewState(s))).toEqual(s)
+    expect(readViewState('?depth=0').depth).toBeUndefined()
+  })
+})

@@ -29,7 +29,7 @@ pub fn sandwich(
         }
     });
     Sandwich {
-        callers: callers.into_flame(p, min_fraction),
-        callees: callees.into_flame(p, min_fraction),
+        callers: callers.into_flame(p, min_fraction, None),
+        callees: callees.into_flame(p, min_fraction, None),
     }
 }

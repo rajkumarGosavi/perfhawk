@@ -1,6 +1,14 @@
-export type ViewName = 'flame' | 'icicle' | 'top' | 'sandwich'
+export type ViewName = 'flame' | 'icicle' | 'top' | 'sandwich' | 'diff'
 export type ViewState = {
   profile?: string
+  /** Session to expand on the home page. */
+  session?: string
+  /** Diff base profile; `profile` is the head. */
+  base?: string
+  /** Diff normalisation; omitted when none. */
+  normalize?: 'total'
+  /** Flame depth cap; omitted for the server default. */
+  depth?: number
   view: ViewName
   st?: number
   focus?: string
@@ -12,7 +20,7 @@ export type ViewState = {
   sort?: 'self' | 'total'
 }
 
-const VIEWS: ViewName[] = ['flame', 'icicle', 'top', 'sandwich']
+const VIEWS: ViewName[] = ['flame', 'icicle', 'top', 'sandwich', 'diff']
 
 function int(s: string | null): number | undefined {
   if (s === null || s === '') return undefined
@@ -26,6 +34,13 @@ export function readViewState(search: string): ViewState {
   const s: ViewState = { view: VIEWS.includes(v as ViewName) ? (v as ViewName) : 'flame' }
   const profile = p.get('profile')
   if (profile) s.profile = profile
+  for (const k of ['session', 'base'] as const) {
+    const x = p.get(k)
+    if (x) s[k] = x
+  }
+  if (p.get('normalize') === 'total') s.normalize = 'total'
+  const depth = int(p.get('depth'))
+  if (depth !== undefined && depth >= 1) s.depth = depth
   const st = int(p.get('st'))
   if (st !== undefined) s.st = st
   for (const k of ['focus', 'exclude', 'hide', 'search'] as const) {
@@ -41,7 +56,11 @@ export function readViewState(search: string): ViewState {
 export function writeViewState(s: ViewState): string {
   const p = new URLSearchParams()
   if (s.profile) p.set('profile', s.profile)
+  if (s.session) p.set('session', s.session)
+  if (s.base) p.set('base', s.base)
   if (s.view !== 'flame') p.set('view', s.view)
+  if (s.normalize === 'total') p.set('normalize', 'total')
+  if (s.depth !== undefined) p.set('depth', String(s.depth))
   if (s.st !== undefined) p.set('st', String(s.st))
   if (s.focus) p.set('focus', s.focus)
   if (s.exclude) p.set('exclude', s.exclude)

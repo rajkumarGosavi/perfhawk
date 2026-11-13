@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 prism-model = { path = "../prism-model" }
 prism-store = { path = "../prism-store" }
+prism-capture = { path = "../prism-capture" }
 prism-analysis = { path = "../prism-analysis" }
 prism-server = { path = "../prism-server" }
 clap = { version = "4", features = ["derive"] }

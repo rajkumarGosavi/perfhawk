@@ -273,3 +273,80 @@ fn unfiltered_fast_path_matches_per_sample_path() {
     assert_eq!(kids.len(), 2);
     assert!(kids[0].func_id < kids[1].func_id);
 }
+
+fn find<'a>(n: &'a FlameNode, name: &str) -> &'a FlameNode {
+    n.children
+        .iter()
+        .find(|c| c.name == name)
+        .unwrap_or_else(|| panic!("no child {name}"))
+}
+
+#[test]
+fn max_depth_truncates_and_folds() {
+    let p = build(&[(&["main", "a", "b", "c"], 4), (&["main", "d"], 1)]);
+    let opts = FlameOptions {
+        min_fraction: 0.0,
+        max_depth: Some(2),
+    };
+    let t = flame_with(&p, 0, &none(), &opts);
+    assert_eq!(t.total, 5);
+    let a = find(find(&t, "main"), "a");
+    assert!(a.children.is_empty());
+    assert!(a.truncated);
+    assert_eq!((a.self_value, a.total), (4, 4));
+    assert!(!find(find(&t, "main"), "d").truncated);
+    let inv = inverted_flame_with(&p, 0, &none(), &opts);
+    assert_eq!(inv.total, 5);
+    let c = find(&inv, "c");
+    assert!(find(c, "b").children.is_empty() && find(c, "b").truncated);
+}
+
+#[test]
+fn max_depth_none_unchanged() {
+    let p = std_profile();
+    let opts = FlameOptions::default();
+    assert_eq!(opts.min_fraction, 0.0005);
+    assert_eq!(
+        flame_with(&p, 0, &none(), &opts),
+        flame(&p, 0, &none(), 0.0005)
+    );
+    assert_eq!(
+        inverted_flame_with(&p, 0, &none(), &opts),
+        inverted_flame(&p, 0, &none(), 0.0005)
+    );
+}
+
+#[test]
+fn truncated_omitted_in_json_when_false() {
+    let p = std_profile();
+    let json = serde_json::to_string(&flame(&p, 0, &none(), 0.0)).unwrap();
+    assert!(!json.contains("truncated"), "{json}");
+    let opts = FlameOptions {
+        min_fraction: 0.0,
+        max_depth: Some(1),
+    };
+    let json = serde_json::to_string(&flame_with(&p, 0, &none(), &opts)).unwrap();
+    assert!(json.contains("\"truncated\":true"), "{json}");
+}
+
+#[test]
+fn max_depth_fast_and_slow_paths_agree() {
+    let p = build(&[
+        (&["main", "a", "b"], 3),
+        (&["main", "a", "a", "b"], 2),
+        (&["main", "c"], 5),
+        (&["d"], 1),
+    ]);
+    let slow = Filter::parse(None, None, Some("zzz^")).unwrap();
+    for depth in [Some(0), Some(1), Some(2), Some(3), None] {
+        let opts = FlameOptions {
+            min_fraction: 0.0,
+            max_depth: depth,
+        };
+        assert_eq!(
+            flame_with(&p, 0, &none(), &opts),
+            flame_with(&p, 0, &slow, &opts),
+            "depth {depth:?}"
+        );
+    }
+}
