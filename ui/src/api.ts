@@ -256,8 +256,12 @@ export const getFindings = (ref: string, q: AnalysisQuery = {}) =>
   request<Finding[]>(`${p(ref)}/findings${qs(q)}`)
 export const getGraph = (ref: string, q: AnalysisQuery & { nodes?: number } = {}) =>
   request<CallGraph>(`${p(ref)}/graph${qs(q)}`)
-export const getHeatmap = (ref: string, q: AnalysisQuery & { cols?: number } = {}) =>
-  request<Heatmap>(`${p(ref)}/heatmap${qs(q)}`)
+type RawHeatmap = Omit<Heatmap, 'cells'> & { cells: [number, number, number][] }
+/** The server sends cells as compact `[col, row, value]` triples. */
+export const getHeatmap = async (ref: string, q: AnalysisQuery & { cols?: number } = {}): Promise<Heatmap> => {
+  const raw = await request<RawHeatmap>(`${p(ref)}/heatmap${qs(q)}`)
+  return { ...raw, cells: (raw.cells ?? []).map(([col, row, value]) => ({ col, row, value })) }
+}
 export const getSessionTimeline = (sessionRef: string, points = 200) =>
   request<SessionTimeline>(`/api/sessions/${encodeURIComponent(sessionRef)}/timeline${qs({ points })}`)
 export const getSeries = () => request<SeriesInfo[]>('/api/series')

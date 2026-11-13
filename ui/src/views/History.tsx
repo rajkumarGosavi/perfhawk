@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   getHistory, getSeries, getTop, listProfiles,
   type ApiError, type HistoryResponse, type SeriesInfo,
@@ -21,6 +21,7 @@ export function History({ state, navigate }: { state: ViewState; navigate: Nav }
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [focusIdx, setFocusIdx] = useState<number | null>(null)
   const [fnText, setFnText] = useState(state.fn ?? '')
+  const pointRefs = useRef(new Map<number, SVGCircleElement>())
 
   useEffect(() => setFnText(state.fn ?? ''), [state.fn])
   useEffect(() => {
@@ -56,6 +57,7 @@ export function History({ state, navigate }: { state: ViewState; navigate: Nav }
   useEffect(() => {
     let stale = false
     setData(null)
+    setFocusIdx(null)
     if (!state.series || !kind || !fn) return
     getHistory({ series: state.series, kind, func: fn }).then(
       (d) => { if (!stale) { setData(d); setError(null) } },
@@ -70,6 +72,11 @@ export function History({ state, navigate }: { state: ViewState; navigate: Nav }
   const lastFound = nearest(pts, Number.MAX_SAFE_INTEGER)
   const tabbable = focusIdx ?? lastFound
   const foundCount = data ? data.points.filter((p) => p.found).length : 0
+
+  // Moving focus with the keyboard must move real focus, not just the tab stop.
+  useEffect(() => {
+    if (focusIdx !== null) pointRefs.current.get(focusIdx)?.focus()
+  }, [focusIdx])
 
   const open = (i: number) => {
     const p = data?.points[i]
@@ -171,6 +178,7 @@ export function History({ state, navigate }: { state: ViewState; navigate: Nav }
                 return p.found ? (
                   <circle
                     key={p.index}
+                    ref={(el) => { if (el) pointRefs.current.set(p.index, el); else pointRefs.current.delete(p.index) }}
                     cx={p.x}
                     cy={p.y}
                     r={p.index === focusIdx ? 6 : 4}

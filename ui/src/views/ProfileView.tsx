@@ -105,7 +105,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
     const q = { st, focus: qf, exclude: qe, hide: qh, depth, tx, t0, t1 }
     const p: Promise<Data> =
       view === 'time'
-        ? getHeatmap(ref, { st, focus: qf, exclude: qe, hide: qh, tx, cols: 1200 }).then((heat) => ({ kind: 'heat', heat }))
+        ? getHeatmap(ref, { st, focus: qf, exclude: qe, hide: qh, tx, cols: 600 }).then((heat) => ({ kind: 'heat', heat }))
         : view === 'graph'
         ? getGraph(ref, { ...q, nodes: state.graphNodes ?? 80 }).then((graph) => ({ kind: 'graph', graph }))
         : view === 'groups'
@@ -247,7 +247,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           <select
             value=""
             disabled={others.length === 0}
-            onChange={(e) => e.target.value && pushView({ view: 'diff', base: e.target.value })}
+            onChange={(e) => e.target.value && pushView({ view: 'diff', base: e.target.value, t0: undefined, t1: undefined, b0: undefined, b1: undefined })}
           >
             <option value="">{others.length === 0 ? 'no other profiles of this kind' : 'choose a profile'}</option>
             {others.map((p) => (

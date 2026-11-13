@@ -10,6 +10,7 @@ import { flameToSvg } from '../export/svg'
 import { ExportMenu, type ExportItem } from './ExportMenu'
 import { formatPct, formatValue } from '../format'
 import type { ViewState } from '../url'
+import { formatRange } from '../time/range'
 import { CallTree } from './CallTree'
 import { diffStatus, filterDiffTree, filterRows, toSideTree } from './diffHelpers'
 import { toFlameNodes, type DiffFlameNode } from './diffTree'
@@ -164,13 +165,19 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
         </button>
         <strong>Diff</strong>
         <button
-          onClick={() => navigate({ profile: baseRef, base: headRef }, 'push')}
+          onClick={() => navigate({ profile: baseRef, base: headRef, t0: b0, t1: b1, b0: t0, b1: t1 }, 'push')}
           disabled={!baseRef}
           title="Swap base and head"
         >
           Swap
         </button>
       </div>
+      {(t0 !== undefined || b0 !== undefined) && (
+        <p className="muted" role="status">
+          {t0 !== undefined && t1 !== undefined && <>Head window {formatRange({ t0, t1 })}. </>}
+          {b0 !== undefined && b1 !== undefined && <>Baseline window {formatRange({ t0: b0, t1: b1 })}.</>}
+        </p>
+      )}
       <div className="toolbar diff-pair">
         <div>
           <div className="muted">Base</div>

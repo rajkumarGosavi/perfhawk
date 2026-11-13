@@ -154,3 +154,11 @@ describe('history api', () => {
     expect(u).toContain('tx=rec')
   })
 })
+
+describe('heatmap cell format', () => {
+  it('turns compact [col,row,value] cells into objects', async () => {
+    stub(200, { bucketNs: 1, startUnixNs: 0, cols: 2, rows: 2, colBuckets: 1, rowBuckets: 1, cells: [[1, 0, 5], [0, 1, 7]], max: 7, totalBuckets: 2 })
+    const h = await getHeatmap('p1')
+    expect(h.cells).toEqual([{ col: 1, row: 0, value: 5 }, { col: 0, row: 1, value: 7 }])
+  })
+})
