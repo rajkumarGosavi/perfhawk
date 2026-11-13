@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  ApiError, getFlame, getGraph, getGroups, getProfile, getSandwich, getTop, listProfiles,
-  type CallGraph, type FlameNode, type GroupRow, type ProfileRecord, type Sandwich as SandwichData, type TopRow,
+  ApiError, getFlame, getGraph, getGroups, getHeatmap, getProfile, getSandwich, getTop, listProfiles,
+  type CallGraph, type FlameNode, type GroupRow, type Heatmap, type ProfileRecord, type Sandwich as SandwichData, type TopRow,
 } from '../api'
 import { hotPath } from '../analysis/hotPath'
 import { SHORTCUTS, keyAction } from '../analysis/keys'
@@ -14,7 +14,9 @@ import { flameToSvg } from '../export/svg'
 import { ExportMenu, type ExportItem } from './ExportMenu'
 import type { ViewName, ViewState } from '../url'
 import { CallTree } from './CallTree'
+import { formatRange } from '../time/range'
 import { GraphView } from './GraphView'
+import { HeatMap } from './HeatMap'
 import { Groups } from './Groups'
 import { PivotPanel } from './PivotPanel'
 import { Sandwich } from './Sandwich'
@@ -31,10 +33,11 @@ type Data =
   | { kind: 'sandwich'; data: SandwichData }
   | { kind: 'groups'; rows: GroupRow[] }
   | { kind: 'graph'; graph: CallGraph }
+  | { kind: 'heat'; heat: Heatmap }
 
 const VIEW_LABELS: [ViewName, string][] = [
   ['summary', 'Summary'], ['flame', 'Flame'], ['icicle', 'Icicle'], ['tree', 'Call tree'],
-  ['top', 'Top'], ['both', 'Both'], ['sandwich', 'Sandwich'], ['groups', 'Groups'], ['graph', 'Graph'],
+  ['top', 'Top'], ['both', 'Both'], ['sandwich', 'Sandwich'], ['groups', 'Groups'], ['graph', 'Graph'], ['time', 'Time'],
 ]
 const defaultGroupBy = (kind: string): 'stack' | 'site' => (kind === 'lock' || kind === 'blocking' ? 'site' : 'stack')
 const HOT_VIEWS: ViewName[] = ['flame', 'icicle', 'tree', 'both']
@@ -85,22 +88,25 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
 
   const st = state.st ?? record?.default_sample_type
   const unit = record && st !== undefined ? record.sample_types[st]?.unit ?? 'count' : 'count'
-  const { view, func, focus: qf, exclude: qe, hide: qh, depth, tx } = state
+  const { view, func, focus: qf, exclude: qe, hide: qh, depth, tx, t0, t1 } = state
+  const hasTime = !!record?.has_timeline
   const groupBy = state.groupBy ?? defaultGroupBy(record?.kind ?? '')
   const sort = state.sort ?? 'self'
 
   useEffect(() => {
     if (!record) return
-    if (view === 'summary' || (view === 'sandwich' && func === undefined)) {
+    if (view === 'summary' || (view === 'sandwich' && func === undefined) || (view === 'time' && !record.has_timeline)) {
       setData(null)
       setLoading(false)
       return
     }
     let stale = false
     setLoading(true)
-    const q = { st, focus: qf, exclude: qe, hide: qh, depth, tx }
+    const q = { st, focus: qf, exclude: qe, hide: qh, depth, tx, t0, t1 }
     const p: Promise<Data> =
-      view === 'graph'
+      view === 'time'
+        ? getHeatmap(ref, { st, focus: qf, exclude: qe, hide: qh, tx, cols: 1200 }).then((heat) => ({ kind: 'heat', heat }))
+        : view === 'graph'
         ? getGraph(ref, { ...q, nodes: state.graphNodes ?? 80 }).then((graph) => ({ kind: 'graph', graph }))
         : view === 'groups'
         ? getGroups(ref, { ...q, by: groupBy, limit: 500 }).then((rows) => ({ kind: 'groups', rows }))
@@ -118,7 +124,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       (e: ApiError) => { if (!stale) { setData(null); setError(e.message); setLoading(false) } },
     )
     return () => { stale = true }
-  }, [record, ref, view, func, st, qf, qe, qh, sort, depth, tx, groupBy, state.graphNodes])
+  }, [record, ref, view, func, st, qf, qe, qh, sort, depth, tx, groupBy, state.graphNodes, t0, t1])
 
   const pushView = (patch: Partial<ViewState>) => navigate(patch, 'push')
   const hot = !!state.hot
@@ -211,7 +217,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         <strong className="mono">{record?.name ?? ref}</strong>
         {record && <FidelityBadge fidelity={record.fidelity} />}
         <div className="tabs" role="group" aria-label="View">
-          {VIEW_LABELS.map(([v, label]) => (
+          {VIEW_LABELS.filter(([v]) => v !== 'time' || hasTime).map(([v, label]) => (
             <button key={v} aria-pressed={view === v} onClick={() => pushView({ view: v })}>{label}</button>
           ))}
         </div>
@@ -254,6 +260,25 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         <label className="field">Hide<input value={hide} onChange={(e) => setHide(e.target.value)} placeholder="regex" /></label>
         <label className="field">Search<input ref={searchRef} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="highlight" /></label>
       </div>
+      {(t0 !== undefined || state.b0 !== undefined) && (
+        <div className="toolbar" role="group" aria-label="Time selection">
+          {t0 !== undefined && t1 !== undefined && (
+            <span className="chip">
+              <span className="mono">Window: {formatRange({ t0, t1 })}</span>
+              <button aria-label="Clear window" onClick={() => navigate({ t0: undefined, t1: undefined }, 'push')}>×</button>
+            </span>
+          )}
+          {state.b0 !== undefined && state.b1 !== undefined && (
+            <span className="chip">
+              <span className="mono">Baseline: {formatRange({ t0: state.b0, t1: state.b1 })}</span>
+              <button aria-label="Clear baseline" onClick={() => navigate({ b0: undefined, b1: undefined }, 'push')}>×</button>
+            </span>
+          )}
+          {t0 !== undefined && state.b0 !== undefined && (
+            <button onClick={() => navigate({ view: 'diff', base: ref }, 'push')}>Diff window vs baseline</button>
+          )}
+        </div>
+      )}
       <TransformBar tx={tx} onChange={(next) => navigate({ tx: next }, 'push')} />
       {exportMsg && <p className="muted" role="status">{exportMsg}</p>}
       {error && <div className="banner" role="alert">{error}</div>}
@@ -266,7 +291,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         <Summary
           profileRef={ref}
           record={record}
-          query={{ st, focus: qf, exclude: qe, hide: qh, depth, tx }}
+          query={{ st, focus: qf, exclude: qe, hide: qh, depth, tx, t0, t1 }}
           navigate={navigate}
         />
       )}
@@ -330,6 +355,18 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       )}
       {data?.kind === 'groups' && view === 'groups' && (
         <Groups rows={data.rows} unit={unit} by={groupBy} onBy={(by) => pushView({ groupBy: by })} />
+      )}
+      {view === 'time' && record && !record.has_timeline && (
+        <p className="muted">This profile has no time data. Go CPU and .NET CPU/wall captures include it by default; imported files do not.</p>
+      )}
+      {data?.kind === 'heat' && view === 'time' && (
+        <HeatMap
+          heat={data.heat}
+          range={t0 !== undefined && t1 !== undefined ? { t0, t1 } : undefined}
+          baseline={state.b0 !== undefined && state.b1 !== undefined ? { t0: state.b0, t1: state.b1 } : undefined}
+          onRange={(r) => replace({ t0: r?.t0, t1: r?.t1 })}
+          onBaseline={(r) => replace({ b0: r?.t0, b1: r?.t1 })}
+        />
       )}
       {data?.kind === 'graph' && view === 'graph' && (
         <GraphView

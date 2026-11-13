@@ -27,12 +27,12 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [session, setSession] = useState<SessionRecord | null>(null)
 
-  const { st, focus, exclude, hide, depth, tx } = query
+  const { st, focus, exclude, hide, depth, tx, t0, t1 } = query
   const unit = record.sample_types[st ?? record.default_sample_type]?.unit ?? 'count'
 
   useEffect(() => {
     let stale = false
-    const q = { st, focus, exclude, hide, depth, tx }
+    const q = { st, focus, exclude, hide, depth, tx, t0, t1 }
     Promise.all([
       getTop(profileRef, { ...q, limit: 5, sort: 'self' }),
       getTop(profileRef, { ...q, limit: 5, sort: 'total' }),
@@ -42,7 +42,7 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
       (e: ApiError) => { if (!stale) { setData(null); setError(e.message) } },
     )
     return () => { stale = true }
-  }, [profileRef, st, focus, exclude, hide, depth, tx])
+  }, [profileRef, st, focus, exclude, hide, depth, tx, t0, t1])
 
   useEffect(() => {
     let stale = false

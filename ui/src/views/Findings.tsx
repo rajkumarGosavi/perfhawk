@@ -16,16 +16,16 @@ export function Findings({ profileRef, query, navigate }: Props) {
   const [all, setAll] = useState<Finding[]>([])
   const [error, setError] = useState<string | null>(null)
   const [disabled, setDisabled] = useState<Set<string>>(loadDisabled)
-  const { st, focus, exclude, hide, tx } = query
+  const { st, focus, exclude, hide, tx, t0, t1 } = query
 
   useEffect(() => {
     let stale = false
-    getFindings(profileRef, { st, focus, exclude, hide, tx }).then(
+    getFindings(profileRef, { st, focus, exclude, hide, tx, t0, t1 }).then(
       (f) => { if (!stale) { setAll(f); setError(null) } },
       (e: ApiError) => { if (!stale) { setAll([]); setError(e.message) } },
     )
     return () => { stale = true }
-  }, [profileRef, st, focus, exclude, hide, tx])
+  }, [profileRef, st, focus, exclude, hide, tx, t0, t1])
 
   const toggle = (rule: string, enabled: boolean) => {
     const next = new Set(disabled)

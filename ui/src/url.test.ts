@@ -122,3 +122,21 @@ describe('graph state', () => {
     expect(readViewState('?gn=300').graphNodes).toBe(300)
   })
 })
+
+describe('time state', () => {
+  it('roundtrips window, baseline and the time view', () => {
+    const s = { profile: 'p', view: 'time' as const, t0: 100, t1: 900, b0: 1000, b1: 2000 }
+    const w = writeViewState(s)
+    for (const part of ['view=time', 't0=100', 't1=900', 'b0=1000', 'b1=2000']) expect(w).toContain(part)
+    expect(readViewState(w)).toEqual(s)
+  })
+  it('ignores invalid or inverted pairs', () => {
+    for (const q of ['?t0=5&t1=5', '?t0=9&t1=3', '?t0=1', '?t1=9', '?t0=-1&t1=5', '?t0=x&t1=5']) {
+      const s = readViewState(q)
+      expect(s.t0).toBeUndefined()
+      expect(s.t1).toBeUndefined()
+    }
+    expect(readViewState('?b0=7&b1=7').b0).toBeUndefined()
+    expect(readViewState('?b0=1&b1=2').b1).toBe(2)
+  })
+})

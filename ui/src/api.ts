@@ -13,6 +13,9 @@ export type ProfileRecord = {
   tags: string[]
   fidelity: Fidelity
   session_id: string | null
+  /** Whether per-sample time data exists (additive; absent on older servers). */
+  has_timeline?: boolean
+  duration_ms?: number | null
 }
 export type Fidelity = 'native' | 'approximate' | 'derived' | 'sampled_external' | 'unknown'
 export type SessionStatus = 'running' | 'complete' | 'partial' | 'cancelled' | 'failed'
@@ -75,6 +78,11 @@ export type DiffQuery = {
   hide?: string
   tx?: string
   sort?: 'delta' | 'percent'
+  /** Head window and baseline window, ms from capture start. */
+  t0?: number
+  t1?: number
+  bt0?: number
+  bt1?: number
 }
 export type DiffFlame = { base: ProfileRecord; head: ProfileRecord; sampleType: SampleTypeInfo; root: DiffNode }
 export type DiffTop = { base: ProfileRecord; head: ProfileRecord; sampleType: SampleTypeInfo; rows: DiffRow[] }
@@ -88,7 +96,7 @@ export type TopRow = {
   totalPct: number
 }
 export type Sandwich = { callers: FlameNode; callees: FlameNode }
-export type AnalysisQuery = { st?: number; focus?: string; exclude?: string; hide?: string; tx?: string; min?: number; depth?: number }
+export type AnalysisQuery = { st?: number; focus?: string; exclude?: string; hide?: string; tx?: string; min?: number; depth?: number; t0?: number; t1?: number }
 
 export type GroupRow = {
   name: string
@@ -136,6 +144,19 @@ export type Finding = {
 export type GraphNode = { funcId: number; name: string; file: string; selfValue: number; total: number }
 export type GraphEdge = { from: number; to: number; value: number; elided: boolean }
 export type CallGraph = { nodes: GraphNode[]; edges: GraphEdge[]; hiddenNodes: number; totalValue: number }
+
+export type HeatCell = { col: number; row: number; value: number }
+export type Heatmap = {
+  bucketNs: number
+  startUnixNs: number
+  cols: number
+  rows: number
+  colBuckets: number
+  rowBuckets: number
+  cells: HeatCell[]
+  max: number
+  totalBuckets: number
+}
 
 export class ApiError extends Error {
   code: string
@@ -199,6 +220,8 @@ export const getFindings = (ref: string, q: AnalysisQuery = {}) =>
   request<Finding[]>(`${p(ref)}/findings${qs(q)}`)
 export const getGraph = (ref: string, q: AnalysisQuery & { nodes?: number } = {}) =>
   request<CallGraph>(`${p(ref)}/graph${qs(q)}`)
+export const getHeatmap = (ref: string, q: AnalysisQuery & { cols?: number } = {}) =>
+  request<Heatmap>(`${p(ref)}/heatmap${qs(q)}`)
 export const getPivot = (sessionRef: string, name: string) =>
   request<PivotRow[]>(`/api/sessions/${encodeURIComponent(sessionRef)}/pivot${qs({ name })}`)
 export const deleteProfile = (ref: string) => request<void>(p(ref), DELETE_INIT)

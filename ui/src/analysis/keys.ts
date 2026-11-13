@@ -15,6 +15,7 @@ const VIEW_KEYS: Record<string, ViewName> = {
   '6': 'both',
   '7': 'groups',
   '8': 'graph',
+  '9': 'time',
 }
 
 type KeyEventLike = {
@@ -47,6 +48,7 @@ export const SHORTCUTS: { keys: string; label: string }[] = [
   { keys: '6', label: 'Flame and top together' },
   { keys: '7', label: 'Groups (identical stacks / wait sites)' },
   { keys: '8', label: 'Call graph' },
+  { keys: '9', label: 'Time heat map (profiles with time data)' },
   { keys: 'h', label: 'Toggle hot path' },
   { keys: '/', label: 'Focus search' },
   { keys: '?', label: 'Show this help' },

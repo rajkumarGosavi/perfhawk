@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  ApiError, deleteProfile, deleteSession, getDiffFlame, getDiffTop, getFlame, getFindings, getGraph, getGroups, getPivot, listSessions,
+  ApiError, deleteProfile, deleteSession, getDiffFlame, getDiffTop, getFlame, getFindings, getGraph, getHeatmap, getGroups, getPivot, listSessions,
 } from './api'
 
 function stub(status: number, body?: unknown) {
@@ -109,5 +109,30 @@ describe('graph api', () => {
     expect(u).toContain('/api/profiles/p1/graph?')
     expect(u).toContain('nodes=120')
     expect(u).toContain('tx=rec')
+  })
+})
+
+describe('time api', () => {
+  it('analysis requests carry t0 and t1', async () => {
+    const f = stub(200, {})
+    await getFlame('p1', { t0: 100, t1: 900 })
+    const u = (f.mock.calls[0] as unknown as [string])[0]
+    expect(u).toContain('t0=100')
+    expect(u).toContain('t1=900')
+  })
+  it('getHeatmap hits /heatmap with cols', async () => {
+    const f = stub(200, {})
+    await getHeatmap('p1', { cols: 600, tx: 'rec' })
+    const u = (f.mock.calls[0] as unknown as [string])[0]
+    expect(u).toContain('/api/profiles/p1/heatmap?')
+    expect(u).toContain('cols=600')
+  })
+  it('diff requests carry the four time parameters and a no_timeline error is distinguishable', async () => {
+    const f = stub(200, {})
+    await getDiffFlame('b', 'h', { t0: 1, t1: 2, bt0: 3, bt1: 4 })
+    const u = (f.mock.calls[0] as unknown as [string])[0]
+    for (const part of ['t0=1', 't1=2', 'bt0=3', 'bt1=4']) expect(u).toContain(part)
+    stub(404, { error: { code: 'no_timeline', message: 'x' } })
+    await expect(getHeatmap('p1')).rejects.toMatchObject({ code: 'no_timeline' })
   })
 })

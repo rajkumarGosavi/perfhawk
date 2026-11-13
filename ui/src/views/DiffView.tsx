@@ -65,7 +65,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
     if (baseRef) getProfile(baseRef).then(setBase, (e: ApiError) => setError(e.message))
   }, [baseRef])
 
-  const { focus, exclude, hide, depth, tx, diffFilter, diffSort, diffLayout } = state
+  const { focus, exclude, hide, depth, tx, diffFilter, diffSort, diffLayout, t0, t1, b0, b1 } = state
   useEffect(() => {
     if (cb) document.documentElement.setAttribute('data-palette', 'cb')
     else document.documentElement.removeAttribute('data-palette')
@@ -84,7 +84,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
     if (!baseRef) return
     let stale = false
     setLoading(true)
-    const q = { st: stName, normalize: (normalize ?? 'none') as 'none' | 'total', focus, exclude, hide, depth, tx, min: 0.0005 }
+    const q = { st: stName, normalize: (normalize ?? 'none') as 'none' | 'total', focus, exclude, hide, depth, tx, min: 0.0005, t0, t1, bt0: b0, bt1: b1 }
     Promise.all([getDiffFlame(baseRef, headRef, q), getDiffTop(baseRef, headRef, { ...q, limit: 50, sort: diffSort === 'percent' ? 'percent' : 'delta' })]).then(
       ([f, t]) => {
         if (stale) return
@@ -104,7 +104,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
     return () => {
       stale = true
     }
-  }, [baseRef, headRef, stName, normalize, focus, exclude, hide, depth, tx, diffSort])
+  }, [baseRef, headRef, stName, normalize, focus, exclude, hide, depth, tx, diffSort, t0, t1, b0, b1])
 
   const common = useMemo(() => {
     if (!head || !base) return []

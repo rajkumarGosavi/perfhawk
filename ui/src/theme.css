@@ -194,3 +194,7 @@ td.down { color: var(--diff-down-3); }
 .graph-node:focus { outline: none; }
 .graph-node:focus-visible rect, .graph-node.selected rect { stroke: var(--accent); stroke-width: 3; }
 .graph-side ul { list-style: none; margin: 2px 0 8px; padding: 0; }
+.heat-canvas { display: block; width: 100%; cursor: crosshair; touch-action: none; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius: 4px; }
+.heat-canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.heat-readout { margin-top: 8px; }
+.heat-readout input { width: 110px; }
