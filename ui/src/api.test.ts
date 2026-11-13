@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  ApiError, deleteProfile, deleteSession, getDiffFlame, getDiffTop, getFlame, getFindings, getGraph, getHeatmap, getGroups, getPivot, listSessions,
+  ApiError, deleteProfile, deleteSession, getDiffFlame, getDiffTop, getFlame, getFindings, getGraph, getHeatmap, getHistory, getSeries, getGroups, getPivot, listSessions,
 } from './api'
 
 function stub(status: number, body?: unknown) {
@@ -134,5 +134,23 @@ describe('time api', () => {
     for (const part of ['t0=1', 't1=2', 'bt0=3', 'bt1=4']) expect(u).toContain(part)
     stub(404, { error: { code: 'no_timeline', message: 'x' } })
     await expect(getHeatmap('p1')).rejects.toMatchObject({ code: 'no_timeline' })
+  })
+})
+
+describe('history api', () => {
+  it('getSeries hits /api/series', async () => {
+    const f = stub(200, [])
+    await getSeries()
+    expect((f.mock.calls[0] as unknown as [string])[0]).toBe('/api/series')
+  })
+  it('getHistory encodes the series key and function', async () => {
+    const f = stub(200, { points: [] })
+    await getHistory({ series: 'svc:é/1', kind: 'cpu', func: 'main.(*T).run', st: 'cpu', tx: 'rec' })
+    const u = (f.mock.calls[0] as unknown as [string])[0]
+    expect(u).toContain('/api/history?')
+    expect(u).toContain('series=svc%3A%C3%A9%2F1')
+    expect(u).toContain('func=main.%28*T%29.run')
+    expect(u).toContain('st=cpu')
+    expect(u).toContain('tx=rec')
   })
 })

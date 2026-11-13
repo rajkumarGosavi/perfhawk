@@ -962,6 +962,7 @@ struct SeriesOut {
     session_count: usize,
     kinds: Vec<String>,
     last_started_at_unix_ms: i64,
+    latest_session_id: String,
 }
 
 async fn series_h(State(s): State<St>) -> ApiResult<Response> {
@@ -979,9 +980,13 @@ async fn series_h(State(s): State<St>) -> ApiResult<Response> {
                 session_count: 0,
                 kinds: vec![],
                 last_started_at_unix_ms: i64::MIN,
+                latest_session_id: String::new(),
             });
             e.session_count += 1;
-            e.last_started_at_unix_ms = e.last_started_at_unix_ms.max(sess.started_at_unix_ms);
+            if sess.started_at_unix_ms >= e.last_started_at_unix_ms {
+                e.last_started_at_unix_ms = sess.started_at_unix_ms;
+                e.latest_session_id = sess.id.clone();
+            }
             for id in &sess.profile_ids {
                 if let Some(k) = kinds.get(id) {
                     let name = k.as_str().to_string();

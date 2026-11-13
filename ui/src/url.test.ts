@@ -140,3 +140,19 @@ describe('time state', () => {
     expect(readViewState('?b0=1&b1=2').b1).toBe(2)
   })
 })
+
+describe('history state', () => {
+  it('roundtrips series, kind and function with unusual characters', () => {
+    const s = { view: 'history' as const, series: 'svc:é/1 x', kind: 'cpu', fn: 'main.(*T).run' }
+    const w = writeViewState(s)
+    expect(w).toContain('view=history')
+    expect(readViewState(w)).toEqual(s)
+  })
+  it('omits empty values and needs no profile', () => {
+    expect(writeViewState({ view: 'history' })).toBe('?view=history')
+    const s = readViewState('?view=history&series=&kind=&fn=')
+    expect(s.series).toBeUndefined()
+    expect(s.fn).toBeUndefined()
+    expect(s.profile).toBeUndefined()
+  })
+})

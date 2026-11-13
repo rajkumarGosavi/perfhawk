@@ -167,6 +167,33 @@ export type TimelineSeries = {
 }
 export type SessionTimeline = { durationMs: number; series: TimelineSeries[] }
 
+export type SeriesInfo = {
+  key: string
+  runtime: string
+  sessionCount: number
+  kinds: string[]
+  lastStartedAtUnixMs: number
+  latestSessionId: string
+}
+export type HistoryPoint = {
+  sessionId: string
+  shortId: string
+  profileId: string
+  startedAtUnixMs: number
+  found: boolean
+  value: number
+  total: number
+  pct: number
+  skipped: string | null
+}
+export type HistoryResponse = {
+  series: string
+  kind: string
+  func: string
+  sampleType: SampleTypeInfo | null
+  points: HistoryPoint[]
+}
+
 export class ApiError extends Error {
   code: string
   constructor(code: string, message: string) {
@@ -233,6 +260,10 @@ export const getHeatmap = (ref: string, q: AnalysisQuery & { cols?: number } = {
   request<Heatmap>(`${p(ref)}/heatmap${qs(q)}`)
 export const getSessionTimeline = (sessionRef: string, points = 200) =>
   request<SessionTimeline>(`/api/sessions/${encodeURIComponent(sessionRef)}/timeline${qs({ points })}`)
+export const getSeries = () => request<SeriesInfo[]>('/api/series')
+export const getHistory = (q: {
+  series: string; kind: string; func: string; st?: string; tx?: string; focus?: string; exclude?: string; hide?: string
+}) => request<HistoryResponse>(`/api/history${qs(q)}`)
 export const getPivot = (sessionRef: string, name: string) =>
   request<PivotRow[]>(`/api/sessions/${encodeURIComponent(sessionRef)}/pivot${qs({ name })}`)
 export const deleteProfile = (ref: string) => request<void>(p(ref), DELETE_INIT)

@@ -10,11 +10,13 @@ export function Home({
   session,
   onOpen,
   onOpenWindow,
+  onHistory,
 }: {
   /** Session to expand (deep link from `prism record --open`). */
   session?: string
   onOpen: (shortId: string) => void
   onOpenWindow?: (shortId: string, range: Range) => void
+  onHistory?: () => void
 }) {
   const [tab, setTab] = useState<Tab | null>(session ? 'sessions' : null)
   const [version, setVersion] = useState(0)
@@ -40,6 +42,7 @@ export function Home({
           <button aria-pressed={tab === 'sessions'} onClick={() => setTab('sessions')}>Sessions</button>
           <button aria-pressed={tab === 'profiles'} onClick={() => setTab('profiles')}>Profiles</button>
         </div>
+        {onHistory && <button onClick={onHistory}>History</button>}
       </div>
       {tab === 'sessions' && (
         <SessionList version={version} initialExpanded={session} onOpenProfile={onOpen} onOpenWindow={onOpenWindow} onChanged={changed} />

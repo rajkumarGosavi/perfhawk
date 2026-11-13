@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { mergeViewState, readViewState, writeViewState, type ViewState } from './url'
 import { DiffView } from './views/DiffView'
+import { History } from './views/History'
 import { Home } from './views/Home'
 import { ProfileView } from './views/ProfileView'
 
@@ -43,12 +44,15 @@ export default function App() {
       <main>
         {state.profile && state.view === 'diff' ? (
           <DiffView key={`${state.profile}|${state.base ?? ''}`} state={state} navigate={navigate} />
+        ) : !state.profile && state.view === 'history' ? (
+          <History state={state} navigate={navigate} />
         ) : state.profile ? (
           <ProfileView key={state.profile} state={state} navigate={navigate} />
         ) : (
           <Home
             session={state.session}
             onOpen={(id) => navigate({ profile: id }, 'push', true)}
+            onHistory={() => navigate({ view: 'history' }, 'push', true)}
             onOpenWindow={(id, r) => navigate({ profile: id, view: 'flame', t0: r.t0, t1: r.t1 }, 'push', true)}
           />
         )}

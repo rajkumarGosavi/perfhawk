@@ -1,4 +1,4 @@
-export type ViewName = 'summary' | 'flame' | 'icicle' | 'tree' | 'top' | 'both' | 'sandwich' | 'diff' | 'groups' | 'graph' | 'time'
+export type ViewName = 'summary' | 'flame' | 'icicle' | 'tree' | 'top' | 'both' | 'sandwich' | 'diff' | 'groups' | 'graph' | 'time' | 'history'
 export type ViewState = {
   profile?: string
   /** Session to expand on the home page. */
@@ -38,9 +38,13 @@ export type ViewState = {
   /** Baseline window for a window-vs-window diff. */
   b0?: number
   b1?: number
+  /** History view: series key, profile kind and function name. */
+  series?: string
+  kind?: string
+  fn?: string
 }
 
-const VIEWS: ViewName[] = ['summary', 'flame', 'icicle', 'tree', 'top', 'both', 'sandwich', 'diff', 'groups', 'graph', 'time']
+const VIEWS: ViewName[] = ['summary', 'flame', 'icicle', 'tree', 'top', 'both', 'sandwich', 'diff', 'groups', 'graph', 'time', 'history']
 
 function int(s: string | null): number | undefined {
   if (s === null || s === '') return undefined
@@ -88,6 +92,10 @@ export function readViewState(search: string): ViewState {
   if (win) [s.t0, s.t1] = win
   const base = pair('b0', 'b1')
   if (base) [s.b0, s.b1] = base
+  for (const k of ['series', 'kind', 'fn'] as const) {
+    const x = p.get(k)
+    if (x) s[k] = x
+  }
   const gn = int(p.get('gn'))
   if (gn !== undefined && gn >= 5 && gn <= 300) s.graphNodes = gn
   return s
@@ -115,6 +123,9 @@ export function writeViewState(s: ViewState): string {
   if (s.diffFilter) p.set('only', s.diffFilter)
   if (s.diffSort) p.set('dsort', s.diffSort)
   if (s.graphNodes !== undefined) p.set('gn', String(s.graphNodes))
+  if (s.series) p.set('series', s.series)
+  if (s.kind) p.set('kind', s.kind)
+  if (s.fn) p.set('fn', s.fn)
   if (s.t0 !== undefined && s.t1 !== undefined) {
     p.set('t0', String(s.t0))
     p.set('t1', String(s.t1))

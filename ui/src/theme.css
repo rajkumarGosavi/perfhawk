@@ -204,3 +204,7 @@ td.down { color: var(--diff-down-3); }
 .sparkline:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .timeline-band { fill: color-mix(in srgb, var(--accent) 30%, transparent); }
 @media (max-width: 700px) { .timeline-row { grid-template-columns: 1fr; } }
+.history-chart { width: 100%; max-width: 760px; height: auto; color: var(--accent); }
+.history-point { fill: currentColor; cursor: pointer; }
+.history-point:focus { outline: none; }
+.history-point:focus-visible { stroke: var(--accent); stroke-width: 3; fill: #fff; }
