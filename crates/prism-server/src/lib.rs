@@ -2,6 +2,7 @@
 
 mod api;
 mod assets;
+mod guard;
 
 use axum::Router;
 use prism_model::Profile;
@@ -13,16 +14,27 @@ use tokio::task::JoinHandle;
 
 pub(crate) struct AppState {
     pub store: Arc<Store>,
+    pub port: Option<u16>,
     pub cache: Mutex<lru::LruCache<String, Arc<Profile>>>,
 }
 
+/// Router accepting loopback hosts on any port (use `serve` for a strict port).
 pub fn router(store: Arc<Store>) -> Router {
+    router_with_port(store, None)
+}
+
+fn router_with_port(store: Arc<Store>, port: Option<u16>) -> Router {
     let state = Arc::new(AppState {
         store,
+        port,
         cache: Mutex::new(lru::LruCache::new(NonZeroUsize::new(2).unwrap())),
     });
     api::routes()
         .fallback(assets::static_handler)
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            guard::host_origin_guard,
+        ))
         .with_state(state)
 }
 
@@ -34,7 +46,7 @@ pub async fn serve(
 ) -> Result<(SocketAddr, JoinHandle<()>), std::io::Error> {
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
     let addr = listener.local_addr()?;
-    let app = router(store);
+    let app = router_with_port(store, Some(addr.port()));
     let handle = tokio::spawn(async move {
         if let Err(e) = axum::serve(listener, app).await {
             eprintln!("prism-server: {e}");

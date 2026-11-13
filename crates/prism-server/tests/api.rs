@@ -132,3 +132,71 @@ async fn spa_fallback_serves_html() {
     let ct = r.headers()["content-type"].to_str().unwrap().to_string();
     assert!(ct.starts_with("text/html"), "{ct}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rejects_foreign_host() {
+    let (_d, _s, addr) = start().await;
+    let c = reqwest::Client::new();
+    for path in ["/api/profiles", "/"] {
+        let r = c
+            .get(format!("http://{addr}{path}"))
+            .header("Host", "evil.com")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 403);
+        let v: Value = r.json().await.unwrap();
+        assert_eq!(v["error"]["code"], "forbidden");
+    }
+    let r = c
+        .get(format!("http://{addr}/api/profiles"))
+        .header("Host", format!("localhost:{}", addr.port() + 1))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 403);
+    let r = c
+        .get(format!("http://{addr}/api/profiles"))
+        .header("Host", format!("localhost:{}", addr.port()))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rejects_foreign_origin_on_post() {
+    let (_d, store, addr) = start().await;
+    let c = reqwest::Client::new();
+    let r = c
+        .post(format!("http://{addr}/api/profiles"))
+        .header("Origin", "https://evil.com")
+        .body(CPU.to_vec())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 403);
+    assert!(store.list().unwrap().is_empty());
+    let r = c
+        .post(format!("http://{addr}/api/profiles"))
+        .header("Origin", format!("http://127.0.0.1:{}", addr.port()))
+        .body(CPU.to_vec())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 201);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn bad_query_params_are_json() {
+    let (_d, store, addr) = start().await;
+    let id = import(&store, CPU);
+    for q in ["st=abc", "inverted=maybe", "min=x"] {
+        let (s, v) = get(addr, &format!("/api/profiles/{id}/flame?{q}")).await;
+        assert_eq!(s, 400, "{q}");
+        assert_eq!(v["error"]["code"], "bad_request");
+    }
+    let (s, v) = get(addr, &format!("/api/profiles/{id}/sandwich?func=-1")).await;
+    assert_eq!(s, 400);
+    assert_eq!(v["error"]["code"], "bad_request");
+}

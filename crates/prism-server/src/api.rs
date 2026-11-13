@@ -1,8 +1,8 @@
 use crate::AppState;
 use axum::{
     body::Bytes,
-    extract::{DefaultBodyLimit, Path, Query, State},
-    http::{header, StatusCode},
+    extract::{rejection::BytesRejection, DefaultBodyLimit, FromRequestParts, Path, Query, State},
+    http::{header, request::Parts, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
     Json, Router,
@@ -31,12 +31,19 @@ impl ApiError {
             message: message.into(),
         }
     }
-    fn internal(message: impl std::fmt::Display) -> Self {
-        eprintln!("prism-server: internal error: {message}");
+    fn internal(detail: impl std::fmt::Display) -> Self {
+        eprintln!("prism-server: internal error: {detail}");
         ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             code: "internal",
-            message: message.to_string(),
+            message: "internal error".into(),
+        }
+    }
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        ApiError {
+            status: StatusCode::FORBIDDEN,
+            code: "forbidden",
+            message: message.into(),
         }
     }
 }
@@ -64,6 +71,23 @@ impl IntoResponse for ApiError {
             Json(json!({"error": {"code": self.code, "message": self.message}})),
         )
             .into_response()
+    }
+}
+
+/// `axum::extract::Query` with JSON `bad_request` rejections.
+pub struct Q<T>(pub T);
+
+impl<T, S> FromRequestParts<S> for Q<T>
+where
+    T: serde::de::DeserializeOwned,
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, ApiError> {
+        Query::<T>::from_request_parts(parts, state)
+            .await
+            .map(|Query(v)| Q(v))
+            .map_err(|e| ApiError::bad(e.body_text()))
     }
 }
 
@@ -114,9 +138,20 @@ struct UploadQuery {
 
 async fn upload(
     State(s): State<St>,
-    Query(q): Query<UploadQuery>,
-    body: Bytes,
+    Q(q): Q<UploadQuery>,
+    body: Result<Bytes, BytesRejection>,
 ) -> ApiResult<Response> {
+    let body = body.map_err(|e| {
+        if e.status() == StatusCode::PAYLOAD_TOO_LARGE {
+            ApiError {
+                status: StatusCode::PAYLOAD_TOO_LARGE,
+                code: "payload_too_large",
+                message: "request body too large".into(),
+            }
+        } else {
+            ApiError::bad(e.body_text())
+        }
+    })?;
     let kind_override = match q.kind.as_deref() {
         None | Some("") => None,
         Some(k) => Some(
@@ -202,7 +237,7 @@ fn json_bytes<T: serde::Serialize>(v: &T) -> ApiResult<Response> {
 async fn flame_h(
     State(s): State<St>,
     Path(r): Path<String>,
-    Query(q): Query<AnalysisQuery>,
+    Q(q): Q<AnalysisQuery>,
 ) -> ApiResult<Response> {
     let filter = q.filter()?;
     let min = q.min()?;
@@ -224,7 +259,7 @@ async fn flame_h(
 async fn top_h(
     State(s): State<St>,
     Path(r): Path<String>,
-    Query(q): Query<AnalysisQuery>,
+    Q(q): Q<AnalysisQuery>,
 ) -> ApiResult<Response> {
     let filter = q.filter()?;
     let limit = q.limit.unwrap_or(100).min(10_000);
@@ -238,7 +273,7 @@ async fn top_h(
 async fn sandwich_h(
     State(s): State<St>,
     Path(r): Path<String>,
-    Query(q): Query<AnalysisQuery>,
+    Q(q): Q<AnalysisQuery>,
 ) -> ApiResult<Response> {
     let filter = q.filter()?;
     let min = q.min()?;
