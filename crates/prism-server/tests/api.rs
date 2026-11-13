@@ -289,3 +289,27 @@ async fn tx_applies_to_both_sides_of_a_diff() {
     let (s, _) = get(addr, &format!("/api/diff?base={id}&head={id}&tx=bogus")).await;
     assert_eq!(s, 400);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn groups_endpoint() {
+    let (_d, store, addr) = start().await;
+    let id = import(&store, CPU);
+    let (s, v) = get(addr, &format!("/api/profiles/{id}/groups?by=site&limit=3")).await;
+    assert_eq!(s, 200, "{v}");
+    let rows = v.as_array().unwrap();
+    assert!(!rows.is_empty() && rows.len() <= 3);
+    assert!(rows[0]["name"].is_string() && rows[0]["value"].is_i64());
+    assert!(rows[0].get("pct").is_some() && rows[0].get("frames").is_some());
+    let (s, v) = get(
+        addr,
+        &format!("/api/profiles/{id}/groups?by=stack&limit=100000"),
+    )
+    .await;
+    assert_eq!(s, 200);
+    assert!(v.as_array().unwrap().len() <= 1000);
+    let (s, v) = get(addr, &format!("/api/profiles/{id}/groups?by=bogus")).await;
+    assert_eq!(s, 400);
+    assert_eq!(v["error"]["code"], "bad_request");
+    let (s, _) = get(addr, &format!("/api/profiles/{id}/groups")).await;
+    assert_eq!(s, 400);
+}

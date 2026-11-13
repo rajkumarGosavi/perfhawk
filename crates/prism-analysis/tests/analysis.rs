@@ -478,3 +478,105 @@ fn function_stats_finds_exact_name() {
     let empty = build(&[]);
     assert!(function_stats(&empty, 0, &none(), "a").is_none());
 }
+
+// ---- V2 groups ----
+
+fn build_lock(samples: &[(&[&str], i64, i64)]) -> Profile {
+    let mut b = ProfileBuilder::new(
+        vec![
+            SampleType {
+                name: "contentions".into(),
+                unit: Unit::Count,
+            },
+            SampleType {
+                name: "delay".into(),
+                unit: Unit::Nanoseconds,
+            },
+        ],
+        meta(),
+    );
+    for (names, c, d) in samples {
+        let frames: Vec<FrameId> = names
+            .iter()
+            .map(|n| {
+                let f = b.function(n, "x.go", 1);
+                b.frame(f, 1, 0)
+            })
+            .collect();
+        let s = b.stack(&frames);
+        b.add_sample(s, &[*c, *d], vec![]).unwrap();
+    }
+    b.finish()
+}
+
+#[test]
+fn groups_by_stack_aggregates_identical_stacks() {
+    let p = build(&[
+        (&["main", "a"], 1),
+        (&["main", "a"], 1),
+        (&["main", "a"], 1),
+        (&["main", "a"], 1),
+        (&["main", "a"], 1),
+        (&["main", "b", "a"], 2),
+    ]);
+    let rows = groups(&p, 0, &none(), GroupBy::Stack, 100);
+    assert_eq!(rows.len(), 2);
+    assert_eq!((rows[0].name.as_str(), rows[0].value), ("a", 5));
+    assert_eq!(rows[0].frames, ["a", "main"]);
+    assert_eq!(rows[1].frames, ["a", "b", "main"]);
+    assert_eq!(rows[0].pct, 5.0 / 7.0 * 100.0);
+    assert!(rows[0].count.is_none() && rows[0].mean.is_none());
+}
+
+#[test]
+fn groups_by_site_skips_runtime_frames() {
+    let p = build_lock(&[
+        (
+            &["main.work", "sync.(*Mutex).Lock", "runtime.semacquire"],
+            2,
+            100,
+        ),
+        (&["runtime.a", "runtime.b"], 1, 10),
+    ]);
+    let rows = groups(&p, 1, &none(), GroupBy::Site, 100);
+    assert_eq!(rows[0].name, "main.work");
+    assert!(rows[0].frames.is_empty());
+    assert_eq!(rows[1].name, "runtime.b");
+}
+
+#[test]
+fn groups_count_and_mean_from_count_type() {
+    let p = build_lock(&[
+        (&["main.w"], 4, 100),
+        (&["main.w"], 1, 50),
+        (&["main.z"], 0, 7),
+    ]);
+    let rows = groups(&p, 1, &none(), GroupBy::Site, 100);
+    assert_eq!((rows[0].value, rows[0].count), (150, Some(5)));
+    assert_eq!(rows[0].mean, Some(30.0));
+    let z = rows.iter().find(|r| r.name == "main.z").unwrap();
+    assert_eq!((z.count, z.mean), (Some(0), None));
+    // the count type itself has no count/mean
+    let rows = groups(&p, 0, &none(), GroupBy::Site, 100);
+    assert!(rows.iter().all(|r| r.count.is_none() && r.mean.is_none()));
+}
+
+#[test]
+fn groups_limit_transform_and_empty() {
+    let owned: Vec<(Vec<String>, i64)> = (0..1000)
+        .map(|i| (vec!["main".to_string(), format!("f{i}")], 1000 - i as i64))
+        .collect();
+    let refs: Vec<(Vec<&str>, i64)> = owned
+        .iter()
+        .map(|(v, n)| (v.iter().map(|s| s.as_str()).collect(), *n))
+        .collect();
+    let samples: Vec<(&[&str], i64)> = refs.iter().map(|(v, n)| (v.as_slice(), *n)).collect();
+    let p = build(&samples);
+    let rows = groups(&p, 0, &none(), GroupBy::Stack, 10);
+    assert_eq!(rows.len(), 10);
+    assert!(rows.windows(2).all(|w| w[0].value >= w[1].value));
+    let p = std_profile();
+    let rows = groups(&p, 0, &tx("sub:a"), GroupBy::Stack, 10);
+    assert_eq!(rows.iter().map(|r| r.value).sum::<i64>(), 5);
+    assert!(groups(&build(&[]), 0, &none(), GroupBy::Stack, 10).is_empty());
+}

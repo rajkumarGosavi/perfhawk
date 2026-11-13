@@ -8,9 +8,9 @@ use axum::{
     Json, Router,
 };
 use prism_analysis::{
-    diff_flame, diff_top, flame_with, function_stats, inverted_flame_with, match_sample_type,
-    parse_transforms, sandwich, top, DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow,
-    Filter, FlameOptions, TopSort,
+    diff_flame, diff_top, flame_with, function_stats, groups, inverted_flame_with,
+    match_sample_type, parse_transforms, sandwich, top, DiffError, DiffInput, DiffNode,
+    DiffNormalize, DiffRow, Filter, FlameOptions, GroupBy, TopSort,
 };
 use prism_model::{FuncId, Profile, ProfileKind};
 use prism_store::{ImportOptions, ProfileRecord, SampleTypeInfo, StoreError};
@@ -121,6 +121,7 @@ pub fn routes() -> Router<St> {
         .route("/api/profiles/{reference}/flame", get(flame_h))
         .route("/api/profiles/{reference}/top", get(top_h))
         .route("/api/profiles/{reference}/sandwich", get(sandwich_h))
+        .route("/api/profiles/{reference}/groups", get(groups_h))
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024 * 1024))
 }
 
@@ -262,6 +263,7 @@ struct AnalysisQuery {
     sort: Option<String>,
     depth: Option<usize>,
     tx: Option<String>,
+    by: Option<String>,
 }
 
 const DEFAULT_DEPTH: usize = 1000;
@@ -382,6 +384,30 @@ async fn top_h(
     let p = load_profile(&s, r).await?;
     let st = q.sample_type(&p)?;
     tokio::task::spawn_blocking(move || json_bytes(&top(&p, st, &filter, limit, sort)))
+        .await
+        .map_err(ApiError::internal)?
+}
+
+async fn groups_h(
+    State(s): State<St>,
+    Path(r): Path<String>,
+    Q(q): Q<AnalysisQuery>,
+) -> ApiResult<Response> {
+    let filter = q.filter()?;
+    let by = match q.by.as_deref() {
+        Some("stack") => GroupBy::Stack,
+        Some("site") => GroupBy::Site,
+        Some(o) => {
+            return Err(ApiError::bad(format!(
+                "unknown by '{o}' (expected stack or site)"
+            )))
+        }
+        None => return Err(ApiError::bad("missing required query parameter 'by'")),
+    };
+    let limit = q.limit.unwrap_or(100).min(1000);
+    let p = load_profile(&s, r).await?;
+    let st = q.sample_type(&p)?;
+    tokio::task::spawn_blocking(move || json_bytes(&groups(&p, st, &filter, by, limit)))
         .await
         .map_err(ApiError::internal)?
 }
