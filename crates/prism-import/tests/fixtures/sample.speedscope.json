@@ -1,0 +1,34 @@
+{
+  "$schema": "https://www.speedscope.app/file-format-schema.json",
+  "shared": {
+    "frames": [
+      {"name": "main", "file": "main.go", "line": 10},
+      {"name": "a"},
+      {"name": "b"}
+    ]
+  },
+  "profiles": [
+    {
+      "type": "sampled",
+      "name": "sampled",
+      "unit": "microseconds",
+      "startValue": 0,
+      "endValue": 600,
+      "samples": [[0, 1], [0, 1, 2], [0]],
+      "weights": [100, 200, 300]
+    },
+    {
+      "type": "evented",
+      "name": "evented",
+      "unit": "nanoseconds",
+      "startValue": 0,
+      "endValue": 40,
+      "events": [
+        {"type": "O", "frame": 0, "at": 0},
+        {"type": "O", "frame": 1, "at": 10},
+        {"type": "C", "frame": 1, "at": 30},
+        {"type": "C", "frame": 0, "at": 40}
+      ]
+    }
+  ]
+}
