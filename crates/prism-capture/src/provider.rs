@@ -32,6 +32,7 @@ impl ProviderRegistry {
     pub fn with_defaults() -> Self {
         let mut r = ProviderRegistry::default();
         r.register(Box::new(crate::go::GoProvider::new()));
+        r.register(Box::new(crate::dotnet::DotnetProvider::new()));
         r
     }
 

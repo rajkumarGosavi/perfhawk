@@ -2,6 +2,7 @@
 //! session orchestration that imports their results into the store.
 
 mod cancel;
+pub mod dotnet;
 mod duration;
 pub mod go;
 mod provider;
@@ -9,6 +10,7 @@ mod session;
 mod types;
 
 pub use cancel::CancelToken;
+pub use dotnet::DotnetProvider;
 pub use go::GoProvider;
 pub use duration::{parse_duration, DEFAULT_DURATION, MAX_DURATION, MIN_DURATION};
 pub use provider::{Provider, ProviderRegistry};

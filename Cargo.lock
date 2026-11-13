@@ -1193,6 +1193,7 @@ dependencies = [
  "open",
  "predicates",
  "prism-analysis",
+ "prism-capture",
  "prism-model",
  "prism-server",
  "prism-store",
