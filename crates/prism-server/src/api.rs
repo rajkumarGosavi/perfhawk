@@ -8,9 +8,9 @@ use axum::{
     Json, Router,
 };
 use prism_analysis::{
-    diff_flame, diff_top_sorted, flame_with, function_stats, groups, inverted_flame_with,
+    diff_flame, diff_top_sorted, findings, flame_with, function_stats, groups, inverted_flame_with,
     match_sample_type, parse_transforms, sandwich, top, DiffError, DiffInput, DiffNode,
-    DiffNormalize, DiffRow, DiffSort, Filter, FlameOptions, GroupBy, TopSort,
+    DiffNormalize, DiffRow, DiffSort, Filter, FlameOptions, GroupBy, RuleConfig, TopSort,
 };
 use prism_model::{FuncId, Profile, ProfileKind};
 use prism_store::{ImportOptions, ProfileRecord, SampleTypeInfo, StoreError};
@@ -122,6 +122,7 @@ pub fn routes() -> Router<St> {
         .route("/api/profiles/{reference}/top", get(top_h))
         .route("/api/profiles/{reference}/sandwich", get(sandwich_h))
         .route("/api/profiles/{reference}/groups", get(groups_h))
+        .route("/api/profiles/{reference}/findings", get(findings_h))
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024 * 1024))
 }
 
@@ -410,6 +411,21 @@ async fn groups_h(
     tokio::task::spawn_blocking(move || json_bytes(&groups(&p, st, &filter, by, limit)))
         .await
         .map_err(ApiError::internal)?
+}
+
+async fn findings_h(
+    State(s): State<St>,
+    Path(r): Path<String>,
+    Q(q): Q<AnalysisQuery>,
+) -> ApiResult<Response> {
+    let filter = q.filter()?;
+    let p = load_profile(&s, r).await?;
+    let st = q.sample_type(&p)?;
+    tokio::task::spawn_blocking(move || {
+        json_bytes(&findings(&p, st, &filter, &RuleConfig::default()))
+    })
+    .await
+    .map_err(ApiError::internal)?
 }
 
 async fn sandwich_h(

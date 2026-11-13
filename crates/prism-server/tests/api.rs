@@ -313,3 +313,27 @@ async fn groups_endpoint() {
     let (s, _) = get(addr, &format!("/api/profiles/{id}/groups")).await;
     assert_eq!(s, 400);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn findings_endpoint() {
+    let (_d, store, addr) = start().await;
+    let id = import(&store, CPU);
+    let (s, v) = get(addr, &format!("/api/profiles/{id}/findings")).await;
+    assert_eq!(s, 200, "{v}");
+    let arr = v.as_array().unwrap();
+    let d = arr
+        .iter()
+        .find(|f| f["rule"] == "dominant-function")
+        .expect("dominant");
+    assert!(d["evidence"]["pct"].is_f64());
+    assert_eq!(d["action"]["view"], "sandwich");
+    assert!(d["action"]["funcId"].is_u64());
+    assert!(d["severity"].is_string() && d["score"].is_f64() && d["title"].is_string());
+    let (s, _) = get(addr, &format!("/api/profiles/{id}/findings?tx=bogus")).await;
+    assert_eq!(s, 400);
+    let (s, _) = get(addr, "/api/profiles/nope/findings").await;
+    assert_eq!(s, 404);
+    let (s, v) = get(addr, &format!("/api/profiles/{id}/findings?focus=nomatch")).await;
+    assert_eq!(s, 200);
+    assert_eq!(v.as_array().unwrap().len(), 0);
+}
