@@ -14,6 +14,9 @@ pub struct Args {
 pub fn run(store: &Store, a: Args) -> Result<(), String> {
     let rec = store.resolve(&a.reference).map_err(|e| e.to_string())?;
     let profile = store.load(&rec.id).map_err(|e| e.to_string())?;
+    if profile.sample_types.is_empty() {
+        return Err("profile has no sample types".into());
+    }
     let st = match &a.st {
         None => profile.default_sample_type,
         Some(n) => profile.sample_type_index(n).ok_or_else(|| {

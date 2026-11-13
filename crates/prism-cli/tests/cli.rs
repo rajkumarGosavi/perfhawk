@@ -149,35 +149,49 @@ fn path_with_spaces() {
         .success();
 }
 
+struct KillOnDrop(std::process::Child);
+
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 #[test]
 fn open_no_browser_serves() {
     let home = tempfile::tempdir().unwrap();
-    let mut child = StdCommand::new(assert_cmd::cargo::cargo_bin("prism"))
-        .arg("--home")
-        .arg(home.path())
-        .arg("open")
-        .arg(fixture("go-cpu.pb.gz"))
-        .args(["--no-browser", "--port", "0"])
-        .stdout(Stdio::piped())
-        .spawn()
+    let mut guard = KillOnDrop(
+        StdCommand::new(assert_cmd::cargo::cargo_bin("prism"))
+            .arg("--home")
+            .arg(home.path())
+            .arg("open")
+            .arg(fixture("go-cpu.pb.gz"))
+            .args(["--no-browser", "--port", "0"])
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let stdout = guard.0.stdout.take().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        let _ = BufReader::new(stdout).read_line(&mut line);
+        let _ = tx.send(line);
+    });
+    let line = rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("no URL line within 10s");
+    let url = line
+        .trim()
+        .strip_prefix("prism UI: ")
+        .unwrap_or_else(|| panic!("bad line: {line:?}"));
+    assert!(url.contains("/?profile="), "{url}");
+    let base = &url[..url.find("/?").unwrap()];
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
         .unwrap();
-    let mut line = String::new();
-    BufReader::new(child.stdout.take().unwrap())
-        .read_line(&mut line)
-        .unwrap();
-    let res = (|| {
-        let url = line
-            .trim()
-            .strip_prefix("prism UI: ")
-            .ok_or("bad line")?
-            .to_string();
-        assert!(url.contains("/?profile="), "{url}");
-        let base = &url[..url.find("/?").unwrap()];
-        let r =
-            reqwest::blocking::get(format!("{base}/api/profiles")).map_err(|e| e.to_string())?;
-        Ok::<_, String>(r.status().as_u16())
-    })();
-    child.kill().unwrap();
-    let _ = child.wait();
-    assert_eq!(res.unwrap(), 200, "line: {line}");
+    let r = client.get(format!("{base}/api/profiles")).send().unwrap();
+    assert_eq!(r.status().as_u16(), 200);
 }
