@@ -12,7 +12,7 @@ pub struct FrameId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct StackId(pub u32);
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProfileKind {
     Cpu,
@@ -305,13 +305,15 @@ impl ProfileBuilder {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn st(name: &str) -> SampleType {
-        SampleType { name: name.into(), unit: Unit::Count }
+        SampleType {
+            name: name.into(),
+            unit: Unit::Count,
+        }
     }
     fn meta() -> ProfileMeta {
         ProfileMeta {
@@ -380,7 +382,13 @@ mod tests {
     fn add_sample_rejects_wrong_value_count() {
         let mut b = ProfileBuilder::new(vec![st("samples"), st("cpu")], meta());
         let r = b.add_sample(None, &[1], vec![]);
-        assert_eq!(r, Err(ModelError::ValueCountMismatch { expected: 2, got: 1 }));
+        assert_eq!(
+            r,
+            Err(ModelError::ValueCountMismatch {
+                expected: 2,
+                got: 1
+            })
+        );
     }
 
     #[test]

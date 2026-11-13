@@ -4,3 +4,13 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+
+[dependencies]
+prism-model = { path = "../prism-model" }
+prost.workspace = true
+flate2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+flate2.workspace = true
+prost.workspace = true
