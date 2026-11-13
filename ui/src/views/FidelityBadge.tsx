@@ -17,6 +17,10 @@ const INFO: Record<Fidelity, { label: string; tip: string }> = {
   unknown: { label: 'unknown', tip: 'Fidelity was not recorded (for example an imported file).' },
 }
 
+export function fidelityTip(f: Fidelity): string {
+  return (INFO[f] ?? INFO.unknown).tip
+}
+
 export function FidelityBadge({ fidelity }: { fidelity: Fidelity }) {
   const i = INFO[fidelity] ?? INFO.unknown
   return (
