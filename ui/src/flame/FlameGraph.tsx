@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { FlameNode } from '../api'
 import { formatPct, formatValue } from '../format'
-import { layoutFlame, layoutHeight, type Rect } from './layout'
+import { layoutFlame, layoutHeight, maxCanvasRows, type Rect } from './layout'
 
 export const ROW_HEIGHT = 18
 const LABEL_MIN_W = 30
@@ -23,9 +23,20 @@ type Props = {
   inverted: boolean
   search?: string
   onSelectFunc?: (funcId: number) => void
+  /** Fill colour for a node (a colour or `var(--name)`); default is the hashed warm palette. */
+  colorOf?: (node: FlameNode) => string
+  /** Extra tooltip content for a node. */
+  tooltipExtra?: (node: FlameNode) => ReactNode
+  /** Shown in the tooltip of a truncated node. */
+  depthLimit?: number
 }
 
-export function FlameGraph({ root, unit, inverted, search, onSelectFunc }: Props) {
+function resolveColor(cs: CSSStyleDeclaration, c: string): string {
+  const m = /^var\((--[\w-]+)\)$/.exec(c)
+  return m ? cs.getPropertyValue(m[1]).trim() || '#888' : c
+}
+
+export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf, tooltipExtra, depthLimit = 1000 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [width, setWidth] = useState(0)
@@ -66,13 +77,18 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc }: Props
     () => layoutFlame(root, width, ROW_HEIGHT, inverted, zoom),
     [root, width, inverted, zoom],
   )
-  const height = layoutHeight(rects, ROW_HEIGHT)
+  const fullHeight = layoutHeight(rects, ROW_HEIGHT)
+  // Browsers cap canvas size, so very deep trees are clipped (deepest rows first).
+  const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1
+  const maxRows = maxCanvasRows(dpr)
+  const clipped = fullHeight / ROW_HEIGHT > maxRows
+  const height = clipped ? maxRows * ROW_HEIGHT : fullHeight
+  const shift = clipped && !inverted ? fullHeight - height : 0
   const needle = search?.trim().toLowerCase()
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || width <= 0) return
-    const dpr = window.devicePixelRatio || 1
     canvas.width = Math.floor(width * dpr)
     canvas.height = Math.floor(height * dpr)
     canvas.style.height = `${height}px`
@@ -88,20 +104,42 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc }: Props
     ctx.font = '11px ui-monospace, Consolas, monospace'
     ctx.textBaseline = 'middle'
     for (const r of rects) {
+      const y = r.y - shift
+      if (y < 0 || y >= height) continue
       const isMatch = !!needle && r.node.name.toLowerCase().includes(needle)
-      ctx.fillStyle = isMatch ? match : `hsl(${hashHue(r.node.name)} ${sat} ${light})`
-      ctx.fillRect(r.x, r.y, Math.max(r.w - 1, 0.5), ROW_HEIGHT - 1)
+      ctx.fillStyle = isMatch
+        ? match
+        : colorOf
+          ? resolveColor(cs, colorOf(r.node))
+          : `hsl(${hashHue(r.node.name)} ${sat} ${light})`
+      ctx.fillRect(r.x, y, Math.max(r.w - 1, 0.5), ROW_HEIGHT - 1)
+      if (r.node.truncated && r.w > 4) {
+        // Hatch: deeper frames were folded into this node.
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(r.x, y, r.w - 1, ROW_HEIGHT - 1)
+        ctx.clip()
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)'
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        for (let x = r.x - ROW_HEIGHT; x < r.x + r.w; x += 5) {
+          ctx.moveTo(x, y + ROW_HEIGHT)
+          ctx.lineTo(x + ROW_HEIGHT, y)
+        }
+        ctx.stroke()
+        ctx.restore()
+      }
       if (r.w > LABEL_MIN_W) {
         ctx.fillStyle = isMatch ? '#ffffff' : text
         ctx.save()
         ctx.beginPath()
-        ctx.rect(r.x, r.y, r.w - 1, ROW_HEIGHT)
+        ctx.rect(r.x, y, r.w - 1, ROW_HEIGHT)
         ctx.clip()
-        ctx.fillText(fit(ctx, r.node.name, r.w - 6), r.x + 3, r.y + ROW_HEIGHT / 2)
+        ctx.fillText(fit(ctx, r.node.name, r.w - 6), r.x + 3, y + ROW_HEIGHT / 2)
         ctx.restore()
       }
     }
-  }, [rects, width, height, needle, theme])
+  }, [rects, width, height, shift, needle, theme, colorOf, dpr])
 
   const hit = useCallback(
     (e: { clientX: number; clientY: number }) => {
@@ -110,10 +148,10 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc }: Props
       const b = c.getBoundingClientRect()
       const x = e.clientX - b.left
       const y = e.clientY - b.top
-      const rect = rects.find((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + ROW_HEIGHT)
+      const rect = rects.find((r) => x >= r.x && x < r.x + r.w && y >= r.y - shift && y < r.y - shift + ROW_HEIGHT)
       return rect ? { rect, px: x, py: y } : null
     },
-    [rects],
+    [rects, shift],
   )
 
   const t = hover?.rect.node
@@ -152,6 +190,13 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc }: Props
             self {formatValue(t.selfValue, unit)} · total {formatValue(t.total, unit)} (
             {formatPct((t.total / (root.total || 1)) * 100)})
           </div>
+          {tooltipExtra?.(t)}
+          {t.truncated && <div>deeper frames folded (depth limit {depthLimit})</div>}
+        </div>
+      )}
+      {clipped && (
+        <div className="banner" role="status" style={{ margin: 4 }}>
+          Graph clipped; use Focus or zoom to see deeper frames.
         </div>
       )}
       {zoom && (

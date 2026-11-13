@@ -36,3 +36,16 @@ describe('layoutFlame', () => {
   })
 })
 const a1 = (a: FlameNode) => a.children[0]
+
+import { maxCanvasRows } from './layout'
+
+describe('maxCanvasRows', () => {
+  it('keeps height x devicePixelRatio within 16384 device pixels', () => {
+    expect(maxCanvasRows(1)).toBe(Math.floor(16384 / 18))
+    expect(maxCanvasRows(2)).toBe(Math.floor(16384 / 36))
+    expect(maxCanvasRows(3) * 18 * 3).toBeLessThanOrEqual(16384)
+  })
+  it('never drops below one row', () => {
+    expect(maxCanvasRows(100000)).toBe(1)
+  })
+})

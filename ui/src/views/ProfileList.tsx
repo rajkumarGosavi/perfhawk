@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ApiError, listProfiles, uploadProfile, type ProfileRecord } from '../api'
+import { ApiError, deleteProfile, listProfiles, uploadProfile, type ProfileRecord } from '../api'
+import { FidelityBadge } from './FidelityBadge'
 import { formatValue } from '../format'
 
-export function ProfileList({ onOpen }: { onOpen: (shortId: string) => void }) {
+export function ProfileList({
+  onOpen,
+  version = 0,
+  onChanged,
+}: {
+  onOpen: (shortId: string) => void
+  version?: number
+  onChanged?: () => void
+}) {
   const [profiles, setProfiles] = useState<ProfileRecord[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [over, setOver] = useState(false)
@@ -11,7 +20,19 @@ export function ProfileList({ onOpen }: { onOpen: (shortId: string) => void }) {
   const load = useCallback(() => {
     listProfiles().then(setProfiles, (e: ApiError) => setError(e.message))
   }, [])
-  useEffect(load, [load])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(load, [load, version])
+
+  const remove = async (p: ProfileRecord) => {
+    if (!window.confirm(`Delete ${p.name}? This removes the profile data and cannot be undone.`)) return
+    try {
+      await deleteProfile(p.id)
+      load()
+      onChanged?.()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e))
+    }
+  }
 
   const upload = async (files: FileList | File[]) => {
     setBusy(true)
@@ -71,8 +92,8 @@ export function ProfileList({ onOpen }: { onOpen: (shortId: string) => void }) {
           <table>
             <thead>
               <tr>
-                <th>Name</th><th>Kind</th><th>Format</th>
-                <th className="num">Samples</th><th className="num">Total</th><th>Imported</th>
+                <th>Name</th><th>Kind</th><th>Fidelity</th><th>Format</th>
+                <th className="num">Samples</th><th className="num">Total</th><th>Imported</th><th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
@@ -85,10 +106,14 @@ export function ProfileList({ onOpen }: { onOpen: (shortId: string) => void }) {
                       <span className="muted mono"> {p.short_id}</span>
                     </td>
                     <td>{p.kind}</td>
+                    <td><FidelityBadge fidelity={p.fidelity} /></td>
                     <td>{p.source_format}</td>
                     <td className="num">{p.sample_count.toLocaleString('en-US')}</td>
                     <td className="num">{formatValue(p.default_total, unit)}</td>
                     <td>{new Date(p.imported_at_unix_ms).toLocaleString()}</td>
+                    <td>
+                      <button onClick={() => void remove(p)} aria-label={`Delete ${p.name}`}>Delete</button>
+                    </td>
                   </tr>
                 )
               })}

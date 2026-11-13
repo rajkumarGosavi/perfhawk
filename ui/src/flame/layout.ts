@@ -33,6 +33,14 @@ export function layoutFlame(
   return out
 }
 
+export const ROW_PX = 18
+/** Browsers cap canvas size; keep height x devicePixelRatio within this many device pixels. */
+export const MAX_CANVAS_DEVICE_PX = 16384
+
+export function maxCanvasRows(dpr: number): number {
+  return Math.max(1, Math.floor(MAX_CANVAS_DEVICE_PX / (ROW_PX * dpr)))
+}
+
 export function layoutHeight(rects: Rect[], rowHeight: number): number {
   let d = 0
   for (const r of rects) if (r.depth > d) d = r.depth
