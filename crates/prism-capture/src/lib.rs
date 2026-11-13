@@ -4,6 +4,7 @@
 mod cancel;
 pub mod dotnet;
 mod duration;
+mod events;
 pub mod go;
 mod provider;
 mod session;
@@ -12,6 +13,7 @@ mod types;
 
 pub use cancel::CancelToken;
 pub use dotnet::DotnetProvider;
+pub use events::{event_artifact, EventRow, EventSpec};
 pub use duration::{parse_duration, DEFAULT_DURATION, MAX_DURATION, MIN_DURATION};
 pub use go::GoProvider;
 pub use provider::{Provider, ProviderRegistry};

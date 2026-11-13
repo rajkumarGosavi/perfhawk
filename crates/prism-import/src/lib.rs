@@ -7,6 +7,7 @@ pub mod speedscope;
 
 pub use collapsed::import_collapsed;
 pub use kind::infer_kind;
+pub use pprof::encode::encode_pprof;
 pub use pprof::import_pprof;
 pub use speedscope::import_speedscope;
 

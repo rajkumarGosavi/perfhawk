@@ -1,5 +1,6 @@
 //! pprof (`profile.proto`) importer.
 
+pub mod encode;
 pub mod proto;
 
 use crate::{infer_kind, ImportError, ImportHints};
