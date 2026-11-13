@@ -13,6 +13,15 @@ pub fn infer_kind(sample_types: &[SampleType], file_name: Option<&str>) -> Profi
     if cpu_ns || (has("samples") && has("cpu")) {
         return ProfileKind::Cpu;
     }
+    if has("io_time") {
+        return ProfileKind::BlockIo;
+    }
+    if has("offcpu") {
+        return ProfileKind::OffCpu;
+    }
+    if has("sched_delay") {
+        return ProfileKind::SchedDelay;
+    }
     if any_of(&[
         "alloc_space",
         "alloc_objects",
@@ -78,6 +87,21 @@ mod tests {
         assert_eq!(
             infer_kind(&[t("wall", Unit::Nanoseconds)], None),
             ProfileKind::Wall
+        );
+        assert_eq!(
+            infer_kind(
+                &[t("io_time", Unit::Nanoseconds), t("io_bytes", Unit::Bytes)],
+                None
+            ),
+            ProfileKind::BlockIo
+        );
+        assert_eq!(
+            infer_kind(&[t("offcpu", Unit::Nanoseconds)], None),
+            ProfileKind::OffCpu
+        );
+        assert_eq!(
+            infer_kind(&[t("sched_delay", Unit::Nanoseconds)], None),
+            ProfileKind::SchedDelay
         );
         assert_eq!(
             infer_kind(&[t("zzz", Unit::Count)], None),

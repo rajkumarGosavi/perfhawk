@@ -30,7 +30,7 @@ enum Command {
         /// Display name (single file only)
         #[arg(long)]
         name: Option<String>,
-        /// Override the detected kind: cpu|wall|memory|lock|blocking|block_io|threads
+        /// Override the detected kind: cpu|wall|memory|lock|blocking|block_io|off_cpu|sched_delay|threads
         #[arg(long, value_parser = parse_kind)]
         kind: Option<ProfileKind>,
         /// Tag to attach (repeatable)
@@ -198,7 +198,7 @@ enum SortArg {
 
 fn parse_kind(s: &str) -> Result<ProfileKind, String> {
     serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|_| {
-        format!("invalid kind '{s}' (expected cpu|wall|memory|lock|blocking|block_io|threads)")
+        format!("invalid kind '{s}' (expected cpu|wall|memory|lock|blocking|block_io|off_cpu|sched_delay|threads)")
     })
 }
 
