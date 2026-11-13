@@ -3,6 +3,7 @@
 
 mod diff;
 mod filter;
+mod findings;
 mod groups;
 mod pivot;
 mod sandwich;
@@ -15,6 +16,7 @@ pub use diff::{
     DiffNormalize, DiffRow, DiffSort,
 };
 pub use filter::Filter;
+pub use findings::{findings, Evidence, Finding, FindingAction, RuleConfig, Severity};
 pub use groups::{groups, GroupBy, GroupRow};
 pub use pivot::function_stats;
 pub use sandwich::{sandwich, Sandwich};
