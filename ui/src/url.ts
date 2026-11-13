@@ -1,4 +1,4 @@
-export type ViewName = 'summary' | 'flame' | 'icicle' | 'tree' | 'top' | 'both' | 'sandwich' | 'diff'
+export type ViewName = 'summary' | 'flame' | 'icicle' | 'tree' | 'top' | 'both' | 'sandwich' | 'diff' | 'groups'
 export type ViewState = {
   profile?: string
   /** Session to expand on the home page. */
@@ -20,9 +20,19 @@ export type ViewState = {
   sort?: 'self' | 'total'
   /** Highlight / expand the hottest call path; written as hot=1. */
   hot?: true
+  /** Stack transforms (`tx`), see analysis/transforms.ts. */
+  tx?: string
+  /** Groups view grouping; written as gb. */
+  groupBy?: 'stack' | 'site'
+  /** Diff side-by-side layout; written as layout=side. */
+  diffLayout?: 'side'
+  /** Diff row filter; written as only. */
+  diffFilter?: 'regressions' | 'improvements'
+  /** Diff top ordering; written as dsort=percent, delta is the default. */
+  diffSort?: 'percent'
 }
 
-const VIEWS: ViewName[] = ['summary', 'flame', 'icicle', 'tree', 'top', 'both', 'sandwich', 'diff']
+const VIEWS: ViewName[] = ['summary', 'flame', 'icicle', 'tree', 'top', 'both', 'sandwich', 'diff', 'groups']
 
 function int(s: string | null): number | undefined {
   if (s === null || s === '') return undefined
@@ -53,6 +63,14 @@ export function readViewState(search: string): ViewState {
   if (func !== undefined) s.func = func
   if (p.get('sort') === 'total') s.sort = 'total'
   if (p.get('hot') === '1') s.hot = true
+  const tx = p.get('tx')
+  if (tx) s.tx = tx
+  const gb = p.get('gb')
+  if (gb === 'stack' || gb === 'site') s.groupBy = gb
+  if (p.get('layout') === 'side') s.diffLayout = 'side'
+  const only = p.get('only')
+  if (only === 'regressions' || only === 'improvements') s.diffFilter = only
+  if (p.get('dsort') === 'percent') s.diffSort = 'percent'
   return s
 }
 
@@ -72,6 +90,11 @@ export function writeViewState(s: ViewState): string {
   if (s.search) p.set('search', s.search)
   if (s.sort === 'total') p.set('sort', 'total')
   if (s.hot) p.set('hot', '1')
+  if (s.tx) p.set('tx', s.tx)
+  if (s.groupBy) p.set('gb', s.groupBy)
+  if (s.diffLayout) p.set('layout', s.diffLayout)
+  if (s.diffFilter) p.set('only', s.diffFilter)
+  if (s.diffSort) p.set('dsort', s.diffSort)
   const q = p.toString()
   return q ? `?${q}` : ''
 }

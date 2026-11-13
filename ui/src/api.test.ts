@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  ApiError, deleteProfile, deleteSession, getDiffFlame, getDiffTop, getFlame, listSessions,
+  ApiError, deleteProfile, deleteSession, getDiffFlame, getDiffTop, getFlame, getGroups, getPivot, listSessions,
 } from './api'
 
 function stub(status: number, body?: unknown) {
@@ -64,5 +64,29 @@ describe('api', () => {
     const f = stub(200, [])
     expect(await listSessions()).toEqual([])
     expect(f.mock.calls[0][0]).toBe('/api/sessions')
+  })
+})
+
+describe('v2 api', () => {
+  it('flame requests carry tx', async () => {
+    const f = stub(200, {})
+    await getFlame('p1', { tx: 'rec,sub:a' })
+    expect((f.mock.calls[0] as unknown as [string])[0]).toContain('tx=rec%2Csub%3Aa')
+  })
+  it('diff top sends sort and tx', async () => {
+    const f = stub(200, {})
+    await getDiffTop('b', 'h', { sort: 'percent', tx: 'rec' })
+    const u = (f.mock.calls[0] as unknown as [string])[0]
+    expect(u).toContain('sort=percent')
+    expect(u).toContain('tx=rec')
+  })
+  it('getGroups and getPivot hit the right endpoints', async () => {
+    const f = stub(200, [])
+    await getGroups('p1', { by: 'site', limit: 5, tx: 'rec' })
+    const u = (f.mock.calls[0] as unknown as [string])[0]
+    expect(u).toContain('/api/profiles/p1/groups?')
+    expect(u).toContain('by=site')
+    await getPivot('s 1', 'a/b c')
+    expect((f.mock.calls[1] as unknown as [string])[0]).toBe('/api/sessions/s%201/pivot?name=a%2Fb+c')
   })
 })

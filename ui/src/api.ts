@@ -73,6 +73,8 @@ export type DiffQuery = {
   focus?: string
   exclude?: string
   hide?: string
+  tx?: string
+  sort?: 'delta' | 'percent'
 }
 export type DiffFlame = { base: ProfileRecord; head: ProfileRecord; sampleType: SampleTypeInfo; root: DiffNode }
 export type DiffTop = { base: ProfileRecord; head: ProfileRecord; sampleType: SampleTypeInfo; rows: DiffRow[] }
@@ -86,7 +88,30 @@ export type TopRow = {
   totalPct: number
 }
 export type Sandwich = { callers: FlameNode; callees: FlameNode }
-export type AnalysisQuery = { st?: number; focus?: string; exclude?: string; hide?: string; min?: number; depth?: number }
+export type AnalysisQuery = { st?: number; focus?: string; exclude?: string; hide?: string; tx?: string; min?: number; depth?: number }
+
+export type GroupRow = {
+  name: string
+  file: string
+  frames: string[]
+  value: number
+  count: number | null
+  mean: number | null
+  pct: number
+}
+export type PivotRow = {
+  profileId: string
+  shortId: string
+  kind: string
+  name: string
+  sampleType: SampleTypeInfo
+  found: boolean
+  funcId: number | null
+  selfValue: number
+  total: number
+  selfPct: number
+  totalPct: number
+}
 
 export class ApiError extends Error {
   code: string
@@ -144,6 +169,10 @@ export const getTop = (ref: string, q: AnalysisQuery & { limit?: number; sort?: 
   request<TopRow[]>(`${p(ref)}/top${qs(q)}`)
 export const getSandwich = (ref: string, func: number, q: AnalysisQuery = {}) =>
   request<Sandwich>(`${p(ref)}/sandwich${qs({ ...q, func })}`)
+export const getGroups = (ref: string, q: AnalysisQuery & { by: 'stack' | 'site'; limit?: number }) =>
+  request<GroupRow[]>(`${p(ref)}/groups${qs(q)}`)
+export const getPivot = (sessionRef: string, name: string) =>
+  request<PivotRow[]>(`/api/sessions/${encodeURIComponent(sessionRef)}/pivot${qs({ name })}`)
 export const deleteProfile = (ref: string) => request<void>(p(ref), DELETE_INIT)
 export const listSessions = () => request<SessionRecord[]>('/api/sessions')
 export const getSession = (ref: string) => request<SessionRecord>(`/api/sessions/${encodeURIComponent(ref)}`)

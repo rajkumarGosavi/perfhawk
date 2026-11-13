@@ -84,3 +84,26 @@ describe('diff state', () => {
     expect(readViewState('?depth=0').depth).toBeUndefined()
   })
 })
+
+describe('v2 state', () => {
+  it('roundtrips tx, groupBy, diff layout/filter/sort and the groups view', () => {
+    const s = {
+      profile: 'p', view: 'groups' as const, tx: 'rec,sub:a', groupBy: 'site' as const,
+      diffLayout: 'side' as const, diffFilter: 'regressions' as const, diffSort: 'percent' as const,
+    }
+    const w = writeViewState(s)
+    expect(w).toContain('gb=site')
+    expect(w).toContain('layout=side')
+    expect(w).toContain('only=regressions')
+    expect(w).toContain('dsort=percent')
+    expect(readViewState(w)).toEqual(s)
+  })
+  it('ignores unknown values', () => {
+    const s = readViewState('?tx=&gb=x&layout=x&only=x&dsort=delta')
+    expect(s.tx).toBeUndefined()
+    expect(s.groupBy).toBeUndefined()
+    expect(s.diffLayout).toBeUndefined()
+    expect(s.diffFilter).toBeUndefined()
+    expect(s.diffSort).toBeUndefined()
+  })
+})
