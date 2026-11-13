@@ -8,9 +8,9 @@ use axum::{
     Json, Router,
 };
 use prism_analysis::{
-    diff_flame, diff_top_sorted, findings, flame_with, function_stats, groups, inverted_flame_with,
-    match_sample_type, parse_transforms, sandwich, top, DiffError, DiffInput, DiffNode,
-    DiffNormalize, DiffRow, DiffSort, Filter, FlameOptions, GroupBy, RuleConfig, TopSort,
+    call_graph, diff_flame, diff_top_sorted, findings, flame_with, function_stats, groups,
+    inverted_flame_with, match_sample_type, parse_transforms, sandwich, top, DiffError, DiffInput,
+    DiffNode, DiffNormalize, DiffRow, DiffSort, Filter, FlameOptions, GroupBy, RuleConfig, TopSort,
 };
 use prism_model::{FuncId, Profile, ProfileKind};
 use prism_store::{ImportOptions, ProfileRecord, SampleTypeInfo, StoreError};
@@ -123,6 +123,7 @@ pub fn routes() -> Router<St> {
         .route("/api/profiles/{reference}/sandwich", get(sandwich_h))
         .route("/api/profiles/{reference}/groups", get(groups_h))
         .route("/api/profiles/{reference}/findings", get(findings_h))
+        .route("/api/profiles/{reference}/graph", get(graph_h))
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024 * 1024))
 }
 
@@ -265,6 +266,7 @@ struct AnalysisQuery {
     depth: Option<usize>,
     tx: Option<String>,
     by: Option<String>,
+    nodes: Option<usize>,
 }
 
 const DEFAULT_DEPTH: usize = 1000;
@@ -426,6 +428,24 @@ async fn findings_h(
     })
     .await
     .map_err(ApiError::internal)?
+}
+
+async fn graph_h(
+    State(s): State<St>,
+    Path(r): Path<String>,
+    Q(q): Q<AnalysisQuery>,
+) -> ApiResult<Response> {
+    let filter = q.filter()?;
+    let nodes = match q.nodes {
+        None => 80,
+        Some(0) => return Err(ApiError::bad("nodes must be at least 1")),
+        Some(n) => n.min(300),
+    };
+    let p = load_profile(&s, r).await?;
+    let st = q.sample_type(&p)?;
+    tokio::task::spawn_blocking(move || json_bytes(&call_graph(&p, st, &filter, nodes)))
+        .await
+        .map_err(ApiError::internal)?
 }
 
 async fn sandwich_h(

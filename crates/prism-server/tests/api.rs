@@ -337,3 +337,27 @@ async fn findings_endpoint() {
     assert_eq!(s, 200);
     assert_eq!(v.as_array().unwrap().len(), 0);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn graph_endpoint() {
+    let (_d, store, addr) = start().await;
+    let id = import(&store, CPU);
+    let (s, v) = get(addr, &format!("/api/profiles/{id}/graph")).await;
+    assert_eq!(s, 200, "{v}");
+    assert!(v["nodes"].as_array().is_some_and(|n| !n.is_empty()));
+    assert!(v["edges"].is_array());
+    assert!(v["hiddenNodes"].is_u64() && v["totalValue"].is_i64());
+    assert!(v["nodes"][0]["funcId"].is_u64() && v["nodes"][0]["selfValue"].is_i64());
+    let (s, _) = get(addr, &format!("/api/profiles/{id}/graph?nodes=0")).await;
+    assert_eq!(s, 400);
+    let (s, v) = get(addr, &format!("/api/profiles/{id}/graph?nodes=100000")).await;
+    assert_eq!(s, 200);
+    assert!(v["nodes"].as_array().unwrap().len() <= 300);
+    let (s, v) = get(addr, &format!("/api/profiles/{id}/graph?nodes=1")).await;
+    assert_eq!(s, 200);
+    assert_eq!(v["nodes"].as_array().unwrap().len(), 1);
+    let (s, _) = get(addr, &format!("/api/profiles/{id}/graph?tx=bogus")).await;
+    assert_eq!(s, 400);
+    let (s, _) = get(addr, "/api/profiles/nope/graph").await;
+    assert_eq!(s, 404);
+}
