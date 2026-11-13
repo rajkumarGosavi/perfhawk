@@ -467,3 +467,14 @@ fn transform_only_filter_applies_to_top_and_sandwich() {
     assert_eq!(s.callees.total, 5);
     assert!(s.callers.children.is_empty());
 }
+
+#[test]
+fn function_stats_finds_exact_name() {
+    let p = std_profile();
+    let r = function_stats(&p, 0, &none(), "a").unwrap();
+    assert_eq!((r.self_value, r.total), (2, 5));
+    assert_eq!(r.total_pct, 50.0);
+    assert!(function_stats(&p, 0, &none(), "zzz").is_none());
+    let empty = build(&[]);
+    assert!(function_stats(&empty, 0, &none(), "a").is_none());
+}

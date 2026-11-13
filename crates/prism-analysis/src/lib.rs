@@ -3,6 +3,7 @@
 
 mod diff;
 mod filter;
+mod pivot;
 mod sandwich;
 mod top;
 mod transform;
@@ -12,6 +13,7 @@ pub use diff::{
     diff_flame, diff_top, match_sample_type, DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow,
 };
 pub use filter::Filter;
+pub use pivot::function_stats;
 pub use sandwich::{sandwich, Sandwich};
 pub use top::{filtered_total, top, TopRow, TopSort};
 pub use transform::{package_of, parse_transforms, Transform, TransformError};

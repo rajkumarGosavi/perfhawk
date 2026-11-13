@@ -8,9 +8,9 @@ use axum::{
     Json, Router,
 };
 use prism_analysis::{
-    diff_flame, diff_top, flame_with, inverted_flame_with, match_sample_type, parse_transforms,
-    sandwich, top, DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow, Filter, FlameOptions,
-    TopSort,
+    diff_flame, diff_top, flame_with, function_stats, inverted_flame_with, match_sample_type,
+    parse_transforms, sandwich, top, DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow,
+    Filter, FlameOptions, TopSort,
 };
 use prism_model::{FuncId, Profile, ProfileKind};
 use prism_store::{ImportOptions, ProfileRecord, SampleTypeInfo, StoreError};
@@ -116,6 +116,7 @@ pub fn routes() -> Router<St> {
             "/api/sessions/{reference}",
             get(get_session).delete(delete_session),
         )
+        .route("/api/sessions/{reference}/pivot", get(pivot_h))
         .route("/api/diff", get(diff_h))
         .route("/api/profiles/{reference}/flame", get(flame_h))
         .route("/api/profiles/{reference}/top", get(top_h))
@@ -542,4 +543,68 @@ async fn diff_h(State(s): State<St>, Q(q): Q<DiffQuery>) -> ApiResult<Response> 
     })
     .await
     .map_err(ApiError::internal)?
+}
+
+#[derive(Deserialize, Default)]
+struct PivotQuery {
+    name: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PivotRow {
+    profile_id: String,
+    short_id: String,
+    kind: ProfileKind,
+    name: String,
+    sample_type: SampleTypeOut,
+    found: bool,
+    func_id: Option<u32>,
+    self_value: i64,
+    total: i64,
+    self_pct: f64,
+    total_pct: f64,
+}
+
+async fn pivot_h(
+    State(s): State<St>,
+    Path(r): Path<String>,
+    Q(q): Q<PivotQuery>,
+) -> ApiResult<Response> {
+    let name = q
+        .name
+        .filter(|n| !n.is_empty())
+        .ok_or_else(|| ApiError::bad("missing required query parameter 'name'"))?;
+    let store = s.store.clone();
+    let rows = blocking(move || {
+        let sess = store.resolve_session(&r)?;
+        let filter = Filter::default();
+        let mut out = Vec::new();
+        for id in &sess.profile_ids {
+            let rec = store.resolve(id)?;
+            let p = store.load(id)?;
+            let st = rec.default_sample_type;
+            let info = rec.sample_types.get(st).cloned();
+            let hit = function_stats(&p, st, &filter, &name);
+            out.push(PivotRow {
+                profile_id: rec.id.clone(),
+                short_id: rec.short_id.clone(),
+                kind: rec.kind,
+                name: name.clone(),
+                sample_type: SampleTypeOut {
+                    name: info.as_ref().map(|i| i.name.clone()).unwrap_or_default(),
+                    unit: info.map(|i| i.unit).unwrap_or_default(),
+                },
+                found: hit.is_some(),
+                func_id: hit.as_ref().map(|h| h.func_id),
+                self_value: hit.as_ref().map_or(0, |h| h.self_value),
+                total: hit.as_ref().map_or(0, |h| h.total),
+                self_pct: hit.as_ref().map_or(0.0, |h| h.self_pct),
+                total_pct: hit.as_ref().map_or(0.0, |h| h.total_pct),
+            });
+        }
+        Ok(out)
+    })
+    .await?;
+    Ok(Json(rows).into_response())
 }

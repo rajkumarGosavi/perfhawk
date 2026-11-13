@@ -252,3 +252,49 @@ async fn diff_unknown_ref_404_and_bad_params() {
         assert_eq!(st, 400, "{bad}");
     }
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn pivot_lists_each_profile_in_session() {
+    let (_d, store, addr) = start().await;
+    let s = session_with(&store, &[CPU, HEAP]);
+    let (_, rows) = get(
+        addr,
+        &format!("/api/profiles/{}/top?limit=1", s.profile_ids[0]),
+    )
+    .await;
+    let name = rows[0]["name"].as_str().unwrap().to_string();
+    let enc: String = name
+        .bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect();
+    let (st, v) = get(addr, &format!("/api/sessions/{}/pivot?name={enc}", s.id)).await;
+    assert_eq!(st, 200, "{v}");
+    let arr = v.as_array().unwrap();
+    assert_eq!(arr.len(), 2);
+    assert_eq!(arr[0]["found"], true);
+    assert!(arr[0]["funcId"].is_u64());
+    assert_eq!(arr[0]["profileId"], s.profile_ids[0]);
+    assert!(arr[0]["sampleType"]["name"].is_string());
+    let (_, v) = get(
+        addr,
+        &format!("/api/sessions/{}/pivot?name=no%20such%20fn", s.id),
+    )
+    .await;
+    for r in v.as_array().unwrap() {
+        assert_eq!(r["found"], false);
+        assert!(r["funcId"].is_null());
+        assert_eq!(r["total"], 0);
+    }
+    let (st, _) = get(addr, &format!("/api/sessions/{}/pivot", s.id)).await;
+    assert_eq!(st, 400);
+    let (st, _) = get(addr, &format!("/api/sessions/{}/pivot?name=", s.id)).await;
+    assert_eq!(st, 400);
+    let (st, _) = get(addr, "/api/sessions/nope/pivot?name=x").await;
+    assert_eq!(st, 404);
+}
