@@ -14,8 +14,8 @@ mod transform;
 mod tree;
 
 pub use diff::{
-    diff_flame, diff_top, diff_top_sorted, match_sample_type, DiffError, DiffInput, DiffNode,
-    DiffNormalize, DiffRow, DiffSort,
+    diff_flame, diff_flame_sides, diff_top, diff_top_sorted, diff_top_sorted_sides,
+    match_sample_type, DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow, DiffSort,
 };
 pub use filter::{Filter, Window};
 pub use findings::{findings, Evidence, Finding, FindingAction, RuleConfig, Severity};

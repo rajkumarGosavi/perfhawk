@@ -252,14 +252,35 @@ pub fn diff_flame(
     min_fraction: f64,
     max_depth: Option<usize>,
 ) -> DiffNode {
+    diff_flame_sides(
+        base,
+        head,
+        filter,
+        filter,
+        normalize,
+        min_fraction,
+        max_depth,
+    )
+}
+
+/// Like [`diff_flame`] with a separate filter per side (for example a different time window).
+pub fn diff_flame_sides(
+    base: DiffInput,
+    head: DiffInput,
+    base_filter: &Filter,
+    head_filter: &Filter,
+    normalize: DiffNormalize,
+    min_fraction: f64,
+    max_depth: Option<usize>,
+) -> DiffNode {
     let mut keys = Keys::default();
     let bmap = keys.map_profile(base.profile);
     let hmap = keys.map_profile(head.profile);
     let mut arena = DArena::new();
-    for_each_sample(base.profile, base.sample_type, filter, |funcs, v| {
+    for_each_sample(base.profile, base.sample_type, base_filter, |funcs, v| {
         arena.insert(funcs.iter().map(|f| bmap[f.0 as usize]), v, Side::Base)
     });
-    for_each_sample(head.profile, head.sample_type, filter, |funcs, v| {
+    for_each_sample(head.profile, head.sample_type, head_filter, |funcs, v| {
         arena.insert(funcs.iter().map(|f| hmap[f.0 as usize]), v, Side::Head)
     });
     if let Some(r) = ratio(
@@ -405,12 +426,25 @@ pub fn diff_top_sorted(
     limit: usize,
     sort: DiffSort,
 ) -> Vec<DiffRow> {
+    diff_top_sorted_sides(base, head, filter, filter, normalize, limit, sort)
+}
+
+/// Like [`diff_top_sorted`] with a separate filter per side.
+pub fn diff_top_sorted_sides(
+    base: DiffInput,
+    head: DiffInput,
+    base_filter: &Filter,
+    head_filter: &Filter,
+    normalize: DiffNormalize,
+    limit: usize,
+    sort: DiffSort,
+) -> Vec<DiffRow> {
     let mut keys = Keys::default();
     let bmap = keys.map_profile(base.profile);
     let hmap = keys.map_profile(head.profile);
     let nk = keys.names.len();
-    let (broot, mut b) = collect_totals(base, filter, &bmap, nk);
-    let (hroot, h) = collect_totals(head, filter, &hmap, nk);
+    let (broot, mut b) = collect_totals(base, base_filter, &bmap, nk);
+    let (hroot, h) = collect_totals(head, head_filter, &hmap, nk);
     if let Some(r) = ratio(normalize, broot, hroot) {
         for t in &mut b {
             t.self_v = scale(t.self_v, r);
@@ -419,9 +453,9 @@ pub fn diff_top_sorted(
     }
     // A key is present if either side saw it (even with a zero value).
     let mut present = vec![false; nk];
-    for p in [(base, &bmap), (head, &hmap)] {
+    for p in [(base, &bmap, base_filter), (head, &hmap, head_filter)] {
         let mut seen = vec![false; p.0.profile.functions.len()];
-        for_each_sample(p.0.profile, p.0.sample_type, filter, |funcs, _| {
+        for_each_sample(p.0.profile, p.0.sample_type, p.2, |funcs, _| {
             for f in funcs {
                 if !seen[f.0 as usize] {
                     seen[f.0 as usize] = true;

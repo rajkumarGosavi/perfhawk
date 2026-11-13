@@ -8,11 +8,12 @@ use axum::{
     Json, Router,
 };
 use prism_analysis::{
-    call_graph, diff_flame, diff_top_sorted, findings, flame_with, function_stats, groups,
-    inverted_flame_with, match_sample_type, parse_transforms, sandwich, top, DiffError, DiffInput,
-    DiffNode, DiffNormalize, DiffRow, DiffSort, Filter, FlameOptions, GroupBy, RuleConfig, TopSort,
+    call_graph, diff_flame_sides, diff_top_sorted_sides, findings, flame_with, function_stats,
+    groups, heatmap, inverted_flame_with, match_sample_type, parse_transforms, sandwich, top,
+    DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow, DiffSort, Filter, FlameOptions,
+    GroupBy, RuleConfig, TopSort, Window,
 };
-use prism_model::{FuncId, Profile, ProfileKind};
+use prism_model::{FuncId, Profile, ProfileKind, Timeline};
 use prism_store::{ImportOptions, ProfileRecord, SampleTypeInfo, StoreError};
 use serde::Deserialize;
 use serde_json::json;
@@ -41,6 +42,13 @@ impl ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             code: "internal",
             message: "internal error".into(),
+        }
+    }
+    fn no_timeline() -> Self {
+        ApiError {
+            status: StatusCode::NOT_FOUND,
+            code: "no_timeline",
+            message: "this profile has no time data".into(),
         }
     }
     pub fn forbidden(message: impl Into<String>) -> Self {
@@ -124,6 +132,7 @@ pub fn routes() -> Router<St> {
         .route("/api/profiles/{reference}/groups", get(groups_h))
         .route("/api/profiles/{reference}/findings", get(findings_h))
         .route("/api/profiles/{reference}/graph", get(graph_h))
+        .route("/api/profiles/{reference}/heatmap", get(heatmap_h))
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024 * 1024))
 }
 
@@ -160,6 +169,7 @@ async fn delete_profile(
     })
     .await?;
     s.cache.lock().unwrap().pop(&id);
+    s.timelines.lock().unwrap().pop(&id);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -190,19 +200,51 @@ async fn delete_session(
         let mut cache = s.cache.lock().unwrap();
         for id in &ids {
             cache.pop(id);
+            s.timelines.lock().unwrap().pop(id);
         }
     }
     Ok(Json(json!({ "removed": removed })).into_response())
 }
 
+/// A profile record plus whether it has time data (additive JSON fields).
+#[derive(serde::Serialize)]
+struct RecordOut {
+    #[serde(flatten)]
+    rec: ProfileRecord,
+    has_timeline: bool,
+    duration_ms: Option<i64>,
+}
+
 async fn list(State(s): State<St>) -> ApiResult<Response> {
     let store = s.store.clone();
-    Ok(Json(blocking(move || store.list()).await?).into_response())
+    let out = blocking(move || {
+        Ok(store
+            .list()?
+            .into_iter()
+            .map(|rec| RecordOut {
+                has_timeline: store.has_timeline(&rec.id),
+                duration_ms: None,
+                rec,
+            })
+            .collect::<Vec<_>>())
+    })
+    .await?;
+    Ok(Json(out).into_response())
 }
 
 async fn get_one(State(s): State<St>, Path(r): Path<String>) -> ApiResult<Response> {
     let store = s.store.clone();
-    Ok(Json(blocking(move || store.resolve(&r)).await?).into_response())
+    let rec = blocking(move || store.resolve(&r)).await?;
+    let t = timeline_for(&s, &rec.id).await?;
+    let duration_ms = t.as_ref().map(|t| {
+        (t.bucket_count() as u128 * t.bucket_ns as u128 / 1_000_000).min(i64::MAX as u128) as i64
+    });
+    Ok(Json(RecordOut {
+        has_timeline: t.is_some(),
+        duration_ms,
+        rec,
+    })
+    .into_response())
 }
 
 #[derive(Deserialize, Default)]
@@ -267,6 +309,9 @@ struct AnalysisQuery {
     tx: Option<String>,
     by: Option<String>,
     nodes: Option<usize>,
+    t0: Option<u64>,
+    t1: Option<u64>,
+    cols: Option<u32>,
 }
 
 const DEFAULT_DEPTH: usize = 1000;
@@ -344,6 +389,61 @@ async fn load_profile(s: &St, reference: String) -> ApiResult<Arc<Profile>> {
     Ok(p)
 }
 
+/// `t0`/`t1` must be given together with `t1 > t0` (milliseconds from capture start).
+fn check_window(t0: Option<u64>, t1: Option<u64>) -> ApiResult<Option<(u64, u64)>> {
+    match (t0, t1) {
+        (None, None) => Ok(None),
+        (Some(a), Some(b)) if b > a => Ok(Some((a, b))),
+        (Some(_), Some(_)) => Err(ApiError::bad("t1 must be greater than t0")),
+        _ => Err(ApiError::bad("t0 and t1 must be given together")),
+    }
+}
+
+/// The profile's timeline through a small cache; `None` when it has none.
+async fn timeline_for(s: &St, id: &str) -> ApiResult<Option<Arc<Timeline>>> {
+    if let Some(t) = s.timelines.lock().unwrap().get(id) {
+        return Ok(t.clone());
+    }
+    let store = s.store.clone();
+    let id2 = id.to_string();
+    let t = blocking(move || store.load_timeline(&id2))
+        .await?
+        .map(Arc::new);
+    s.timelines.lock().unwrap().put(id.to_string(), t.clone());
+    Ok(t)
+}
+
+fn window_of(t: Arc<Timeline>, (t0, t1): (u64, u64)) -> Window {
+    let ns = t.bucket_ns.max(1) as u128;
+    let from = (t0 as u128 * 1_000_000 / ns).min(u32::MAX as u128) as u32;
+    let to = ((t1 as u128 * 1_000_000).div_ceil(ns)).min(u32::MAX as u128) as u32;
+    Window {
+        timeline: t,
+        from_bucket: from,
+        to_bucket: to,
+    }
+}
+
+/// Loads the profile and builds its filter, including the optional time window.
+async fn load_analysis(
+    s: &St,
+    reference: String,
+    q: &AnalysisQuery,
+) -> ApiResult<(Arc<Profile>, Filter)> {
+    let mut filter = q.filter()?;
+    let win = check_window(q.t0, q.t1)?;
+    let store = s.store.clone();
+    let id = blocking(move || store.resolve(&reference)).await?.id;
+    let p = load_profile(s, id.clone()).await?;
+    if let Some(w) = win {
+        let t = timeline_for(s, &id)
+            .await?
+            .ok_or_else(ApiError::no_timeline)?;
+        filter = filter.with_window(window_of(t, w));
+    }
+    Ok((p, filter))
+}
+
 fn json_bytes<T: serde::Serialize>(v: &T) -> ApiResult<Response> {
     let body = serde_json::to_vec(v).map_err(ApiError::internal)?;
     Ok(([(header::CONTENT_TYPE, "application/json")], body).into_response())
@@ -354,10 +454,9 @@ async fn flame_h(
     Path(r): Path<String>,
     Q(q): Q<AnalysisQuery>,
 ) -> ApiResult<Response> {
-    let filter = q.filter()?;
     let min = q.min()?;
     let depth = check_depth(q.depth)?;
-    let p = load_profile(&s, r).await?;
+    let (p, filter) = load_analysis(&s, r, &q).await?;
     let st = q.sample_type(&p)?;
     let inv = q.inverted.unwrap_or(false);
     let opts = FlameOptions {
@@ -381,10 +480,9 @@ async fn top_h(
     Path(r): Path<String>,
     Q(q): Q<AnalysisQuery>,
 ) -> ApiResult<Response> {
-    let filter = q.filter()?;
     let limit = q.limit.unwrap_or(100).min(10_000);
     let sort = q.sort()?;
-    let p = load_profile(&s, r).await?;
+    let (p, filter) = load_analysis(&s, r, &q).await?;
     let st = q.sample_type(&p)?;
     tokio::task::spawn_blocking(move || json_bytes(&top(&p, st, &filter, limit, sort)))
         .await
@@ -396,7 +494,6 @@ async fn groups_h(
     Path(r): Path<String>,
     Q(q): Q<AnalysisQuery>,
 ) -> ApiResult<Response> {
-    let filter = q.filter()?;
     let by = match q.by.as_deref() {
         Some("stack") => GroupBy::Stack,
         Some("site") => GroupBy::Site,
@@ -408,7 +505,7 @@ async fn groups_h(
         None => return Err(ApiError::bad("missing required query parameter 'by'")),
     };
     let limit = q.limit.unwrap_or(100).min(1000);
-    let p = load_profile(&s, r).await?;
+    let (p, filter) = load_analysis(&s, r, &q).await?;
     let st = q.sample_type(&p)?;
     tokio::task::spawn_blocking(move || json_bytes(&groups(&p, st, &filter, by, limit)))
         .await
@@ -420,8 +517,7 @@ async fn findings_h(
     Path(r): Path<String>,
     Q(q): Q<AnalysisQuery>,
 ) -> ApiResult<Response> {
-    let filter = q.filter()?;
-    let p = load_profile(&s, r).await?;
+    let (p, filter) = load_analysis(&s, r, &q).await?;
     let st = q.sample_type(&p)?;
     tokio::task::spawn_blocking(move || {
         json_bytes(&findings(&p, st, &filter, &RuleConfig::default()))
@@ -435,15 +531,33 @@ async fn graph_h(
     Path(r): Path<String>,
     Q(q): Q<AnalysisQuery>,
 ) -> ApiResult<Response> {
-    let filter = q.filter()?;
     let nodes = match q.nodes {
         None => 80,
         Some(0) => return Err(ApiError::bad("nodes must be at least 1")),
         Some(n) => n.min(300),
     };
-    let p = load_profile(&s, r).await?;
+    let (p, filter) = load_analysis(&s, r, &q).await?;
     let st = q.sample_type(&p)?;
     tokio::task::spawn_blocking(move || json_bytes(&call_graph(&p, st, &filter, nodes)))
+        .await
+        .map_err(ApiError::internal)?
+}
+
+async fn heatmap_h(
+    State(s): State<St>,
+    Path(r): Path<String>,
+    Q(q): Q<AnalysisQuery>,
+) -> ApiResult<Response> {
+    let filter = q.filter()?;
+    let cols = q.cols.unwrap_or(1200).clamp(50, 2000);
+    let store = s.store.clone();
+    let id = blocking(move || store.resolve(&r)).await?.id;
+    let t = timeline_for(&s, &id)
+        .await?
+        .ok_or_else(ApiError::no_timeline)?;
+    let p = load_profile(&s, id).await?;
+    let st = q.sample_type(&p)?;
+    tokio::task::spawn_blocking(move || json_bytes(&heatmap(&p, &t, st, &filter, cols)))
         .await
         .map_err(ApiError::internal)?
 }
@@ -453,12 +567,11 @@ async fn sandwich_h(
     Path(r): Path<String>,
     Q(q): Q<AnalysisQuery>,
 ) -> ApiResult<Response> {
-    let filter = q.filter()?;
     let min = q.min()?;
     let func = q
         .func
         .ok_or_else(|| ApiError::bad("missing required query parameter 'func'"))?;
-    let p = load_profile(&s, r).await?;
+    let (p, filter) = load_analysis(&s, r, &q).await?;
     let st = q.sample_type(&p)?;
     if func as usize >= p.functions.len() {
         return Err(ApiError::bad(format!("func {func} out of range")));
@@ -483,6 +596,10 @@ struct DiffQuery {
     hide: Option<String>,
     tx: Option<String>,
     sort: Option<String>,
+    t0: Option<u64>,
+    t1: Option<u64>,
+    bt0: Option<u64>,
+    bt1: Option<u64>,
 }
 
 #[derive(serde::Serialize)]
@@ -569,8 +686,24 @@ async fn diff_h(State(s): State<St>, Q(q): Q<DiffQuery>) -> ApiResult<Response> 
         q.tx.as_deref(),
     )?;
 
+    let base_win = check_window(q.bt0, q.bt1)?;
+    let head_win = check_window(q.t0, q.t1)?;
     let (brec, bp) = record_and_profile(&s, base_ref).await?;
     let (hrec, hp) = record_and_profile(&s, head_ref).await?;
+    let mut base_filter = filter.clone();
+    let mut head_filter = filter;
+    if let Some(w) = base_win {
+        let t = timeline_for(&s, &brec.id)
+            .await?
+            .ok_or_else(ApiError::no_timeline)?;
+        base_filter = base_filter.with_window(window_of(t, w));
+    }
+    if let Some(w) = head_win {
+        let t = timeline_for(&s, &hrec.id)
+            .await?
+            .ok_or_else(ApiError::no_timeline)?;
+        head_filter = head_filter.with_window(window_of(t, w));
+    }
     if let Some(n) = &q.st {
         if bp.sample_type_index(n).is_none() || hp.sample_type_index(n).is_none() {
             return Err(ApiError::bad(format!(
@@ -596,7 +729,15 @@ async fn diff_h(State(s): State<St>, Q(q): Q<DiffQuery>) -> ApiResult<Response> 
             sample_type: hi,
         };
         if top_view {
-            let rows = diff_top_sorted(base, head, &filter, normalize, limit, sort);
+            let rows = diff_top_sorted_sides(
+                base,
+                head,
+                &base_filter,
+                &head_filter,
+                normalize,
+                limit,
+                sort,
+            );
             json_bytes(&DiffTopOut {
                 base: &brec,
                 head: &hrec,
@@ -604,7 +745,15 @@ async fn diff_h(State(s): State<St>, Q(q): Q<DiffQuery>) -> ApiResult<Response> 
                 rows,
             })
         } else {
-            let root = diff_flame(base, head, &filter, normalize, min, Some(depth));
+            let root = diff_flame_sides(
+                base,
+                head,
+                &base_filter,
+                &head_filter,
+                normalize,
+                min,
+                Some(depth),
+            );
             json_bytes(&DiffFlameOut {
                 base: &brec,
                 head: &hrec,

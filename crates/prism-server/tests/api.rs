@@ -361,3 +361,110 @@ async fn graph_endpoint() {
     let (s, _) = get(addr, "/api/profiles/nope/graph").await;
     assert_eq!(s, 404);
 }
+
+// ---- V5 time ----
+
+/// Imports the CPU fixture and gives it a timeline: sample i sits in bucket i * 10 (200 ms apart).
+fn import_with_timeline(store: &Store) -> String {
+    let id = import(store, CPU);
+    let n = store.load(&id).unwrap().samples.len();
+    let t = prism_model::Timeline {
+        bucket_ns: 20_000_000,
+        start_unix_ns: 1_700_000_000_000_000_000,
+        sample_bucket: (0..n as u32).map(|i| i * 10).collect(),
+    };
+    store.save_timeline(&id, &t).unwrap();
+    id
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn window_limits_the_flame_and_is_validated() {
+    let (_d, store, addr) = start().await;
+    let id = import_with_timeline(&store);
+    let (_, full) = get(addr, &format!("/api/profiles/{id}/flame")).await;
+    let (s, win) = get(addr, &format!("/api/profiles/{id}/flame?t0=0&t1=100")).await;
+    assert_eq!(s, 200, "{win}");
+    let (w, f) = (
+        win["total"].as_i64().unwrap(),
+        full["total"].as_i64().unwrap(),
+    );
+    assert!(w > 0 && w < f, "{w} vs {f}");
+    let (s, v) = get(addr, &format!("/api/profiles/{id}/flame?t0=5000&t1=6000")).await;
+    assert_eq!(s, 200);
+    assert_eq!(v["total"], 0);
+    for bad in ["t0=100&t1=100", "t0=200&t1=100", "t0=100", "t1=100"] {
+        let (s, v) = get(addr, &format!("/api/profiles/{id}/flame?{bad}")).await;
+        assert_eq!(s, 400, "{bad}: {v}");
+        assert_eq!(v["error"]["code"], "bad_request");
+    }
+    for route in ["top", "groups?by=site", "graph", "findings"] {
+        let sep = if route.contains('?') { '&' } else { '?' };
+        let (s, _) = get(addr, &format!("/api/profiles/{id}/{route}{sep}t0=0&t1=100")).await;
+        assert_eq!(s, 200, "{route}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn windowed_request_without_timeline_is_404_no_timeline() {
+    let (_d, store, addr) = start().await;
+    let id = import(&store, CPU);
+    let (s, v) = get(addr, &format!("/api/profiles/{id}/flame?t0=0&t1=100")).await;
+    assert_eq!(s, 404);
+    assert_eq!(v["error"]["code"], "no_timeline");
+    let (s, v) = get(addr, &format!("/api/profiles/{id}/heatmap")).await;
+    assert_eq!(s, 404);
+    assert_eq!(v["error"]["code"], "no_timeline");
+    let (s, _) = get(addr, &format!("/api/profiles/{id}/flame")).await;
+    assert_eq!(s, 200);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn heatmap_endpoint_and_cols_clamp() {
+    let (_d, store, addr) = start().await;
+    let id = import_with_timeline(&store);
+    let (s, h) = get(addr, &format!("/api/profiles/{id}/heatmap")).await;
+    assert_eq!(s, 200, "{h}");
+    assert!(h["cells"].is_array() && h["colBuckets"].is_u64() && h["totalBuckets"].is_u64());
+    assert!(h["cols"].as_u64().unwrap() <= 1200);
+    let (s, h) = get(addr, &format!("/api/profiles/{id}/heatmap?cols=1")).await;
+    assert_eq!(s, 200);
+    assert!(h["cols"].as_u64().unwrap() >= 1);
+    let (s, _) = get(addr, &format!("/api/profiles/{id}/heatmap?cols=99999")).await;
+    assert_eq!(s, 200);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn record_reports_timeline_presence_and_duration() {
+    let (_d, store, addr) = start().await;
+    let with = import_with_timeline(&store);
+    let (_, v) = get(addr, &format!("/api/profiles/{with}")).await;
+    assert_eq!(v["has_timeline"], true);
+    assert!(v["duration_ms"].as_i64().unwrap() > 0);
+    let (_d2, store2, addr2) = start().await;
+    let without = import(&store2, CPU);
+    let (_, v) = get(addr2, &format!("/api/profiles/{without}")).await;
+    assert_eq!(v["has_timeline"], false);
+    assert!(v["duration_ms"].is_null());
+    let (_, list) = get(addr, "/api/profiles").await;
+    assert_eq!(list[0]["has_timeline"], true);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn diff_of_two_windows_of_one_profile() {
+    let (_d, store, addr) = start().await;
+    let id = import_with_timeline(&store);
+    let q =
+        format!("/api/diff?base={id}&head={id}&view=flame&min=0&t0=0&t1=100&bt0=100&bt1=100000");
+    let (s, v) = get(addr, &q).await;
+    assert_eq!(s, 200, "{v}");
+    assert_ne!(v["root"]["baseTotal"], v["root"]["headTotal"]);
+    let (s, _) = get(addr, &format!("/api/diff?base={id}&head={id}&bt0=5&bt1=5")).await;
+    assert_eq!(s, 400);
+    let (s, v) = get(
+        addr,
+        &format!("/api/diff?base={id}&head={id}&view=flame&min=0"),
+    )
+    .await;
+    assert_eq!(s, 200);
+    assert_eq!(v["root"]["baseTotal"], v["root"]["headTotal"]);
+}

@@ -16,6 +16,8 @@ pub(crate) struct AppState {
     pub store: Arc<Store>,
     pub port: Option<u16>,
     pub cache: Mutex<lru::LruCache<String, Arc<Profile>>>,
+    /// Timeline sidecars (None = the profile has no usable timeline).
+    pub timelines: Mutex<lru::LruCache<String, Option<Arc<prism_model::Timeline>>>>,
 }
 
 /// Router accepting loopback hosts on any port (use `serve` for a strict port).
@@ -28,6 +30,7 @@ fn router_with_port(store: Arc<Store>, port: Option<u16>) -> Router {
         store,
         port,
         cache: Mutex::new(lru::LruCache::new(NonZeroUsize::new(2).unwrap())),
+        timelines: Mutex::new(lru::LruCache::new(NonZeroUsize::new(8).unwrap())),
     });
     api::routes()
         .fallback(assets::static_handler)

@@ -365,6 +365,11 @@ impl Store {
         Ok(())
     }
 
+    /// True when a timeline sidecar file exists (it is not decoded or validated).
+    pub fn has_timeline(&self, id: &str) -> bool {
+        id.len() >= 2 && id.is_ascii() && self.timeline_path(id).exists()
+    }
+
     /// `Ok(None)` when there is no sidecar, or it is unreadable, truncated or
     /// does not match the profile (a warning is logged; the profile still works).
     pub fn load_timeline(&self, id: &str) -> Result<Option<prism_model::Timeline>, StoreError> {
