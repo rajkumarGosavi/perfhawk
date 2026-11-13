@@ -164,9 +164,10 @@ Starts the UI on a profile. If the argument is an existing file, it is imported
 first, so `prism open trace.speedscope.json` is the one-step "just show me"
 command. The default port is 7878; `--port 0` picks a free port.
 
-### `prism ui [--port P] [--no-browser]`
+### `prism ui [--port P] [--open]`
 
-Starts the UI on the profile list.
+Starts the UI on the profile list and prints its address. It does not open a
+browser unless you pass `--open`.
 
 ## 4a. Recording
 

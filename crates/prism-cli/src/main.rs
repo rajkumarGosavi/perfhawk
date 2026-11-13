@@ -174,7 +174,11 @@ enum Command {
     Ui {
         #[arg(long, default_value_t = 7878)]
         port: u16,
+        /// Open the UI in the default browser (it is only printed by default)
         #[arg(long)]
+        open: bool,
+        /// Accepted for compatibility; the browser is not opened unless --open is given
+        #[arg(long, hide = true)]
         no_browser: bool,
     },
 }
@@ -333,9 +337,11 @@ async fn main() -> ExitCode {
                 Err(e) => fail(e),
             }
         }
-        Command::Ui { port, no_browser } => {
-            done(cmd::serve::run(store, port, None, no_browser).await)
-        }
+        Command::Ui {
+            port,
+            open,
+            no_browser,
+        } => done(cmd::serve::run(store, port, None, no_browser || !open).await),
         Command::Record {
             pid,
             url,

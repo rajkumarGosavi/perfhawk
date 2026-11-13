@@ -510,3 +510,13 @@ fn record_timeline_flags_conflict_and_are_documented() {
         .success()
         .stdout(predicate::str::contains("--no-timeline"));
 }
+
+#[test]
+fn ui_does_not_open_a_browser_unless_asked() {
+    let home = tempfile::tempdir().unwrap();
+    prism(home.path())
+        .args(["ui", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--open"));
+}
