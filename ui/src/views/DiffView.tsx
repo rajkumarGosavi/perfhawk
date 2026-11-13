@@ -83,7 +83,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
   return (
     <section aria-label="Diff">
       <div className="toolbar">
-        <button onClick={() => navigate({ view: 'flame', base: undefined, normalize: undefined }, 'push')}>
+        <button onClick={() => navigate({ view: 'summary', base: undefined, normalize: undefined }, 'push')}>
           &larr; Profile
         </button>
         <strong>Diff</strong>

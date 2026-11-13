@@ -29,6 +29,8 @@ type Props = {
   tooltipExtra?: (node: FlameNode) => ReactNode
   /** Shown in the tooltip of a truncated node. */
   depthLimit?: number
+  /** Nodes drawn with a heavy outline (the hot path). */
+  highlight?: ReadonlySet<FlameNode>
 }
 
 function resolveColor(cs: CSSStyleDeclaration, c: string): string {
@@ -36,7 +38,7 @@ function resolveColor(cs: CSSStyleDeclaration, c: string): string {
   return m ? cs.getPropertyValue(m[1]).trim() || '#888' : c
 }
 
-export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf, tooltipExtra, depthLimit = 1000 }: Props) {
+export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf, tooltipExtra, depthLimit = 1000, highlight }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [width, setWidth] = useState(0)
@@ -101,6 +103,7 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
     const light = cs.getPropertyValue('--flame-light').trim() || '62%'
     const text = cs.getPropertyValue('--flame-text').trim() || '#000'
     const match = cs.getPropertyValue('--match').trim() || '#1e6fe0'
+    const hotColor = cs.getPropertyValue('--flame-hot').trim() || '#000'
     ctx.font = '11px ui-monospace, Consolas, monospace'
     ctx.textBaseline = 'middle'
     for (const r of rects) {
@@ -113,6 +116,11 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
           ? resolveColor(cs, colorOf(r.node))
           : `hsl(${hashHue(r.node.name)} ${sat} ${light})`
       ctx.fillRect(r.x, y, Math.max(r.w - 1, 0.5), ROW_HEIGHT - 1)
+      if (highlight?.has(r.node)) {
+        ctx.strokeStyle = hotColor
+        ctx.lineWidth = 2
+        ctx.strokeRect(r.x + 1, y + 1, Math.max(r.w - 3, 0.5), ROW_HEIGHT - 3)
+      }
       if (r.node.truncated && r.w > 4) {
         // Hatch: deeper frames were folded into this node.
         ctx.save()
@@ -139,7 +147,7 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
         ctx.restore()
       }
     }
-  }, [rects, width, height, shift, needle, theme, colorOf, dpr])
+  }, [rects, width, height, shift, needle, theme, colorOf, dpr, highlight])
 
   const hit = useCallback(
     (e: { clientX: number; clientY: number }) => {
@@ -160,7 +168,7 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
       <canvas
         ref={canvasRef}
         role="img"
-        aria-label={`${inverted ? 'Icicle' : 'Flame'} graph of ${root.name}, ${formatValue(root.total, unit)} total. Click a frame to zoom, Escape to reset.`}
+        aria-label={`${inverted ? 'Icicle' : 'Flame'} graph of ${root.name}, ${formatValue(root.total, unit)} total. Click a frame to zoom, Escape to reset.${highlight ? ' Hot path highlighted.' : ''}`}
         onMouseMove={(e) => setHover(hit(e))}
         onMouseLeave={() => setHover(null)}
         onClick={(e) => {

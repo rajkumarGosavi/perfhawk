@@ -1,4 +1,4 @@
-export type ViewName = 'flame' | 'icicle' | 'top' | 'sandwich' | 'diff'
+export type ViewName = 'summary' | 'flame' | 'icicle' | 'tree' | 'top' | 'both' | 'sandwich' | 'diff'
 export type ViewState = {
   profile?: string
   /** Session to expand on the home page. */
@@ -18,9 +18,11 @@ export type ViewState = {
   search?: string
   /** Top table ordering; 'self' is the default and is omitted from the URL. */
   sort?: 'self' | 'total'
+  /** Highlight / expand the hottest call path; written as hot=1. */
+  hot?: true
 }
 
-const VIEWS: ViewName[] = ['flame', 'icicle', 'top', 'sandwich', 'diff']
+const VIEWS: ViewName[] = ['summary', 'flame', 'icicle', 'tree', 'top', 'both', 'sandwich', 'diff']
 
 function int(s: string | null): number | undefined {
   if (s === null || s === '') return undefined
@@ -31,7 +33,7 @@ function int(s: string | null): number | undefined {
 export function readViewState(search: string): ViewState {
   const p = new URLSearchParams(search)
   const v = p.get('view')
-  const s: ViewState = { view: VIEWS.includes(v as ViewName) ? (v as ViewName) : 'flame' }
+  const s: ViewState = { view: VIEWS.includes(v as ViewName) ? (v as ViewName) : 'summary' }
   const profile = p.get('profile')
   if (profile) s.profile = profile
   for (const k of ['session', 'base'] as const) {
@@ -50,6 +52,7 @@ export function readViewState(search: string): ViewState {
   const func = int(p.get('func'))
   if (func !== undefined) s.func = func
   if (p.get('sort') === 'total') s.sort = 'total'
+  if (p.get('hot') === '1') s.hot = true
   return s
 }
 
@@ -58,7 +61,7 @@ export function writeViewState(s: ViewState): string {
   if (s.profile) p.set('profile', s.profile)
   if (s.session) p.set('session', s.session)
   if (s.base) p.set('base', s.base)
-  if (s.view !== 'flame') p.set('view', s.view)
+  if (s.view !== 'summary') p.set('view', s.view)
   if (s.normalize === 'total') p.set('normalize', 'total')
   if (s.depth !== undefined) p.set('depth', String(s.depth))
   if (s.st !== undefined) p.set('st', String(s.st))
@@ -68,6 +71,7 @@ export function writeViewState(s: ViewState): string {
   if (s.func !== undefined) p.set('func', String(s.func))
   if (s.search) p.set('search', s.search)
   if (s.sort === 'total') p.set('sort', 'total')
+  if (s.hot) p.set('hot', '1')
   const q = p.toString()
   return q ? `?${q}` : ''
 }

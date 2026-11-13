@@ -300,7 +300,9 @@ deepest rows are clipped with a notice; use Focus or zoom to see them.
 - **Sample type**: choose which value to analyze, for example `inuse_space` or `alloc_space` for a Go heap profile.
 - **Focus / Exclude / Hide**: regex filters, updated as you type (see §6).
 - **Search**: highlights matching frames in the graph without filtering anything.
-- **Views**: Flame, Icicle, Top and Sandwich.
+- **Views**: Summary, Flame, Icicle, Call tree, Top, Both and Sandwich.
+- **Hot path (h)**: highlights the hottest call path in Flame, Icicle, Call tree and Both.
+- **?**: lists the keyboard shortcuts.
 
 ### Flame and Icicle
 Each box is a function in a call path. Its width is proportional to its total
@@ -322,9 +324,47 @@ above, and **callees** (what it calls) below. Right-click any frame to re-center
 on it. Use it to answer "who is calling this expensive thing?" and "where does
 this function spend its time?".
 
+### Summary
+Every profile opens on the **Summary**: a one-sentence headline about the
+function with the most self time, the fidelity badge and any capture warnings,
+the top 5 functions by self and by total, the hottest call path, and a
+**What to look at** card with questions and one-click actions that fit the
+profile kind (for example *Longest waits* for lock profiles). Click a function
+name to open it in Sandwich.
+
+### Hot path
+The hot path starts at the root and, at every step, follows the child with the
+largest total (the first one wins a tie). **Show in flame** and **Open in call
+tree** on the Summary, the **Hot path (h)** toggle and the `h` key all use it.
+In the flame it is outlined; in the call tree it is expanded, marked with a left
+border, announced as "on the hot path" to screen readers, and its last frame is
+selected. A hot path that ends in a hatched frame stops there because deeper
+frames were folded (see Diff, below, for the depth cap).
+
+### Call tree
+An expandable table of Function, Self, Total and Total %. Click the chevron or
+use the keyboard: **Up/Down** move, **Right** expands (or moves into the first
+child), **Left** collapses (or moves to the parent), **Home/End** jump, and
+**Enter** opens the function in Sandwich. A node shows its first 200 children
+and a "… N more" row; use Focus to narrow.
+
+### Keyboard shortcuts
+Press **?** in a profile for this list. Shortcuts are off while you type in a
+field.
+
+| Key | Action |
+|---|---|
+| `1` `2` `3` `4` `5` `6` | Summary, Flame, Icicle, Call tree, Top, Both |
+| `h` | Toggle hot path |
+| `/` | Focus Search |
+| `?` | Show shortcuts |
+| `Esc` | Reset flame zoom, close help |
+
 ### Shareable state
 The URL holds everything: profile, view, sample type, filters, search and the
 selected function. Reloading or bookmarking the page reproduces the exact view.
+A link without a `view` opens the Summary (older links meant Flame; they now
+need `view=flame`, which is written explicitly). `hot=1` turns on the hot path.
 
 ## 6. Filters
 

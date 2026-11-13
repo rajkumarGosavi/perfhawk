@@ -22,7 +22,7 @@ export default function App() {
   // The patch is merged into the *latest* state, so deferred callers (debounce
   // timers) cannot clobber newer edits. `reset` replaces the state wholesale.
   const navigate = useCallback((patch: Partial<ViewState>, mode: 'push' | 'replace' = 'push', reset = false) => {
-    const next = reset ? ({ view: 'flame', ...patch } as ViewState) : mergeViewState(ref.current, patch)
+    const next = reset ? ({ view: 'summary', ...patch } as ViewState) : mergeViewState(ref.current, patch)
     ref.current = next
     const url = window.location.pathname + writeViewState(next)
     if (mode === 'push') window.history.pushState(null, '', url)
