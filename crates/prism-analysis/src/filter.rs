@@ -1,6 +1,25 @@
 use crate::transform::{apply, Transform};
+use prism_model::Timeline;
 use prism_model::{FuncId, Profile};
 use regex::Regex;
+use std::sync::Arc;
+
+/// A half-open range `[from_bucket, to_bucket)` of a profile's timeline.
+#[derive(Debug, Clone)]
+pub struct Window {
+    pub timeline: Arc<Timeline>,
+    pub from_bucket: u32,
+    pub to_bucket: u32,
+}
+
+impl Window {
+    fn contains(&self, sample: usize) -> bool {
+        self.timeline
+            .sample_bucket
+            .get(sample)
+            .is_some_and(|&b| b >= self.from_bucket && b < self.to_bucket)
+    }
+}
 
 /// pprof-compatible sample filters, matched against function names.
 #[derive(Debug, Clone, Default)]
@@ -13,6 +32,8 @@ pub struct Filter {
     pub hide: Option<Regex>,
     /// Stack transforms applied after exclude, focus and hide, in order.
     pub transforms: Vec<Transform>,
+    /// Only samples inside this time window are considered.
+    pub window: Option<Window>,
 }
 
 impl Filter {
@@ -27,11 +48,17 @@ impl Filter {
             exclude: c(exclude)?,
             hide: c(hide)?,
             transforms: Vec::new(),
+            window: None,
         })
     }
 
     pub fn with_transforms(mut self, t: Vec<Transform>) -> Filter {
         self.transforms = t;
+        self
+    }
+
+    pub fn with_window(mut self, w: Window) -> Filter {
+        self.window = Some(w);
         self
     }
 
@@ -41,6 +68,7 @@ impl Filter {
             && self.exclude.is_none()
             && self.hide.is_none()
             && self.transforms.is_empty()
+            && self.window.is_none()
     }
 }
 
@@ -73,6 +101,16 @@ pub(crate) fn for_each_sample(
     filter: &Filter,
     mut visit: impl FnMut(&[FuncId], i64),
 ) {
+    for_each_sample_indexed(p, sample_type, filter, |_, funcs, v| visit(funcs, v));
+}
+
+/// Like [`for_each_sample`], also passing the sample's index in `p.samples`.
+pub(crate) fn for_each_sample_indexed(
+    p: &Profile,
+    sample_type: usize,
+    filter: &Filter,
+    mut visit: impl FnMut(usize, &[FuncId], i64),
+) {
     if sample_type >= p.sample_types.len() {
         return;
     }
@@ -82,6 +120,11 @@ pub(crate) fn for_each_sample(
     let mut hide = Cached::new(&filter.hide, n);
     let mut funcs: Vec<FuncId> = Vec::new();
     for (i, s) in p.samples.iter().enumerate() {
+        if let Some(w) = &filter.window {
+            if !w.contains(i) {
+                continue;
+            }
+        }
         funcs.clear();
         let mut cur = s.stack;
         while let Some(id) = cur {
@@ -102,6 +145,6 @@ pub(crate) fn for_each_sample(
         if !filter.transforms.iter().all(|t| apply(t, p, &mut funcs)) {
             continue;
         }
-        visit(&funcs, p.value(i, sample_type));
+        visit(i, &funcs, p.value(i, sample_type));
     }
 }

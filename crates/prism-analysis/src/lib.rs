@@ -6,6 +6,7 @@ mod filter;
 mod findings;
 mod graph;
 mod groups;
+mod heatmap;
 mod pivot;
 mod sandwich;
 mod top;
@@ -16,10 +17,11 @@ pub use diff::{
     diff_flame, diff_top, diff_top_sorted, match_sample_type, DiffError, DiffInput, DiffNode,
     DiffNormalize, DiffRow, DiffSort,
 };
-pub use filter::Filter;
+pub use filter::{Filter, Window};
 pub use findings::{findings, Evidence, Finding, FindingAction, RuleConfig, Severity};
 pub use graph::{call_graph, CallGraph, GraphEdge, GraphNode};
 pub use groups::{groups, GroupBy, GroupRow};
+pub use heatmap::{heatmap, HeatCell, Heatmap};
 pub use pivot::function_stats;
 pub use sandwich::{sandwich, Sandwich};
 pub use top::{filtered_total, top, TopRow, TopSort};
