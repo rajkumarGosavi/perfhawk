@@ -38,3 +38,14 @@ Items found during reviews and deliberately deferred. ~~Struck through~~ items w
 - **Deferred review minors:** session timeline offsets per profile (alignment is by start time only); the heat map reloads on every window change; typing in the window boxes can reorder start and end; the Go windowed endpoint truncates silently if the CPU profiler is taken mid-run; `has_timeline` in lists only checks that the file exists while the record validates it; the server's timeline cache keeps "no timeline" after a later import attaches one; memory profiles can show two findings for one function; collapsed-stack export does not escape `;`.
 - **Not verified live:** drag and Shift-drag selection, graph pan/zoom and slider, window-vs-window diff in the UI, Export downloads and clipboard, a full .NET capture with timelines, the 1 h heat map and 1 M-sample graph timing budgets, and the GitHub Actions example in CI.md.
 - **Known limits:** Go wall-clock has no time data; Go time resolution is 250 ms; `prism check` compares raw values when profiles record no duration; the UI still has no component test harness.
+
+## From Phase 2a (shared core and Doctor v0)
+
+- **Doctor on real data (found while building the known-answer runs):** Go's block profile is dominated by the prism agent's own handlers waiting in `selectgo`, so it is ignored as lock evidence; the mutex profile contains the runtime's own locks (`runtime.unlock`), which are ignored by leaf name. Both are Go-specific; .NET lock data has not been run through Doctor yet.
+- **Doctor thresholds** (`DoctorConfig::default`) were tuned on three Go runs on one Windows machine. Validate on Linux and with .NET once the OS providers and CI exist.
+- **No OS provider yet:** Block I/O, off-CPU and scheduler delay can be imported, stored and viewed, and the `SystemProvider` seam is tested with a fake, but nothing captures them. Plans 2b (ETW) and 2c (eBPF) are next. `ProviderRegistry::with_defaults()` registers no system provider, so `--follow-up` always refuses today.
+- **I/O verdicts without OS data are estimates:** they come from wall-clock stacks that pass through file or fsync calls, always `low` confidence. The `disk` demo mode blocks in pipe reads (a real SSD is too fast to be a known answer on a dev machine).
+- **Doctor UI:** the verdict card has no component tests (no harness); its logic helpers are tested. It has not been checked in a browser against a live session.
+- Doctor uses the first profile of each kind in a session; a session with two profiles of one kind is diagnosed from the first.
+- Pre-existing clippy `manual_repeat_n` errors in `crates/prism-analysis/tests/findings.rs` (6 under `--all-targets`).
+

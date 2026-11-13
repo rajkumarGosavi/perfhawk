@@ -106,7 +106,9 @@ fn cpu_bound() {
 }
 
 #[test]
-fn lock_bound_uses_max_not_sum() {
+fn blocking_profile_is_not_lock_evidence() {
+    // Go's block profile is dominated by idle channel waits (including the capture
+    // agent's own handlers), so only the mutex profile counts as lock evidence.
     let lock_stack: &[&str] = &["main", "reserve", "sync.(*Mutex).Lock"];
     let wall = ns(
         ProfileKind::Wall,
@@ -117,8 +119,8 @@ fn lock_bound_uses_max_not_sum() {
     );
     let cpu = ns(ProfileKind::Cpu, &[(&["main", "work"], 2_000_000_000)]);
     let lock = ns(ProfileKind::Lock, &[(lock_stack, 5_500_000_000)]);
-    let blocking = ns(ProfileKind::Blocking, &[(lock_stack, 5_500_000_000)]);
-    let both = run(
+    let blocking = ns(ProfileKind::Blocking, &[(&["runtime.selectgo"], 9_000_000_000)]);
+    let with_lock = run(
         &[
             (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
             (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
@@ -127,8 +129,8 @@ fn lock_bound_uses_max_not_sum() {
         ],
         None,
     );
-    assert_eq!(both.verdict, Verdict::LockBound);
-    let f = both
+    assert_eq!(with_lock.verdict, Verdict::LockBound);
+    let f = with_lock
         .findings
         .iter()
         .find(|f| f.rule == "lock_bound")
@@ -139,6 +141,94 @@ fn lock_bound_uses_max_not_sum() {
         .as_deref()
         .unwrap()
         .ends_with("--sort total"));
+
+    let only_blocking = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+            (ProfileKind::Blocking, "b", &blocking, Fidelity::Native),
+        ],
+        None,
+    );
+    assert!(only_blocking.findings.iter().all(|f| f.rule != "lock_bound"));
+}
+
+#[test]
+fn mutex_waiters_parked_in_gopark_count_as_busy() {
+    let parked_on_mutex: &[&str] = &[
+        "main",
+        "reserve",
+        "sync.(*Mutex).Lock",
+        "sync.(*Mutex).lockSlow",
+        "sync.runtime_SemacquireMutex",
+        "runtime.gopark",
+    ];
+    let wall = ns(
+        ProfileKind::Wall,
+        &[
+            (parked_on_mutex, 6_000_000_000),
+            (&["main", "work"], 2_000_000_000),
+            (&["worker", "runtime.chanrecv", "runtime.gopark"], 9_000_000_000),
+        ],
+    );
+    let d = run(&[(ProfileKind::Wall, "w", &wall, Fidelity::Derived)], None);
+    // 6 s of mutex waiting plus 2 s of work are busy; the idle channel worker is not.
+    assert!((d.busy_threads - 0.8).abs() < 0.01, "{}", d.busy_threads);
+}
+
+#[test]
+fn runtime_internal_lock_contention_is_ignored() {
+    // Go 1.22+ reports the runtime's own locks (scheduler, GC) in the mutex profile.
+    let (wall, cpu) = cpu_bound_set();
+    let internal: &[&str] = &["runtime.schedule", "runtime.unlock"];
+    let user: &[&str] = &["main", "reserve", "sync.(*Mutex).Unlock"];
+    let only_internal = ns(ProfileKind::Lock, &[(internal, 9_000_000_000)]);
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+            (ProfileKind::Lock, "l", &only_internal, Fidelity::Native),
+        ],
+        None,
+    );
+    assert_eq!(d.verdict, Verdict::CpuBound);
+    assert!(d.findings.iter().all(|f| f.rule != "lock_bound"));
+
+    let mixed = ns(
+        ProfileKind::Lock,
+        &[(internal, 9_000_000_000), (user, 5_000_000_000)],
+    );
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+            (ProfileKind::Lock, "l", &mixed, Fidelity::Native),
+        ],
+        None,
+    );
+    let f = d.findings.iter().find(|f| f.rule == "lock_bound").unwrap();
+    // 5 s of user-level waiting over 8 s busy; the runtime's 9 s do not count.
+    assert!((f.share_pct - 62.5).abs() < 0.1, "{}", f.share_pct);
+}
+
+#[test]
+fn fsync_waits_count_as_io() {
+    let wall = ns(
+        ProfileKind::Wall,
+        &[
+            (&["main", "save", "os.(*File).Sync", "syscall.FlushFileBuffers"], 6_000_000_000),
+            (&["main", "work"], 2_000_000_000),
+        ],
+    );
+    let cpu = ns(ProfileKind::Cpu, &[(&["main", "work"], 2_000_000_000)]);
+    let d = run(
+        &[
+            (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c", &cpu, Fidelity::Native),
+        ],
+        Some("--pid 1"),
+    );
+    assert_eq!(d.verdict, Verdict::IoBound);
 }
 
 fn io_wall() -> Profile {

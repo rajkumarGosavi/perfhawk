@@ -26,7 +26,7 @@
 1. A session with no wall profile, or with empty profiles → `Inconclusive` / `Idle` with a note, never a panic, `NaN` or `inf` in the JSON (Task 8).
 2. A mostly idle target must read `Idle`, not `CpuBound` from a few busy samples (Task 8).
 3. A system-provider failure (missing privilege) while the language capture succeeds → session `Partial` with a warning, and Doctor still runs on what exists (Task 7, Task 10).
-4. Mutex and block profiles overlap in Go, so lock evidence uses `max(lock, blocking)`, never the sum (Task 8).
+4. Go's block profile is mostly idle channel waits (including the capture agent's own handlers) and the mutex profile includes the runtime's own locks: only the user-level mutex profile counts as lock evidence (Task 8; found on real data in Task 12).
 5. Both `%LOCALAPPDATA%\prism` and `%APPDATA%\prism` present → the new one wins and nothing is deleted (Task 6).
 
 ---
@@ -228,7 +228,7 @@
   Rules (all on each profile's `default_sample_type`, only when its unit is `Nanoseconds`; otherwise a `notes` entry says which profile was skipped):
   - `busy_ns` = wall total minus wall samples whose **leaf** function is in `IDLE_NAMES`; `busy_threads = busy_ns / window_ns` (0 when `window_ns == 0`). No wall profile → `Inconclusive`, note contains `wall-clock`. `busy_threads < idle_busy_threads` → `Idle` (summary says to rerun under load).
   - `cpu_share = min(cpu_total, busy_ns) / busy_ns * 100`; `wait_share = 100 - cpu_share`.
-  - `lock_share = max(lock_total, blocking_total) / busy_ns * 100`, capped at 100.
+  - `lock_share = lock_total / busy_ns * 100`, capped at 100, where `lock_total` is the mutex profile minus samples whose leaf is a `runtime.` function. The blocking profile is not lock evidence (changed in Task 12 after real Go data).
   - I/O: with a `BlockIo` profile, `io_share = io_total / busy_ns * 100` (confidence High if the profile fidelity is not `Approximate`, else Medium). Without it, `io_share` = share of busy wall time in samples with a frame matching `^(syscall\.(Read|Write|Pread|Pwrite)|internal/poll\.\(\*FD\)\.(Read|Write)|os\.\(\*File\)\.(Read|Write)|System\.IO\.)` and confidence Low, fidelity Approximate.
   - Scheduler: `sched_share = sched_total / busy_ns * 100` from a `SchedDelay` profile only.
   - GC: share of cpu samples with a stack frame matching `GC_PATTERN`; finding only, never the verdict.

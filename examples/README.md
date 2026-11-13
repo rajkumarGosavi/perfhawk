@@ -32,6 +32,11 @@ prism ui
 Or let prism launch a built binary: `go build -o go-demo . && prism record -- ./go-demo -files=false`.
 Profile its tests with `prism record --go-test . --kinds cpu,memory`.
 
+For `prism doctor`, run a single-purpose workload with a known answer:
+`go run . -files=false -duration 90s -mode cpu` (or `lock`, or `disk`, a stand-in for a
+slow disk that blocks in file reads), then `prism doctor --pid <pid>`. The default,
+`-mode mixed`, is everything at once.
+
 ## .NET with `prism record` (needs .NET SDK 8+)
 
 Build the demo and the prism helper once, then record. No `dotnet-trace` needed:

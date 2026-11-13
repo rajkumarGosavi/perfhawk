@@ -11,7 +11,11 @@ use serde::Serialize;
 
 /// Wall-clock stacks that end in file or disk I/O, used when no Block I/O
 /// profile exists. An estimate, never better than low confidence.
-const IO_PATTERN: &str = r"^(syscall\.(Read|Write|Pread|Pwrite)|internal/poll\.\(\*FD\)\.(Read|Write)|os\.\(\*File\)\.(Read|Write)|System\.IO\.)";
+const IO_PATTERN: &str = r"^(syscall\.(Read|Write|Pread|Pwrite|FlushFileBuffers|Fsync)|internal/poll\.\(\*FD\)\.(Read|Write|Fsync)|os\.\(\*File\)\.(Read|Write|Sync)|System\.IO\.)";
+
+/// A goroutine parked in `runtime.gopark` is idle unless one of its frames says it is
+/// waiting on something that costs the program time (a mutex or a sleep).
+const WAIT_PATTERN: &str = r"^(sync\.\(\*(Mutex|RWMutex)\)\.|sync\.runtime_Semacquire|time\.Sleep$)";
 
 pub struct DoctorProfile<'a> {
     pub kind: ProfileKind,
@@ -218,8 +222,21 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
     };
     let wall = total_of(ProfileKind::Wall);
     let cpu = total_of(ProfileKind::Cpu);
-    let lock = total_of(ProfileKind::Lock);
-    let blocking = total_of(ProfileKind::Blocking);
+    // The runtime reports its own locks (scheduler, GC) in the mutex profile; only
+    // samples whose leaf is not a `runtime.` function are the program's own locks.
+    let lock = total_of(ProfileKind::Lock).map(|(total, dp)| {
+        let p = dp.profile;
+        let mut internal = 0i64;
+        for_each_sample(p, p.default_sample_type, &Filter::default(), |funcs, v| {
+            if funcs
+                .last()
+                .is_some_and(|&l| p.str(p.functions[l.0 as usize].name).starts_with("runtime."))
+            {
+                internal = internal.saturating_add(v);
+            }
+        });
+        (total - internal, dp)
+    });
     let block_io = total_of(ProfileKind::BlockIo);
     let sched = total_of(ProfileKind::SchedDelay);
 
@@ -237,13 +254,14 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
     // Busy time: wall time minus samples parked in an idle runtime frame; also the
     // part of it that ends in file I/O, as a fallback estimate.
     let io_re = Regex::new(IO_PATTERN).expect("static regex");
+    let wait_re = Regex::new(WAIT_PATTERN).expect("static regex");
     let st = wall_dp.profile.default_sample_type;
     let mut idle_ns = 0i64;
     let mut io_guess_ns = 0i64;
     let name_of = |f: prism_model::FuncId| wall_dp.profile.str(wall_dp.profile.functions[f.0 as usize].name);
     for_each_sample(wall_dp.profile, st, &Filter::default(), |funcs, v| {
         if let Some(&leaf) = funcs.last() {
-            if IDLE_NAMES.contains(&name_of(leaf)) {
+            if IDLE_NAMES.contains(&name_of(leaf)) && !funcs.iter().any(|&f| wait_re.is_match(name_of(f))) {
                 idle_ns = idle_ns.saturating_add(v);
                 return;
             }
@@ -278,11 +296,9 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
     let mut findings: Vec<DoctorFinding> = Vec::new();
     let mut triggered: Vec<(Verdict, f64)> = Vec::new();
 
-    // Lock and channel waits: the runtime's mutex and block profiles overlap, so take the larger.
-    let lock_src = [lock, blocking]
-        .into_iter()
-        .flatten()
-        .max_by_key(|(t, _)| *t);
+    // Lock evidence is the mutex profile only. Go's block profile is mostly idle channel
+    // waits (including the capture agent's own handlers), so it says nothing about lock cost.
+    let lock_src = lock;
     let lock_share = lock_src.map_or(0.0, |(t, _)| pct(t, busy_ns));
     let lock_hit = lock_src.is_some() && lock_share >= cfg.lock_pct;
 
@@ -332,8 +348,8 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
             confidence: confidence(lock_share, cfg.lock_pct, &dp.fidelity),
             fidelity: dp.fidelity.clone(),
             share_pct: lock_share,
-            title: format!("Lock contention: {lock_share:.0}% of busy time waits on locks or channels"),
-            detail: "Threads queue on contended locks or channels for this share of their busy time.".into(),
+            title: format!("Lock contention: {lock_share:.0}% of busy time waits on locks"),
+            detail: "Threads queue on contended locks for this share of their busy time.".into(),
             next: vec![ctx.show(dp.short_id, " --sort total", "Longest waits by call site")],
             hints: vec!["Shorten the critical section or shard the lock.".into()],
         });
