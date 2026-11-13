@@ -20,12 +20,12 @@ type KeyEventLike = {
   ctrlKey: boolean
   metaKey: boolean
   altKey: boolean
-  target: { tagName?: string; isContentEditable?: boolean } | null
+  target: object | null
 }
 
 export function keyAction(e: KeyEventLike): KeyAction | null {
   if (e.ctrlKey || e.metaKey || e.altKey) return null
-  const t = e.target
+  const t = e.target as { tagName?: string; isContentEditable?: boolean } | null
   if (t && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) {
     return null
   }

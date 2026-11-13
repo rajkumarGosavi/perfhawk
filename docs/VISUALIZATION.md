@@ -100,13 +100,22 @@ D1 **Query tab** (filter DSL from PLAN §205, then SQL over timelines via embedd
 
 | Step | Contents | Fits into |
 |---|---|---|
-| **V1 "Orient"** (≈ 3–4 wk) | A1 summary, A2 hot path, A3 call tree, A6, A8 keyboard, B2 per-kind defaults | before/alongside Phase 2 (no capture work) |
+| **V1 "Orient"** (≈ 3–4 wk) **— delivered** | A1 summary, A2 hot path, A3 call tree, A6, A8 keyboard, B2 per-kind defaults | before/alongside Phase 2 (no capture work) |
 | **V2 "Reduce"** (≈ 3–4 wk) | A5 transforms-as-chips, A7 diff upgrades, A9 groupings, B3 cross-kind pivot | Phase 2 |
 | **V3 "Explain"** (≈ 3 wk) | B1 findings engine (start with 8–10 rules), export (D4) | Phase 2 |
 | **V4 "Graph"** (≈ 3 wk) | A4 call graph | Phase 2/3 |
 | **V5 "Time"** (≈ 6–8 wk) | timestamps in the model, C1 heat map, C2 timeline, C3 session timeline | Phase 2 (timeline already scheduled) |
 | **V6 "Trend"** (≈ 3 wk) | C4 history, CI regression views | Phase 3 / CI gating |
 | later | D1 query tab, D2 source annotate, IDE hooks | Phase 3+ |
+
+**V1 rulings (deviations from the items above):**
+
+- A6 left-heavy toggle dropped: the server already orders flame children by total, so the flame is left-heavy. Only the flame + top *Both* layout shipped.
+- A8 trimmed: `/`, `1–6`, `h`, `?` and call-tree arrows shipped; the command palette and `[` `]` zoom history are deferred to V2.
+- A1 trimmed: "biggest diff movers" on the summary needs a baseline-selection design; deferred to V2 with A7.
+- Hot path "next heaviest on repeat" dropped; one deterministic path.
+- B2: every kind opens on Summary; the per-kind difference is the guide card. Lock/blocking by-site tables arrive with A9 in V2.
+- Default view change: links with no `view` now open Summary; `view=flame` is written explicitly.
 
 Order rationale: V1–V3 need no new capture data and give the largest "time to first insight" win; V4 is the one "pprof web" gap users will notice; V5 is the largest build and unlocks the transient-problem class that aggregate graphs cannot show.
 
