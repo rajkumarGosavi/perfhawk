@@ -554,7 +554,7 @@ or the UI's diff view.
 | `the target has DOTNET_EnableDiagnostics=0` | Restart the target without that variable (or set it to 1). |
 | `the target runs as another user, or TMPDIR differs` | Run prism as the target's user and with the target's `TMPDIR` (Linux/macOS). |
 | `pid N is not a .NET 8+ process` | Only .NET 8 and newer are supported. |
-| `the .NET helper (prism-dotnet) was not found` | Build it (`dotnet publish helpers/prism-dotnet -c Release -o <dir>`) and set `PRISM_DOTNET`, or put it next to `prism`. |
+| `the .NET helper (prism-dotnet) was not found` | `prism-dotnet` ships next to `prism` in the release package: reinstall Prism or copy it back beside `prism`, or set `PRISM_DOTNET`. From source: `dotnet publish helpers/prism-dotnet -c Release -o <dir>`. |
 | `prism-dotnet protocol X is not supported; rebuild the helper` | The helper and prism are from different versions; rebuild the helper. |
 | `program did not start the prism agent; import github.com/rajkumarGosavi/prism/agents/go` | The launched Go program does not import the agent. |
 | `mutex profiling is disabled in the target ...` | A warning, not a failure: the profile is empty because the target has not enabled mutex/block sampling and no agent is present. |

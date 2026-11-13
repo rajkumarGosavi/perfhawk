@@ -32,8 +32,7 @@ pub struct HelperPath {
     pub env: Vec<(String, String)>,
 }
 
-const BUILD_HINT: &str = "build it with `dotnet publish helpers/prism-dotnet -c Release -o <dir>` \
-    and either put prism-dotnet next to the prism binary or set PRISM_DOTNET to its path";
+const BUILD_HINT: &str = "it ships next to prism in the release package, so reinstall Prism or copy     prism-dotnet back into the same folder as prism (or set PRISM_DOTNET to its path).     Building from source: `dotnet publish helpers/prism-dotnet -c Release -o <dir>`";
 
 fn exe_name() -> &'static str {
     if cfg!(windows) {
