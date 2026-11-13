@@ -8,6 +8,7 @@ mod events;
 pub mod go;
 mod provider;
 mod session;
+mod system;
 mod timeline;
 mod types;
 
@@ -19,4 +20,5 @@ pub use go::GoProvider;
 pub use provider::{Provider, ProviderRegistry};
 pub use session::{record, RecordRequest};
 pub use timeline::{timeline_from_labels, BUCKET_LABEL};
+pub use system::{is_system_kind, SystemProvider, NO_SYSTEM_PROVIDER_NOTE, SYSTEM_KINDS};
 pub use types::*;

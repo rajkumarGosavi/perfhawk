@@ -1,5 +1,6 @@
 use crate::cancel::CancelToken;
 use crate::provider::ProviderRegistry;
+use crate::system::is_system_kind;
 use crate::types::*;
 use prism_model::ProfileKind;
 use prism_store::{ImportOptions, SessionRecord, SessionStatus, Store, TargetInfo};
@@ -33,10 +34,11 @@ pub fn record(
     registry: &ProviderRegistry,
     req: &RecordRequest,
     cancel: &CancelToken,
-    progress: &dyn Fn(&str),
+    progress: &(dyn Fn(&str) + Sync),
 ) -> Result<SessionRecord, CaptureError> {
     let (provider, rt) = registry.detect(&req.target)?;
     let caps = provider.capabilities(&rt);
+    let sys_caps = registry.system_capabilities(&rt);
 
     let kinds: Vec<ProfileKind> = if req.plan.kinds.is_empty() {
         caps.iter()
@@ -45,7 +47,8 @@ pub fn record(
             .collect()
     } else {
         for k in &req.plan.kinds {
-            match caps.iter().find(|c| c.kind == *k) {
+            let pool = if is_system_kind(*k) { &sys_caps } else { &caps };
+            match pool.iter().find(|c| c.kind == *k) {
                 Some(c) if c.available => {}
                 Some(c) => {
                     return Err(CaptureError::Unsupported {
@@ -94,15 +97,66 @@ pub fn record(
         (None, None, Some(c)) => c.clone(),
         _ => "target".into(),
     };
+    let lang_kinds: Vec<ProfileKind> = kinds
+        .iter()
+        .copied()
+        .filter(|k| !is_system_kind(*k))
+        .collect();
+    let sys_kinds: Vec<ProfileKind> = kinds
+        .iter()
+        .copied()
+        .filter(|k| is_system_kind(*k))
+        .collect();
+    let sys_provider = if sys_kinds.is_empty() {
+        None
+    } else {
+        registry.system_provider_for(&rt, &sys_kinds)
+    };
+    if let Some(sp) = sys_provider {
+        progress(&format!(
+            "[{}] overhead: {}; capped at {}s",
+            sp.id(),
+            sp.overhead(),
+            req.plan.duration.as_secs()
+        ));
+    }
+    let lang_plan = CapturePlan {
+        kinds: lang_kinds.clone(),
+        ..plan.clone()
+    };
+    let sys_plan = CapturePlan {
+        kinds: sys_kinds.clone(),
+        ..plan.clone()
+    };
     progress(&format!(
         "[{}] capturing {} for {}s ({what})",
         rt.provider,
         kind_list.join(", "),
         req.plan.duration.as_secs()
     ));
-    let outcome = match provider.capture(&rt, &req.target, &plan, cancel, progress) {
-        Ok(o) => o,
-        Err(e) => {
+    let (lang_res, sys_res) = std::thread::scope(|scope| {
+        let sys_handle = sys_provider
+            .map(|sp| scope.spawn(|| sp.capture(&rt, &sys_plan, cancel, progress)));
+        let lang_res = if lang_kinds.is_empty() {
+            None
+        } else {
+            Some(provider.capture(&rt, &req.target, &lang_plan, cancel, progress))
+        };
+        let sys_res = sys_handle.map(|h| {
+            h.join()
+                .unwrap_or_else(|_| Err(CaptureError::Helper("system capture panicked".into())))
+        });
+        (lang_res, sys_res)
+    });
+    let sys_label = sys_kinds
+        .iter()
+        .map(|k| k.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut degraded = false;
+    let mut outcome = match (lang_res, &sys_res) {
+        (Some(Ok(o)), _) => o,
+        (Some(Err(e)), _) => {
             store.finish_session(
                 &session.id,
                 SessionStatus::Failed,
@@ -111,10 +165,36 @@ pub fn record(
             )?;
             return Err(e);
         }
+        // Only OS-level kinds were requested: nothing else to fall back on.
+        (None, Some(Err(e))) => {
+            store.finish_session(
+                &session.id,
+                SessionStatus::Failed,
+                elapsed_ms(started),
+                &[format!("{sys_label}: {e}")],
+            )?;
+            return Err(CaptureError::Helper(format!("{sys_label}: {e}")));
+        }
+        (None, _) => CaptureOutcome {
+            artifacts: vec![],
+            end: CaptureEnd::Complete,
+            warnings: vec![],
+        },
     };
+    match sys_res {
+        Some(Ok(o)) => {
+            outcome.artifacts.extend(o.artifacts);
+            outcome.warnings.extend(o.warnings);
+            outcome.end = worst_end(outcome.end, o.end);
+        }
+        Some(Err(e)) if !lang_kinds.is_empty() => {
+            outcome.warnings.push(format!("{sys_label}: {e}"));
+            degraded = true;
+        }
+        _ => {}
+    }
 
     let mut warnings = outcome.warnings;
-    let mut degraded = false;
     for a in outcome.artifacts {
         if let Some(w) = &a.warning {
             warnings.push(format!("{}: {w}", a.kind));
@@ -175,4 +255,14 @@ pub fn record(
         status = SessionStatus::Partial;
     }
     Ok(store.finish_session(&session.id, status, elapsed_ms(started), &warnings)?)
+}
+
+/// The most severe of two capture endings: Cancelled, then TargetExited, then Complete.
+fn worst_end(a: CaptureEnd, b: CaptureEnd) -> CaptureEnd {
+    use CaptureEnd::*;
+    match (a, b) {
+        (Cancelled, _) | (_, Cancelled) => Cancelled,
+        (TargetExited, _) | (_, TargetExited) => TargetExited,
+        _ => Complete,
+    }
 }
