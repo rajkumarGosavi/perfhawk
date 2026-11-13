@@ -160,3 +160,9 @@ td.down { color: var(--diff-down-3); }
 .help-dialog dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 8px 0; }
 .help-dialog dt { font-family: var(--mono); font-weight: 600; }
 .help-dialog dd { margin: 0; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 4px 1px 8px; border: 1px solid currentColor; border-radius: 12px; font-size: 12px; }
+.chip button { border: 0; background: transparent; cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1; color: inherit; }
+.chip button:focus-visible, .transforms button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.groups table { width: 100%; }

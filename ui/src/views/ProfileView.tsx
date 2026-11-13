@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  ApiError, getFlame, getProfile, getSandwich, getTop, listProfiles,
-  type FlameNode, type ProfileRecord, type Sandwich as SandwichData, type TopRow,
+  ApiError, getFlame, getGroups, getProfile, getSandwich, getTop, listProfiles,
+  type FlameNode, type GroupRow, type ProfileRecord, type Sandwich as SandwichData, type TopRow,
 } from '../api'
 import { hotPath } from '../analysis/hotPath'
 import { SHORTCUTS, keyAction } from '../analysis/keys'
+import { addTransform, decodeTx, encodeTx, type Transform } from '../analysis/transforms'
 import { FlameGraph } from '../flame/FlameGraph'
 import type { ViewName, ViewState } from '../url'
 import { CallTree } from './CallTree'
+import { Groups } from './Groups'
 import { Sandwich } from './Sandwich'
 import { Summary } from './Summary'
 import { FidelityBadge } from './FidelityBadge'
 import { TopTable } from './TopTable'
+import { TransformBar } from './TransformBar'
 
 type Nav = (patch: Partial<ViewState>, mode?: 'push' | 'replace', reset?: boolean) => void
 type Data =
@@ -19,11 +22,13 @@ type Data =
   | { kind: 'top'; rows: TopRow[] }
   | { kind: 'both'; tree: FlameNode; rows: TopRow[] }
   | { kind: 'sandwich'; data: SandwichData }
+  | { kind: 'groups'; rows: GroupRow[] }
 
 const VIEW_LABELS: [ViewName, string][] = [
   ['summary', 'Summary'], ['flame', 'Flame'], ['icicle', 'Icicle'], ['tree', 'Call tree'],
-  ['top', 'Top'], ['both', 'Both'], ['sandwich', 'Sandwich'],
+  ['top', 'Top'], ['both', 'Both'], ['sandwich', 'Sandwich'], ['groups', 'Groups'],
 ]
+const defaultGroupBy = (kind: string): 'stack' | 'site' => (kind === 'lock' || kind === 'blocking' ? 'site' : 'stack')
 const HOT_VIEWS: ViewName[] = ['flame', 'icicle', 'tree', 'both']
 
 // Local text state, committed to the URL 300 ms after typing stops.
@@ -70,7 +75,8 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
 
   const st = state.st ?? record?.default_sample_type
   const unit = record && st !== undefined ? record.sample_types[st]?.unit ?? 'count' : 'count'
-  const { view, func, focus: qf, exclude: qe, hide: qh, depth } = state
+  const { view, func, focus: qf, exclude: qe, hide: qh, depth, tx } = state
+  const groupBy = state.groupBy ?? defaultGroupBy(record?.kind ?? '')
   const sort = state.sort ?? 'self'
 
   useEffect(() => {
@@ -82,9 +88,11 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
     }
     let stale = false
     setLoading(true)
-    const q = { st, focus: qf, exclude: qe, hide: qh, depth }
+    const q = { st, focus: qf, exclude: qe, hide: qh, depth, tx }
     const p: Promise<Data> =
-      view === 'top'
+      view === 'groups'
+        ? getGroups(ref, { ...q, by: groupBy, limit: 500 }).then((rows) => ({ kind: 'groups', rows }))
+        : view === 'top'
         ? getTop(ref, { ...q, limit: 500, sort }).then((rows) => ({ kind: 'top', rows }))
         : view === 'both'
           ? Promise.all([getFlame(ref, q), getTop(ref, { ...q, limit: 500, sort })]).then(([tree, rows]) => ({
@@ -98,10 +106,11 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       (e: ApiError) => { if (!stale) { setData(null); setError(e.message); setLoading(false) } },
     )
     return () => { stale = true }
-  }, [record, ref, view, func, st, qf, qe, qh, sort, depth])
+  }, [record, ref, view, func, st, qf, qe, qh, sort, depth, tx, groupBy])
 
   const pushView = (patch: Partial<ViewState>) => navigate(patch, 'push')
   const hot = !!state.hot
+  const onTransform = (t: Transform) => navigate({ tx: encodeTx(addTransform(decodeTx(tx), t)) }, 'push')
   const toggleHot = () => navigate({ hot: hot ? undefined : true }, 'replace')
 
   useEffect(() => {
@@ -177,6 +186,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         <label className="field">Hide<input value={hide} onChange={(e) => setHide(e.target.value)} placeholder="regex" /></label>
         <label className="field">Search<input ref={searchRef} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="highlight" /></label>
       </div>
+      <TransformBar tx={tx} onChange={(next) => navigate({ tx: next }, 'push')} />
       {error && <div className="banner" role="alert">{error}</div>}
       {loading && !error && <p className="muted" role="status">Loading...</p>}
       {view === 'sandwich' && func === undefined && (
@@ -187,7 +197,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         <Summary
           profileRef={ref}
           record={record}
-          query={{ st, focus: qf, exclude: qe, hide: qh, depth }}
+          query={{ st, focus: qf, exclude: qe, hide: qh, depth, tx }}
           navigate={navigate}
         />
       )}
@@ -207,6 +217,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           unit={unit}
           hot={hot}
           onSelectFunc={(f) => pushView({ view: 'sandwich', func: f })}
+          onTransform={onTransform}
         />
       )}
       {data?.kind === 'both' && view === 'both' && (
@@ -237,6 +248,9 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       )}
       {data?.kind === 'sandwich' && view === 'sandwich' && (
         <Sandwich data={data.data} unit={unit} search={state.search} onSelectFunc={(f) => pushView({ func: f })} />
+      )}
+      {data?.kind === 'groups' && view === 'groups' && (
+        <Groups rows={data.rows} unit={unit} by={groupBy} onBy={(by) => pushView({ groupBy: by })} />
       )}
       </div>
       {helpOpen && (

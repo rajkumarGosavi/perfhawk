@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FlameNode } from '../api'
 import { hotPathKeys, moveSelection, parentKey, toggled, visibleRows } from '../analysis/callTree'
 import { hotPath } from '../analysis/hotPath'
+import type { Transform } from '../analysis/transforms'
 import { formatPct, formatValue } from '../format'
 
 type Props = {
@@ -9,12 +10,13 @@ type Props = {
   unit: string
   hot: boolean
   onSelectFunc: (funcId: number) => void
+  onTransform?: (t: Transform) => void
 }
 
 const MAX_INDENT_LEVELS = 40
 const rowId = (key: string) => `tree-row-${key}`
 
-export function CallTree({ root, unit, hot, onSelectFunc }: Props) {
+export function CallTree({ root, unit, hot, onSelectFunc, onTransform }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['']))
   const [selected, setSelected] = useState<string | null>(null)
   const boxRef = useRef<HTMLDivElement>(null)
@@ -46,6 +48,14 @@ export function CallTree({ root, unit, hot, onSelectFunc }: Props) {
     const nav = (dir: 'up' | 'down' | 'first' | 'last') => {
       e.preventDefault()
       setSelected(moveSelection(rows, selected, dir))
+    }
+    if (onTransform && current && current.kind === 'node' && current.node.funcId !== null) {
+      const k = e.key === 'f' ? 'sub' : e.key === 'm' ? 'merge' : e.key === 'x' ? 'drop' : null
+      if (k && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        onTransform({ kind: k, name: current.node.name })
+        return
+      }
     }
     switch (e.key) {
       case 'ArrowDown': return nav('down')

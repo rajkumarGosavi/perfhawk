@@ -13,6 +13,7 @@ const VIEW_KEYS: Record<string, ViewName> = {
   '4': 'tree',
   '5': 'top',
   '6': 'both',
+  '7': 'groups',
 }
 
 type KeyEventLike = {
@@ -43,9 +44,11 @@ export const SHORTCUTS: { keys: string; label: string }[] = [
   { keys: '4', label: 'Call tree' },
   { keys: '5', label: 'Top functions' },
   { keys: '6', label: 'Flame and top together' },
+  { keys: '7', label: 'Groups (identical stacks / wait sites)' },
   { keys: 'h', label: 'Toggle hot path' },
   { keys: '/', label: 'Focus search' },
   { keys: '?', label: 'Show this help' },
   { keys: 'Esc', label: 'Reset zoom (flame) / close help' },
+  { keys: 'f m x', label: 'Focus subtree / Merge / Drop the selected call-tree node' },
   { keys: '↑ ↓ ← → Enter', label: 'Navigate the call tree' },
 ]

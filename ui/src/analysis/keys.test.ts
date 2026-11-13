@@ -18,6 +18,7 @@ describe('keyAction', () => {
     ['4', 'tree'],
     ['5', 'top'],
     ['6', 'both'],
+    ['7', 'groups'],
   ])('%s -> view %s', (k, view) => {
     expect(keyAction(ev(k))).toEqual({ type: 'view', view })
   })
@@ -41,6 +42,6 @@ describe('keyAction', () => {
   })
   it('SHORTCUTS documents every mapped key', () => {
     const all = SHORTCUTS.map((s) => s.keys).join(' ')
-    for (const k of ['1', '2', '3', '4', '5', '6', 'h', '/', '?', 'Esc']) expect(all).toContain(k)
+    for (const k of ['1', '2', '3', '4', '5', '6', '7', 'f m x', 'h', '/', '?', 'Esc']) expect(all).toContain(k)
   })
 })

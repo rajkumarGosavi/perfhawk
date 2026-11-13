@@ -9,7 +9,9 @@ const FLAME: GuideAction = { label: 'Flame graph', patch: { view: 'flame' } }
 const TREE: GuideAction = { label: 'Call tree', patch: { view: 'tree' } }
 const TOP: GuideAction = { label: 'Top functions', patch: { view: 'top' } }
 const HOT: GuideAction = { label: 'Hottest path', patch: { view: 'flame', hot: true } }
-const WAITS: GuideAction = { label: 'Longest waits (by total)', patch: { view: 'top', sort: 'total' } }
+const WAITS: GuideAction = { label: 'Waits by site', patch: { view: 'groups', groupBy: 'site' } }
+const TOP_TOTAL: GuideAction = { label: 'Top by total', patch: { view: 'top', sort: 'total' } }
+const STACKS: GuideAction = { label: 'Identical stacks', patch: { view: 'groups', groupBy: 'stack' } }
 
 const GUIDES: Record<string, Guide> = {
   cpu: {
@@ -38,17 +40,17 @@ const GUIDES: Record<string, Guide> = {
   lock: {
     title: 'Lock contention',
     questions: ['Which lock or call site has the longest total wait?', 'Who is waiting on it?'],
-    actions: [WAITS, FLAME, TREE],
+    actions: [WAITS, TOP_TOTAL, FLAME, TREE],
   },
   blocking: {
     title: 'Blocking profile',
     questions: ['What are goroutines blocked on (channels, select, sync)?', 'Which call sites wait the longest?'],
-    actions: [WAITS, FLAME, TREE],
+    actions: [WAITS, TOP_TOTAL, FLAME, TREE],
   },
   threads: {
     title: 'Thread / goroutine dump',
     questions: ['Are many threads parked in the same place?', 'Which stacks look stuck?'],
-    actions: [TREE, FLAME, TOP],
+    actions: [STACKS, TREE, FLAME, TOP],
   },
 }
 

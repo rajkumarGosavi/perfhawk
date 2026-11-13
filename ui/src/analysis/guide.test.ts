@@ -18,10 +18,20 @@ describe('kindGuide', () => {
     expect(g.questions.length).toBeGreaterThan(0)
     expect(g.actions.some((a) => a.label === 'Flame graph')).toBe(true)
   })
-  it('lock and blocking offer longest waits; cpu offers hottest path', () => {
-    expect(kindGuide('lock').actions.find((a) => a.label === 'Longest waits (by total)')?.patch).toEqual({
-      view: 'top',
-      sort: 'total',
+  it('lock and blocking offer waits by site; threads offer identical stacks; cpu offers hottest path', () => {
+    for (const k of ['lock', 'blocking']) {
+      expect(kindGuide(k).actions.find((a) => a.label === 'Waits by site')?.patch).toEqual({
+        view: 'groups',
+        groupBy: 'site',
+      })
+      expect(kindGuide(k).actions.find((a) => a.label === 'Top by total')?.patch).toEqual({
+        view: 'top',
+        sort: 'total',
+      })
+    }
+    expect(kindGuide('threads').actions[0]).toEqual({
+      label: 'Identical stacks',
+      patch: { view: 'groups', groupBy: 'stack' },
     })
     expect(kindGuide('cpu').actions.find((a) => a.label === 'Hottest path')?.patch).toEqual({
       view: 'flame',
