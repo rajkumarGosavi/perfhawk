@@ -8,8 +8,9 @@ use axum::{
     Json, Router,
 };
 use prism_analysis::{
-    diff_flame, diff_top, flame_with, inverted_flame_with, match_sample_type, sandwich, top,
-    DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow, Filter, FlameOptions, TopSort,
+    diff_flame, diff_top, flame_with, inverted_flame_with, match_sample_type, parse_transforms,
+    sandwich, top, DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow, Filter, FlameOptions,
+    TopSort,
 };
 use prism_model::{FuncId, Profile, ProfileKind};
 use prism_store::{ImportOptions, ProfileRecord, SampleTypeInfo, StoreError};
@@ -259,6 +260,7 @@ struct AnalysisQuery {
     func: Option<u32>,
     sort: Option<String>,
     depth: Option<usize>,
+    tx: Option<String>,
 }
 
 const DEFAULT_DEPTH: usize = 1000;
@@ -274,14 +276,25 @@ fn check_depth(depth: Option<usize>) -> ApiResult<usize> {
     Ok(d)
 }
 
+fn build_filter(
+    focus: Option<&str>,
+    exclude: Option<&str>,
+    hide: Option<&str>,
+    tx: Option<&str>,
+) -> ApiResult<Filter> {
+    let f = Filter::parse(focus, exclude, hide).map_err(|e| ApiError::bad(e.to_string()))?;
+    let t = parse_transforms(tx.unwrap_or_default()).map_err(|e| ApiError::bad(e.to_string()))?;
+    Ok(f.with_transforms(t))
+}
+
 impl AnalysisQuery {
     fn filter(&self) -> ApiResult<Filter> {
-        Filter::parse(
+        build_filter(
             self.focus.as_deref(),
             self.exclude.as_deref(),
             self.hide.as_deref(),
+            self.tx.as_deref(),
         )
-        .map_err(|e| ApiError::bad(e.to_string()))
     }
     fn sort(&self) -> ApiResult<TopSort> {
         match self.sort.as_deref() {
@@ -405,6 +418,7 @@ struct DiffQuery {
     focus: Option<String>,
     exclude: Option<String>,
     hide: Option<String>,
+    tx: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -475,8 +489,12 @@ async fn diff_h(State(s): State<St>, Q(q): Q<DiffQuery>) -> ApiResult<Response> 
     };
     let depth = check_depth(q.depth)?;
     let limit = q.limit.unwrap_or(100).min(10_000);
-    let filter = Filter::parse(q.focus.as_deref(), q.exclude.as_deref(), q.hide.as_deref())
-        .map_err(|e| ApiError::bad(e.to_string()))?;
+    let filter = build_filter(
+        q.focus.as_deref(),
+        q.exclude.as_deref(),
+        q.hide.as_deref(),
+        q.tx.as_deref(),
+    )?;
 
     let (brec, bp) = record_and_profile(&s, base_ref).await?;
     let (hrec, hp) = record_and_profile(&s, head_ref).await?;

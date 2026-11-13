@@ -220,3 +220,72 @@ async fn top_sort_param() {
     assert_eq!(s, 400);
     assert_eq!(v["error"]["code"], "bad_request");
 }
+
+fn enc(s: &str) -> String {
+    s.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn tx_parameter_reduces_flame_and_rejects_bad_values() {
+    let (_d, store, addr) = start().await;
+    let id = import(&store, CPU);
+    let (_, rows) = get(addr, &format!("/api/profiles/{id}/top?limit=5")).await;
+    let name = rows[0]["name"].as_str().unwrap().to_string();
+    let (_, full) = get(addr, &format!("/api/profiles/{id}/flame")).await;
+    let tx = enc(&format!("sub:{name}"));
+    let (s, sub) = get(
+        addr,
+        &format!(
+            "/api/profiles/{id}/flame?tx={}",
+            enc(&format!("sub:{name}"))
+        ),
+    )
+    .await;
+    assert_eq!(s, 200, "{tx}");
+    assert!(sub["total"].as_i64().unwrap() <= full["total"].as_i64().unwrap());
+    assert!(sub["total"].as_i64().unwrap() > 0);
+    let (s, v) = get(addr, &format!("/api/profiles/{id}/flame?tx=bogus")).await;
+    assert_eq!(s, 400);
+    assert_eq!(v["error"]["code"], "bad_request");
+    let (s, _) = get(addr, &format!("/api/profiles/{id}/top?tx=rec")).await;
+    assert_eq!(s, 200);
+    // an encoded comma inside a payload reaches the parser decoded
+    let (s, none) = get(
+        addr,
+        &format!(
+            "/api/profiles/{id}/flame?tx={}",
+            enc(&format!("sub:{}", enc("a,b")))
+        ),
+    )
+    .await;
+    assert_eq!(s, 200);
+    assert_eq!(none["total"], 0);
+    let (s, _) = get(addr, &format!("/api/profiles/{id}/flame?tx=merge%3A%zz")).await;
+    assert_eq!(s, 400);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn tx_applies_to_both_sides_of_a_diff() {
+    let (_d, store, addr) = start().await;
+    let id = import(&store, CPU);
+    let (_, rows) = get(addr, &format!("/api/profiles/{id}/top?limit=5")).await;
+    let name = rows[0]["name"].as_str().unwrap().to_string();
+    let q = format!(
+        "/api/diff?base={id}&head={id}&view=top&tx={}",
+        enc(&format!("drop:{name}"))
+    );
+    let (s, v) = get(addr, &q).await;
+    assert_eq!(s, 200);
+    let text = v.to_string();
+    assert!(!text.contains(&format!("\"name\":\"{name}\"")));
+    let (s, _) = get(addr, &format!("/api/diff?base={id}&head={id}&tx=bogus")).await;
+    assert_eq!(s, 400);
+}
