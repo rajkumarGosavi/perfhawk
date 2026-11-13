@@ -1,7 +1,7 @@
 //! Unified profile model shared by importers, analysis, store and server.
 
+use rustc_hash::FxHashMap as HashMap;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct StrId(pub u32);
@@ -173,6 +173,8 @@ pub enum ModelError {
     ValueCountMismatch { expected: usize, got: usize },
 }
 
+const NO_HINT: (FrameId, StackId) = (FrameId(u32::MAX), StackId(u32::MAX));
+
 pub struct ProfileBuilder {
     strings: Vec<String>,
     string_ids: HashMap<String, StrId>,
@@ -182,6 +184,11 @@ pub struct ProfileBuilder {
     frame_ids: HashMap<(FuncId, u32, u64), FrameId>,
     stacks: Vec<StackNode>,
     stack_ids: HashMap<(Option<StackId>, FrameId), StackId>,
+    /// Per stack node (and one slot for the root, at index 0 of `root_hint`):
+    /// the most recently taken child. Stacks that share a prefix usually take
+    /// the same child, so this skips most hash lookups.
+    child_hint: Vec<(FrameId, StackId)>,
+    root_hint: (FrameId, StackId),
     sample_types: Vec<SampleType>,
     default_sample_type: usize,
     samples: Vec<Sample>,
@@ -191,17 +198,19 @@ pub struct ProfileBuilder {
 
 impl ProfileBuilder {
     pub fn new(sample_types: Vec<SampleType>, meta: ProfileMeta) -> Self {
-        let mut string_ids = HashMap::new();
+        let mut string_ids = HashMap::default();
         string_ids.insert(String::new(), StrId(0));
         ProfileBuilder {
             strings: vec![String::new()],
             string_ids,
             functions: Vec::new(),
-            function_ids: HashMap::new(),
+            function_ids: HashMap::default(),
             frames: Vec::new(),
-            frame_ids: HashMap::new(),
+            frame_ids: HashMap::default(),
             stacks: Vec::new(),
-            stack_ids: HashMap::new(),
+            stack_ids: HashMap::default(),
+            child_hint: Vec::new(),
+            root_hint: NO_HINT,
             sample_types,
             default_sample_type: 0,
             samples: Vec::new(),
@@ -252,18 +261,31 @@ impl ProfileBuilder {
 
     /// Interns a root-first stack; returns the leaf node, or `None` for an empty stack.
     pub fn stack(&mut self, root_first: &[FrameId]) -> Option<StackId> {
-        let mut parent = None;
+        let mut parent: Option<StackId> = None;
         for &frame in root_first {
+            let hint = match parent {
+                Some(p) => &mut self.child_hint[p.0 as usize],
+                None => &mut self.root_hint,
+            };
+            if hint.0 == frame && hint.1 != NO_HINT.1 {
+                parent = Some(hint.1);
+                continue;
+            }
             let key = (parent, frame);
             let id = match self.stack_ids.get(&key) {
                 Some(&id) => id,
                 None => {
                     let id = StackId(self.stacks.len() as u32);
                     self.stacks.push(StackNode { parent, frame });
+                    self.child_hint.push(NO_HINT);
                     self.stack_ids.insert(key, id);
                     id
                 }
             };
+            match parent {
+                Some(p) => self.child_hint[p.0 as usize] = (frame, id),
+                None => self.root_hint = (frame, id),
+            }
             parent = Some(id);
         }
         parent
@@ -349,6 +371,19 @@ mod tests {
         assert_eq!(p.frames.len(), 4);
         assert_eq!(p.stacks.len(), 4);
         assert_eq!(p.strings[0], "");
+    }
+
+    #[test]
+    fn interleaved_stacks_intern_to_the_same_nodes() {
+        let mut b = ProfileBuilder::new(vec![st("samples")], meta());
+        let ab = chain(&mut b, &["a", "b"]);
+        let ac = chain(&mut b, &["a", "c"]);
+        let c = chain(&mut b, &["c"]);
+        assert_eq!(chain(&mut b, &["a", "b"]), ab);
+        assert_eq!(chain(&mut b, &["a", "c"]), ac);
+        assert_eq!(chain(&mut b, &["c"]), c);
+        assert_ne!(ab, ac);
+        assert_eq!(b.finish().stacks.len(), 4);
     }
 
     #[test]
