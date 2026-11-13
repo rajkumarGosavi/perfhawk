@@ -108,6 +108,10 @@ D1 **Query tab** (filter DSL from PLAN §205, then SQL over timelines via embedd
 | **V6 "Trend"** (≈ 3 wk) | C4 history, CI regression views | Phase 3 / CI gating |
 | later | D1 query tab, D2 source annotate, IDE hooks | Phase 3+ |
 
+**Implementation plans:** [V1 Orient](superpowers/plans/2026-11-13-v1-orient.md) (delivered) · [V2 Reduce](superpowers/plans/2026-11-13-v2-reduce.md) · [V3 Explain](superpowers/plans/2026-11-13-v3-explain.md) · [V4 Graph](superpowers/plans/2026-11-13-v4-graph.md) · [V5 Time](superpowers/plans/2026-11-13-v5-time.md) · [V6 Trend](superpowers/plans/2026-11-13-v6-trend.md).
+
+**Not planned yet (Tier D, later):** D1 query tab (filter DSL, then SQL over timelines) waits for the Phase 2 event timeline; D2 source/disasm annotate needs DWARF/PDB/source-map work in the importers; D3 treemap/sunburst is skipped unless users ask. C2 (per-thread timeline tracks) is deferred out of V5 until the Phase 2 `Timeline` kind carries thread and state events. Open questions closed by the plans: §9 Q1 (in-house graph layout, V4) and Q2 (20 ms buckets at capture time, V5).
+
 **V1 rulings (deviations from the items above):**
 
 - A6 left-heavy toggle dropped: the server already orders flame children by total, so the flame is left-heavy. Only the flame + top *Both* layout shipped.
