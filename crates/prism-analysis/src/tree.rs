@@ -222,7 +222,7 @@ impl Arena {
     }
 
     /// Converts to an owned tree without recursion, pruning children whose
-    /// total is below `min_fraction * root.total` and sorting by total desc, name asc.
+    /// total is below `min_fraction * root.total` and sorting by total desc, name asc, func id asc.
     pub(crate) fn into_flame(self, p: &Profile, min_fraction: f64) -> FlameNode {
         let threshold = min_fraction * self.nodes[0].total as f64;
         let n = self.nodes.len();
@@ -251,7 +251,12 @@ impl Arena {
                 .filter(|&&c| slot[c] != NONE)
                 .filter_map(|&c| built[slot[c] as usize].take())
                 .collect();
-            children.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.name.cmp(&b.name)));
+            children.sort_by(|a, b| {
+                b.total
+                    .cmp(&a.total)
+                    .then_with(|| a.name.cmp(&b.name))
+                    .then_with(|| a.func_id.cmp(&b.func_id))
+            });
             let (func_id, name, file) = match node.func {
                 Some(f) => {
                     let func = &p.functions[f.0 as usize];

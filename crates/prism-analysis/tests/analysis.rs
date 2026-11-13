@@ -214,4 +214,29 @@ fn unfiltered_fast_path_matches_per_sample_path() {
     assert_eq!(top(&p, 0, &none(), 100), top(&p, 0, &slow, 100));
     assert!(flame(&p, 3, &none(), 0.0).children.is_empty());
     assert!(top(&p, 3, &none(), 10).is_empty());
+
+    // Exact ties (same total, same name, different files) must order the same
+    // on both paths: x@b.go is first-seen on the fast path, x@a.go on the other.
+    let mut b = ProfileBuilder::new(
+        vec![SampleType {
+            name: "samples".into(),
+            unit: Unit::Count,
+        }],
+        meta(),
+    );
+    let main = b.function("main", "m.go", 1);
+    let (m1, m2) = (b.frame(main, 1, 0), b.frame(main, 2, 0));
+    let xa = b.function("x", "a.go", 1);
+    let xb = b.function("x", "b.go", 1);
+    let (x_a, x_b) = (b.frame(xa, 1, 0), b.frame(xb, 1, 0));
+    for fs in [vec![m1], vec![m2, x_b], vec![m1, x_a]] {
+        let st = b.stack(&fs);
+        b.add_sample(st, &[1], vec![]).unwrap();
+    }
+    let p = b.finish();
+    let (fast, slow_tree) = (flame(&p, 0, &none(), 0.0), flame(&p, 0, &slow, 0.0));
+    assert_eq!(fast, slow_tree);
+    let kids = &fast.children[0].children;
+    assert_eq!(kids.len(), 2);
+    assert!(kids[0].func_id < kids[1].func_id);
 }
