@@ -40,6 +40,9 @@ cd examples/dotnet-demo
 ./profile.sh             # Linux / macOS
 ```
 
+If PowerShell blocks the script, run it with
+`powershell -ExecutionPolicy Bypass -File ./profile.ps1`.
+
 Each workload (`cpu`, `alloc`, `lock`, `io`) is captured separately and imported
 with `--kind wall`. Speedscope files exported by `dotnet-trace` contain sampled
 thread stacks, which include waiting threads, so they are wall-clock-like. That

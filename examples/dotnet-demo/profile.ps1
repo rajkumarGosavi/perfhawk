@@ -20,8 +20,10 @@ if (-not (Get-Command dotnet-trace -ErrorAction SilentlyContinue)) {
 
 $prism = (Get-Command prism -ErrorAction SilentlyContinue).Source
 if (-not $prism) {
-    $candidate = Join-Path $PSScriptRoot "..\..\target\debug\prism.exe"
-    if (Test-Path $candidate) { $prism = (Resolve-Path $candidate).Path }
+    foreach ($profile in "release", "debug") {
+        $candidate = Join-Path $PSScriptRoot "..\..\target\$profile\prism.exe"
+        if (Test-Path $candidate) { $prism = (Resolve-Path $candidate).Path; break }
+    }
 }
 
 dotnet build -c Release -nologo -v q

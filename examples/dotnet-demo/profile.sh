@@ -18,7 +18,7 @@ command -v dotnet-trace >/dev/null || { echo "dotnet-trace not found. Install it
 
 PRISM="$(command -v prism || true)"
 if [ -z "$PRISM" ]; then
-  for c in ../../target/debug/prism ../../target/debug/prism.exe; do [ -x "$c" ] && PRISM="$c" && break; done
+  for c in ../../target/release/prism ../../target/release/prism.exe ../../target/debug/prism ../../target/debug/prism.exe; do [ -x "$c" ] && PRISM="$c" && break; done
 fi
 
 dotnet build -c Release -nologo -v q
