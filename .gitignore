@@ -10,3 +10,7 @@
 /helpers/prism-dotnet/obj/
 /helpers/prism-dotnet/tests/bin/
 /helpers/prism-dotnet/tests/obj/
+
+# Release artifacts (generated)
+/dist/
+/THIRD_PARTY_NOTICES.txt

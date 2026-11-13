@@ -1,0 +1,24 @@
+OTHER BUNDLED COMPONENTS
+========================
+
+prism-dotnet.exe (the .NET recording helper) is a self-contained single-file
+application. It bundles:
+
+  - The .NET 8 runtime and base class library
+    Copyright (c) .NET Foundation and Contributors. MIT License.
+    https://github.com/dotnet/runtime/blob/main/LICENSE.TXT
+    Third-party notices: https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT
+
+  - Microsoft.Diagnostics.NETCore.Client
+    Copyright (c) Microsoft Corporation. MIT License.
+    https://github.com/dotnet/diagnostics
+
+  - Microsoft.Diagnostics.Tracing.TraceEvent
+    Copyright (c) Microsoft Corporation. MIT License.
+    https://github.com/microsoft/perfview
+
+The Go agent (github.com/rajkumarGosavi/prism/agents/go) is not part of this
+package; it is a library compiled into your own program. It depends on:
+
+  - github.com/felixge/fgprof (MIT)         https://github.com/felixge/fgprof
+  - github.com/google/pprof   (Apache-2.0)  https://github.com/google/pprof
