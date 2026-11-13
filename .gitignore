@@ -3,3 +3,6 @@
 /ui/dist/
 /.superpowers/
 /.remember/
+/examples/*/profiles/
+/examples/dotnet-demo/bin/
+/examples/dotnet-demo/obj/

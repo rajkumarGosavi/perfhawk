@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- prism's MVP floor is .NET 8; RollForward lets it run on newer runtimes too. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>Major</RollForward>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>dotnet-demo</AssemblyName>
+    <RootNamespace>DotnetDemo</RootNamespace>
+    <!-- Keep frames readable in profiles. -->
+    <Optimize>true</Optimize>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+</Project>
