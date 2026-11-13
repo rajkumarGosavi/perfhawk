@@ -39,7 +39,7 @@ import (
 	"sync"
 	"time"
 
-	"prism.dev/agent"
+	agent "github.com/rajkumarGosavi/prism/agents/go"
 )
 
 type Order struct {

@@ -29,7 +29,7 @@ The product works. What is missing is everything between "it works on my machine
 | # | Item | Why | Size |
 |---|---|---|---|
 | 1 | **Push to GitHub and get CI green** on Windows (Linux/macOS red is allowed for v0.1 but fix what is cheap) | CI has never run. Unknown breakage is the biggest risk | M |
-| 2 | **Fix the Go agent import path.** `agents/go/go.mod` declares `prism.dev/agent`, a domain/vanity path nobody serves. Go users cannot `go get` it | The Go "record" story needs `import _ "…/agent"` in the target app. Rename to `github.com/<org>/prism/agents/go` (or serve a vanity path), tag `agents/go/v0.1.0` (nested-module tags are required), update docs and examples | M |
+| 2 | **Go agent import path.** Done: module is now `github.com/rajkumarGosavi/prism/agents/go`. Still to do at release: push the nested-module tag `agents/go/v0.1.0` so `go get` works, then verify from a clean module | S |
 | 3 | **Prebuilt `prism.exe` with the UI embedded**, built in CI by a release workflow on a `v*` tag | Users must not need Rust or Node | M |
 | 4 | **Bundle the .NET helper.** Ship `prism-dotnet.exe` next to `prism.exe`, self-contained (the +30–60 MB the plan accepted), or make `prism` extract/locate it. Today the helper is a `.dll` located via `PRISM_DOTNET` | `.NET` recording is half of the pitch. Must work out of the zip | M |
 | 5 | **Code signing** for `prism.exe` and `prism-dotnet.exe` | Unsigned binaries that attach to other processes will hit SmartScreen and Defender. See §3 | M (+ lead time) |

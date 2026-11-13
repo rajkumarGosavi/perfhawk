@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	_ "prism.dev/agent"
+	_ "github.com/rajkumarGosavi/prism/agents/go"
 )
 
 var sink [][]byte

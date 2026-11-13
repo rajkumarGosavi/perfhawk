@@ -208,11 +208,11 @@ What each runtime supports (no admin/root needed for any of it):
 | blocking | native | not available in Phase 1 |
 | threads | native | native |
 
-**Go targets.** Add the agent to your program (`go get prism.dev/agent`, or use a
-`replace` directive while the module is unpublished):
+**Go targets.** Add the agent to your program (`go get github.com/rajkumarGosavi/prism/agents/go`, or a
+`replace` directive for a local checkout):
 
 ```go
-import "prism.dev/agent"
+import agent "github.com/rajkumarGosavi/prism/agents/go"
 
 func main() {
     a, _ := agent.Start(agent.Options{}) // loopback only
@@ -221,7 +221,7 @@ func main() {
 }
 ```
 
-or import it with `_ "prism.dev/agent"` and start the program with
+or import it with `_ "github.com/rajkumarGosavi/prism/agents/go"` and start the program with
 `PRISM_AGENT=1` (this is what `prism record -- ./myprog` does). The agent serves
 `net/http/pprof`, adds wall-clock profiling, raises the mutex/block sampling
 rates only for the capture window and restores them afterwards, and publishes
@@ -549,14 +549,14 @@ or the UI's diff view.
 
 | Symptom | Fix |
 |---|---|
-| `Go process without the prism agent: start the agent or pass --url ...` | The pid is a Go program with no prism agent. Add `prism.dev/agent`, or expose `net/http/pprof` and use `--url`. (Detected on Linux only.) |
+| `Go process without the prism agent: start the agent or pass --url ...` | The pid is a Go program with no prism agent. Add `github.com/rajkumarGosavi/prism/agents/go`, or expose `net/http/pprof` and use `--url`. (Detected on Linux only.) |
 | `pid N: not found among reachable .NET 8+ processes ...` | The process is not .NET, has `DOTNET_EnableDiagnostics=0`, runs as another user, or (Linux/macOS) uses a different `TMPDIR` than prism. Run prism as the same user with the same `TMPDIR`. |
 | `the target has DOTNET_EnableDiagnostics=0` | Restart the target without that variable (or set it to 1). |
 | `the target runs as another user, or TMPDIR differs` | Run prism as the target's user and with the target's `TMPDIR` (Linux/macOS). |
 | `pid N is not a .NET 8+ process` | Only .NET 8 and newer are supported. |
 | `the .NET helper (prism-dotnet) was not found` | Build it (`dotnet publish helpers/prism-dotnet -c Release -o <dir>`) and set `PRISM_DOTNET`, or put it next to `prism`. |
 | `prism-dotnet protocol X is not supported; rebuild the helper` | The helper and prism are from different versions; rebuild the helper. |
-| `program did not start the prism agent; import prism.dev/agent` | The launched Go program does not import the agent. |
+| `program did not start the prism agent; import github.com/rajkumarGosavi/prism/agents/go` | The launched Go program does not import the agent. |
 | `mutex profiling is disabled in the target ...` | A warning, not a failure: the profile is empty because the target has not enabled mutex/block sampling and no agent is present. |
 | Session is `partial` | The target exited before the window ended. Prism keeps what it captured. |
 

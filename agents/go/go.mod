@@ -1,4 +1,4 @@
-module prism.dev/agent
+module github.com/rajkumarGosavi/prism/agents/go
 
 go 1.22
 

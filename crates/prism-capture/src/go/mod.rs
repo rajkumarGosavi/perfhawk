@@ -259,7 +259,7 @@ fn launch_and_capture(
             warnings: vec![],
         }),
         None => Err(CaptureError::Target(
-            "program did not start the prism agent; import prism.dev/agent".into(),
+            "program did not start the prism agent; import github.com/rajkumarGosavi/prism/agents/go".into(),
         )),
         Some(d) => http::capture_http(&d.url, true, plan, cancel, progress),
     };
