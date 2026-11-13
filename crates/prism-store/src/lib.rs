@@ -7,7 +7,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -59,15 +59,25 @@ pub struct Store {
     conn: Mutex<Connection>,
 }
 
-/// `PRISM_HOME` if set and non-empty, else the platform data dir `/prism`, else `./.prism`.
+/// `PRISM_HOME` if set and non-empty, else the platform data dir joined with `prism`,
+/// else `./.prism` when the needed environment variables are missing.
 pub fn default_home() -> PathBuf {
-    if let Some(v) = std::env::var_os("PRISM_HOME") {
-        if !v.is_empty() {
-            return PathBuf::from(v);
-        }
+    let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
+    if let Some(v) = env("PRISM_HOME") {
+        return PathBuf::from(v);
     }
-    match dirs::data_dir() {
-        Some(d) => d.join("prism"),
+    let base = if cfg!(target_os = "windows") {
+        env("APPDATA").map(PathBuf::from)
+    } else if cfg!(target_os = "macos") {
+        env("HOME").map(|h| PathBuf::from(h).join("Library").join("Application Support"))
+    } else {
+        env("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .or_else(|| env("HOME").map(|h| PathBuf::from(h).join(".local").join("share")))
+    };
+    match base {
+        Some(b) => b.join("prism"),
         None => PathBuf::from(".prism"),
     }
 }
@@ -138,22 +148,32 @@ impl Store {
         std::fs::create_dir_all(root)?;
         std::fs::create_dir_all(root.join("blobs"))?;
         let conn = Connection::open(root.join("prism.db"))?;
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS profiles (
-                id TEXT PRIMARY KEY,
-                short_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                kind TEXT NOT NULL,
-                source_format TEXT NOT NULL,
-                sample_types TEXT NOT NULL,
-                default_sample_type INTEGER NOT NULL,
-                sample_count INTEGER NOT NULL,
-                default_total INTEGER NOT NULL,
-                imported_at_unix_ms INTEGER NOT NULL,
-                tags TEXT NOT NULL
-            );
-            PRAGMA user_version = 1;",
-        )?;
+        conn.busy_timeout(Duration::from_secs(5))?;
+        conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(()))?;
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if version > 1 {
+            return Err(StoreError::Corrupt(format!(
+                "database schema version {version} is newer than supported 1"
+            )));
+        }
+        if version == 0 {
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS profiles (
+                    id TEXT PRIMARY KEY,
+                    short_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    source_format TEXT NOT NULL,
+                    sample_types TEXT NOT NULL,
+                    default_sample_type INTEGER NOT NULL,
+                    sample_count INTEGER NOT NULL,
+                    default_total INTEGER NOT NULL,
+                    imported_at_unix_ms INTEGER NOT NULL,
+                    tags TEXT NOT NULL
+                );
+                PRAGMA user_version = 1;",
+            )?;
+        }
         Ok(Store {
             root: root.to_path_buf(),
             conn: Mutex::new(conn),

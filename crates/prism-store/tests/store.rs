@@ -160,3 +160,35 @@ fn corrupt_blob_reports_corrupt() {
     std::fs::remove_file(&blob).unwrap();
     assert!(matches!(store.load(&rec.id), Err(StoreError::Corrupt(_))));
 }
+
+#[test]
+fn newer_schema_version_is_rejected() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    drop(Store::open(tmp.path()).unwrap());
+    let raw = rusqlite::Connection::open(tmp.path().join("prism.db")).unwrap();
+    raw.execute_batch("PRAGMA user_version = 2;").unwrap();
+    drop(raw);
+    assert!(matches!(
+        Store::open(tmp.path()),
+        Err(StoreError::Corrupt(_))
+    ));
+}
+
+#[test]
+fn default_home_respects_prism_home() {
+    let old = std::env::var_os("PRISM_HOME");
+    std::env::set_var("PRISM_HOME", "/tmp/custom prism");
+    assert_eq!(
+        prism_store::default_home(),
+        std::path::PathBuf::from("/tmp/custom prism")
+    );
+    std::env::set_var("PRISM_HOME", "");
+    assert!(
+        prism_store::default_home().ends_with("prism")
+            || prism_store::default_home().ends_with(".prism")
+    );
+    match old {
+        Some(v) => std::env::set_var("PRISM_HOME", v),
+        None => std::env::remove_var("PRISM_HOME"),
+    }
+}
