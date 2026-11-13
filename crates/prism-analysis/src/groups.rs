@@ -46,6 +46,28 @@ fn key(p: &Profile, by: GroupBy, funcs: &[FuncId]) -> Vec<FuncId> {
     }
 }
 
+/// The count sample type that pairs with `sample_type`: same name family
+/// (`inuse_space` pairs with `inuse_objects`), else the only count type.
+fn count_type_for(p: &Profile, sample_type: usize) -> Option<usize> {
+    let counts: Vec<usize> = p
+        .sample_types
+        .iter()
+        .enumerate()
+        .filter(|(i, t)| *i != sample_type && t.unit == Unit::Count)
+        .map(|(i, _)| i)
+        .collect();
+    let family = |n: &str| n.split('_').next().unwrap_or(n).to_string();
+    let want = p.sample_types.get(sample_type).map(|t| family(&t.name));
+    counts
+        .iter()
+        .copied()
+        .find(|&i| {
+            Some(family(&p.sample_types[i].name)) == want
+                && p.sample_types[sample_type].name.contains('_')
+        })
+        .or_else(|| (counts.len() == 1).then(|| counts[0]))
+}
+
 pub fn groups(
     p: &Profile,
     sample_type: usize,
@@ -60,12 +82,7 @@ pub fn groups(
         e.0 = e.0.saturating_add(v);
         total = total.saturating_add(v);
     });
-    let count_type = p
-        .sample_types
-        .iter()
-        .enumerate()
-        .find(|(i, t)| *i != sample_type && t.unit == Unit::Count)
-        .map(|(i, _)| i);
+    let count_type = count_type_for(p, sample_type);
     if let Some(ct) = count_type {
         for e in acc.values_mut() {
             e.1 = Some(0);

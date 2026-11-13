@@ -465,19 +465,31 @@ pub fn diff_top_sorted(
 }
 
 /// Descending by |delta_total| / base_total, compared by cross-multiplication
-/// (no floats); rows with `base_total == 0` sort before all others.
+/// (no floats). Rows new in the head (`base_total == 0`, `head_total > 0`)
+/// come first; rows that are zero on both sides come last.
 fn percent_order(a: &DiffRow, b: &DiffRow) -> std::cmp::Ordering {
-    let (ab, bb) = (a.base_total.max(0) as u128, b.base_total.max(0) as u128);
-    match (ab == 0, bb == 0) {
-        (true, true) => std::cmp::Ordering::Equal,
-        (true, false) => std::cmp::Ordering::Less,
-        (false, true) => std::cmp::Ordering::Greater,
-        (false, false) => {
+    use std::cmp::Ordering;
+    // 0 = new, 1 = measurable ratio, 2 = zero on both sides
+    let class = |r: &DiffRow| {
+        if r.base_total <= 0 {
+            if r.head_total > 0 {
+                0
+            } else {
+                2
+            }
+        } else {
+            1
+        }
+    };
+    match class(a).cmp(&class(b)) {
+        Ordering::Equal if class(a) == 1 => {
+            let (ab, bb) = (a.base_total as u128, b.base_total as u128);
             let (da, db) = (
                 a.delta_total.unsigned_abs() as u128,
                 b.delta_total.unsigned_abs() as u128,
             );
             (db * ab).cmp(&(da * bb))
         }
+        o => o,
     }
 }

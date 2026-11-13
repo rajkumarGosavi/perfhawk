@@ -7,7 +7,7 @@ type Props = {
   sessionId: string | null
   functionName: string | null
   currentProfileId: string
-  navigate: (patch: Partial<ViewState>, mode?: 'push' | 'replace') => void
+  navigate: (patch: Partial<ViewState>, mode?: 'push' | 'replace', reset?: boolean) => void
 }
 
 /** Where else the same function shows up in the profiles captured in this session. */
@@ -43,7 +43,7 @@ export function PivotPanel({ sessionId, functionName, currentProfileId, navigate
                 <span className="muted">
                   (self {formatValue(r.selfValue, r.sampleType.unit)}, total {formatValue(r.total, r.sampleType.unit)})
                 </span>{' '}
-                <button onClick={() => navigate({ profile: r.shortId, view: 'sandwich', func: r.funcId ?? undefined }, 'push')}>
+                <button onClick={() => navigate({ profile: r.shortId, view: 'sandwich', func: r.funcId ?? undefined }, 'push', true)}>
                   Open
                 </button>
               </>

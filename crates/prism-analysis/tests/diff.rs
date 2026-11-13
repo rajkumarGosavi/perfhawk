@@ -289,3 +289,24 @@ fn diff_top_percent_sort_on_empty_profiles_is_empty() {
     );
     assert!(rows.is_empty());
 }
+
+#[test]
+fn diff_top_percent_sort_puts_zero_on_both_sides_last() {
+    let base = build(&[(&["main", "z"], 0), (&["main", "a"], 100)]);
+    let head = build(&[
+        (&["main", "z"], 0),
+        (&["main", "a"], 150),
+        (&["main", "n"], 5),
+    ]);
+    let rows = diff_top_sorted(
+        inp(&base),
+        inp(&head),
+        &none(),
+        DiffNormalize::None,
+        10,
+        DiffSort::Percent,
+    );
+    let order: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(order.first(), Some(&"n"));
+    assert_eq!(order.last(), Some(&"z"));
+}

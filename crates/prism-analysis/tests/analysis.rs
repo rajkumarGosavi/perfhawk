@@ -580,3 +580,38 @@ fn groups_limit_transform_and_empty() {
     assert_eq!(rows.iter().map(|r| r.value).sum::<i64>(), 5);
     assert!(groups(&build(&[]), 0, &none(), GroupBy::Stack, 10).is_empty());
 }
+
+#[test]
+fn groups_count_pairs_with_matching_sample_type_family() {
+    let mut b = ProfileBuilder::new(
+        vec![
+            SampleType {
+                name: "alloc_objects".into(),
+                unit: Unit::Count,
+            },
+            SampleType {
+                name: "alloc_space".into(),
+                unit: Unit::Bytes,
+            },
+            SampleType {
+                name: "inuse_objects".into(),
+                unit: Unit::Count,
+            },
+            SampleType {
+                name: "inuse_space".into(),
+                unit: Unit::Bytes,
+            },
+        ],
+        meta(),
+    );
+    let f = b.function("main.alloc", "x.go", 1);
+    let fr = b.frame(f, 1, 0);
+    let s = b.stack(&[fr]);
+    b.add_sample(s, &[100, 1000, 2, 20], vec![]).unwrap();
+    let p = b.finish();
+    let rows = groups(&p, 3, &none(), GroupBy::Site, 10);
+    assert_eq!(rows[0].count, Some(2));
+    assert_eq!(rows[0].mean, Some(10.0));
+    let rows = groups(&p, 1, &none(), GroupBy::Site, 10);
+    assert_eq!(rows[0].count, Some(100));
+}
