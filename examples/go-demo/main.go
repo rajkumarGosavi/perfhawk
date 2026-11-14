@@ -135,6 +135,11 @@ func main() {
 			wg.Add(1)
 			go func(n int) { defer wg.Done(); svc.diskWorker(stop, n) }(i)
 		}
+		// Plus real disk traffic, which OS-level tracing (ETW, eBPF) attributes to a file.
+		for i := 0; i < 2; i++ {
+			wg.Add(1)
+			go func(n int) { defer wg.Done(); svc.fileWorker(stop, n) }(i)
+		}
 	}
 	if *mode == "mixed" {
 		// Fast producer, slow consumer (block profile).
@@ -296,6 +301,34 @@ func (s *service) diskWorker(stop <-chan struct{}, n int) {
 	for {
 		if _, err := r.Read(buf); err != nil {
 			return // the writer closed the pipe: we are stopping
+		}
+	}
+}
+
+// fileWorker does real disk I/O: write 1 MiB to a temp file, fsync it, read it back.
+func (s *service) fileWorker(stop <-chan struct{}, n int) {
+	f, err := os.CreateTemp("", fmt.Sprintf("perfhawk-demo-%d-*.bin", n))
+	if err != nil {
+		log.Printf("file worker %d: %v", n, err)
+		return
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	buf := make([]byte, 1<<20)
+	for {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		if _, err := f.WriteAt(buf, 0); err != nil {
+			return
+		}
+		if err := f.Sync(); err != nil {
+			return
+		}
+		if _, err := f.ReadAt(buf, 0); err != nil {
+			return
 		}
 	}
 }

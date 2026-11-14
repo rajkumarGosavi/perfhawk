@@ -70,7 +70,10 @@ fn ls_json_is_parseable() {
         .arg(fixture("go-cpu.pb.gz"))
         .assert()
         .success();
-    let out = perfhawk(home.path()).args(["ls", "--json"]).output().unwrap();
+    let out = perfhawk(home.path())
+        .args(["ls", "--json"])
+        .output()
+        .unwrap();
     assert!(out.status.success());
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v.as_array().unwrap().len(), 1);

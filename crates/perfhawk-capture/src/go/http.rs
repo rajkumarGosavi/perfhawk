@@ -152,15 +152,18 @@ pub(crate) fn capture_http(
             let msg = match result {
                 Ok(bytes) => {
                     let timeline = if got_windows {
-                        perfhawk_import::import_bytes(&bytes, &perfhawk_import::ImportHints::default())
-                            .ok()
-                            .and_then(|p| {
-                                crate::timeline::timeline_from_labels(
-                                    &p,
-                                    WINDOW_MS * 1_000_000,
-                                    started_ns,
-                                )
-                            })
+                        perfhawk_import::import_bytes(
+                            &bytes,
+                            &perfhawk_import::ImportHints::default(),
+                        )
+                        .ok()
+                        .and_then(|p| {
+                            crate::timeline::timeline_from_labels(
+                                &p,
+                                WINDOW_MS * 1_000_000,
+                                started_ns,
+                            )
+                        })
                     } else {
                         None
                     };

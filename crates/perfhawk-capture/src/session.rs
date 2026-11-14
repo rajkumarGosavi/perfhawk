@@ -135,8 +135,8 @@ pub fn record(
         req.plan.duration.as_secs()
     ));
     let (lang_res, sys_res) = std::thread::scope(|scope| {
-        let sys_handle = sys_provider
-            .map(|sp| scope.spawn(|| sp.capture(&rt, &sys_plan, cancel, progress)));
+        let sys_handle =
+            sys_provider.map(|sp| scope.spawn(|| sp.capture(&rt, &sys_plan, cancel, progress)));
         let lang_res = if lang_kinds.is_empty() {
             None
         } else {

@@ -26,7 +26,11 @@ fn go_demo_exe() -> &'static PathBuf {
         let dir =
             std::env::temp_dir().join(format!("perfhawk-doctor-e2e-godemo-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let exe = dir.join(if cfg!(windows) { "go-demo.exe" } else { "go-demo" });
+        let exe = dir.join(if cfg!(windows) {
+            "go-demo.exe"
+        } else {
+            "go-demo"
+        });
         let st = Command::new("go")
             .args(["build", "-o"])
             .arg(&exe)
@@ -50,7 +54,15 @@ impl Drop for Killer {
 
 fn spawn_demo(mode: &str) -> Killer {
     let child = Command::new(go_demo_exe())
-        .args(["-files=false", "-duration", "90s", "-pprof", "", "-mode", mode])
+        .args([
+            "-files=false",
+            "-duration",
+            "90s",
+            "-pprof",
+            "",
+            "-mode",
+            mode,
+        ])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()

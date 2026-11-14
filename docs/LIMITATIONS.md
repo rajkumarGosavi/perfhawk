@@ -6,14 +6,22 @@ Perfhawk v0.1 is a first release. This page lists what it does not do, so you ar
 
 - **Windows 10/11 x64 only.** Linux and macOS support is planned next; the code builds there but is not released or fully tested (see [FOLLOWUPS.md](FOLLOWUPS.md)).
 - Release binaries are **not yet code-signed** unless the release notes say so, so SmartScreen may warn. See [Troubleshooting](TROUBLESHOOTING.md).
-- There is no `perfhawk doctor` or built-in demo yet.
+- `perfhawk doctor` exists; its I/O verdict is firm only where OS-level tracing is available (Windows with an administrator shell).
 
 ## Scope
 
 - Perfhawk is **on-demand**: you start a recording, it runs for a window of 1 second to 10 minutes. It is not a continuous production profiler.
 - **Local only.** No remote targets, Kubernetes or SSH, and no team sharing. The UI has no authentication and must not be exposed on a network.
 - Languages: **Go 1.22+** and **.NET 8+**. Java, Python and Node can be *imported* from collapsed or speedscope files but cannot be recorded.
-- Block I/O and off-CPU analysis (ETW on Windows) is planned, not included.
+- Block I/O, off-CPU and scheduler delay are available on **Windows only**, through ETW, and need an administrator shell. Linux (eBPF) and macOS are planned.
+
+## OS-level tracing (Windows ETW)
+
+- .NET managed frames in these profiles are not named yet (they show as module+offset or `[unknown]`); Go frames are named unless the binary is stripped.
+- System DLL frames have no names (no PDB lookup): `module+0xoffset`.
+- A thread that is blocked for the whole capture and never wakes has no off-CPU row, because Windows records the blocked stack when the thread resumes.
+- Under heavy system load Windows drops trace events; the profile carries a warning with the counts and numbers undercount.
+- If a stale Perfhawk trace session is left after a crash, stop it with `logman stop perfhawk-kernel-<pid> -ets`.
 
 ## Go
 
@@ -50,3 +58,4 @@ Perfhawk v0.1 is a first release. This page lists what it does not do, so you ar
 ## Reporting gaps
 
 Missing something that blocks you? Open an issue and tell us what you were trying to find. The [roadmap](PLAN.md#7-roadmap) is driven by real use.
+- **Go:** Block I/O and off-CPU stacks name the file and the OS/runtime frames but not the Go function that made the call (Go makes syscalls on its system stack). Use the Go wall-clock or CPU profile to find the caller.

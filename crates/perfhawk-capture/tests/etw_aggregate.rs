@@ -1,0 +1,391 @@
+use perfhawk_capture::sysevents::*;
+use perfhawk_model::file_leaf;
+
+const TARGET: u32 = 100;
+const FREQ: i64 = 10_000_000; // 10 MHz QPC: 1 tick = 100 ns
+
+fn clock() -> QpcClock {
+    QpcClock {
+        freq: FREQ,
+        qpc_start: 1_000_000,
+        unix_start_ns: 5_000_000_000,
+    }
+}
+
+/// QPC ticks for `ms` milliseconds after the window start.
+fn at_ms(ms: i64) -> i64 {
+    clock().qpc_start + ms * FREQ / 1000
+}
+
+fn ticks_ms(ms: i64) -> i64 {
+    ms * FREQ / 1000
+}
+
+fn names(ev: &RawEvent) -> Vec<String> {
+    // stacks arrive leaf-first from ETW; the closure returns root-first names
+    ev.stack.iter().rev().map(|a| format!("fn{a}")).collect()
+}
+
+fn run(events: &[RawEvent]) -> Aggregated {
+    aggregate(&AggregateInput {
+        events,
+        target_pid: TARGET,
+        clock: clock(),
+        window_ns: 10_000_000_000,
+        bucket_ns: 1_000_000_000,
+        symbolize: &names,
+    })
+}
+
+fn file_write(pid: u32, tid: u32, ms: i64, dur_ms: i64, bytes: u64, path: &str) -> RawEvent {
+    let mut e = RawEvent::new(RawKind::FileWrite, at_ms(ms), pid, tid);
+    e.duration_qpc = ticks_ms(dur_ms);
+    e.bytes = bytes;
+    e.file = Some(path.to_string());
+    e.stack = vec![2, 1]; // leaf-first: fn1 is the root
+    e
+}
+
+/// `tid` of `pid` is switched in (replacing `old_tid`); `stack` is leaf-first.
+fn cswitch(pid: u32, tid: u32, old_tid: u32, ms: i64, stack: Vec<u64>) -> RawEvent {
+    let mut e = RawEvent::new(RawKind::CSwitch, at_ms(ms), pid, tid);
+    e.new_tid = tid;
+    e.old_tid = old_tid;
+    e.stack = stack;
+    e
+}
+
+fn ready(pid: u32, tid: u32, ms: i64) -> RawEvent {
+    let mut e = RawEvent::new(RawKind::ReadyThread, at_ms(ms), pid, tid);
+    e.new_tid = tid;
+    e
+}
+
+#[test]
+fn qpc_converts_to_unix_ns() {
+    let c = clock();
+    assert_eq!(
+        c.to_unix_ns(c.qpc_start + FREQ),
+        5_000_000_000 + 1_000_000_000
+    );
+    assert_eq!(c.qpc_to_ns(FREQ), 1_000_000_000);
+}
+
+#[test]
+fn file_write_becomes_block_io_row_with_file_leaf() {
+    let a = run(&[file_write(TARGET, 7, 100, 2, 4096, "C:\\data\\x.db")]);
+    assert_eq!(a.block_io.len(), 1);
+    let r = &a.block_io[0];
+    assert_eq!(r.stack, vec!["fn1", "fn2", &file_leaf("C:\\data\\x.db")]);
+    assert_eq!(r.values, vec![2_000_000, 4096]);
+    assert_eq!(r.bucket, 0);
+}
+
+#[test]
+fn off_cpu_span_runs_from_switch_out_to_switch_in() {
+    // thread 7 (target) is replaced by a thread of another process at 100 ms,
+    // and switched back in 1 ms later with the stack it blocked on
+    let a = run(&[
+        cswitch(77, 999, 7, 100, vec![]),
+        cswitch(TARGET, 7, 999, 101, vec![3, 2, 1]),
+    ]);
+    assert_eq!(a.off_cpu.len(), 1);
+    assert_eq!(a.off_cpu[0].values, vec![1_000_000]);
+    assert_eq!(
+        a.off_cpu[0].stack,
+        vec!["fn1", "fn2", "fn3", "[wait: Executive]"]
+    );
+    assert!(a.block_io.is_empty() && a.sched_delay.is_empty());
+}
+
+#[test]
+fn switch_in_without_prior_switch_out_starts_at_window_start() {
+    let a = run(&[cswitch(TARGET, 7, 999, 2_000, vec![1])]);
+    assert_eq!(a.off_cpu.len(), 1);
+    assert_eq!(a.off_cpu[0].values, vec![2_000_000_000]);
+    assert_eq!(a.off_cpu[0].bucket, 0);
+}
+
+#[test]
+fn context_switches_of_other_processes_are_ignored() {
+    assert!(run(&[cswitch(77, 8, 999, 500, vec![1])]).off_cpu.is_empty());
+}
+
+#[test]
+fn short_spans_are_dropped() {
+    // 5 ticks is 500 ns at 10 MHz
+    let out = cswitch(77, 999, 7, 100, vec![]);
+    let mut back = cswitch(TARGET, 7, 999, 100, vec![1]);
+    back.qpc = at_ms(100) + 5;
+    assert!(run(&[out, back]).off_cpu.is_empty());
+}
+
+#[test]
+fn ready_thread_to_switch_in_is_sched_delay() {
+    // off-CPU at 100 ms, made runnable at 200 ms, running again at 203 ms
+    let a = run(&[
+        cswitch(77, 999, 7, 100, vec![]),
+        ready(TARGET, 7, 200),
+        cswitch(TARGET, 7, 999, 203, vec![1]),
+    ]);
+    assert_eq!(a.sched_delay.len(), 1);
+    assert_eq!(a.sched_delay[0].values, vec![3_000_000]);
+    assert_eq!(a.sched_delay[0].stack, vec!["fn1"]);
+    assert_eq!(a.off_cpu[0].values, vec![103_000_000]);
+}
+
+#[test]
+fn events_of_other_pids_are_ignored() {
+    let a = run(&[file_write(77, 8, 100, 2, 4096, "C:\\other")]);
+    assert!(a.block_io.is_empty());
+}
+
+#[test]
+fn events_outside_window_are_dropped() {
+    let before = file_write(TARGET, 7, -1, 1, 1, "C:\\a");
+    let after = file_write(TARGET, 7, 10_001, 1, 1, "C:\\a");
+    assert!(run(&[before, after]).block_io.is_empty());
+}
+
+#[test]
+fn bucket_clamps_to_last_bucket() {
+    // exactly at the window end: bucket 10 would be out of range for 10 buckets
+    let a = run(&[file_write(TARGET, 7, 10_000, 1, 1, "C:\\a")]);
+    assert_eq!(a.block_io[0].bucket, 9);
+}
+
+#[test]
+fn bucket_follows_event_time() {
+    let a = run(&[file_write(TARGET, 7, 2_500, 1, 1, "C:\\a")]);
+    assert_eq!(a.block_io[0].bucket, 2);
+}
+
+#[test]
+fn disk_event_without_file_gets_disk_leaf() {
+    let mut d = RawEvent::new(RawKind::DiskRead, at_ms(100), TARGET, 7);
+    d.duration_qpc = ticks_ms(4);
+    d.bytes = 8192;
+    d.stack = vec![1];
+    let a = run(&[d]);
+    assert_eq!(a.block_io.len(), 1);
+    assert_eq!(a.block_io[0].stack.last().unwrap(), &file_leaf("[disk]"));
+    assert_eq!(a.block_io[0].values, vec![4_000_000, 8192]);
+}
+
+#[test]
+fn disk_event_covered_by_a_file_event_is_not_counted_twice() {
+    let w = file_write(TARGET, 7, 100, 5, 4096, "C:\\a");
+    let mut d = RawEvent::new(RawKind::DiskWrite, at_ms(102), TARGET, 7);
+    d.duration_qpc = ticks_ms(1);
+    d.bytes = 4096;
+    let a = run(&[w, d]);
+    assert_eq!(a.block_io.len(), 1);
+}
+
+// ---- Task 3: lifecycle, loss and artifacts ----
+
+use perfhawk_capture::EventRow;
+use perfhawk_model::ProfileKind;
+
+fn window() -> WindowSpec {
+    WindowSpec {
+        start_unix_ns: 5_000_000_000,
+        duration_ns: 10_000_000_000,
+        bucket_ns: 1_000_000_000,
+    }
+}
+
+fn no_loss() -> LossStats {
+    LossStats {
+        events_lost: 0,
+        buffers_lost: 0,
+    }
+}
+
+fn agg_with_io() -> Aggregated {
+    Aggregated {
+        block_io: vec![EventRow {
+            stack: vec!["main".into(), file_leaf("C:/a")],
+            values: vec![1_000, 10],
+            bucket: 0,
+        }],
+        ..Aggregated::default()
+    }
+}
+
+#[test]
+fn process_end_is_reported() {
+    let id = TargetIdentity {
+        pid: TARGET,
+        start_qpc: None,
+    };
+    let end = RawEvent::new(RawKind::ProcessEnd, at_ms(300), TARGET, 1);
+    let other = RawEvent::new(RawKind::ProcessEnd, at_ms(100), 77, 1);
+    assert_eq!(target_exited(&[other, end], &id), Some(at_ms(300)));
+    assert_eq!(target_exited(&[], &id), None);
+}
+
+#[test]
+fn pid_reuse_events_before_start_are_ignored() {
+    let id = TargetIdentity {
+        pid: TARGET,
+        start_qpc: Some(at_ms(500)),
+    };
+    let old = RawEvent::new(RawKind::FileWrite, at_ms(100), TARGET, 1);
+    let new = RawEvent::new(RawKind::FileWrite, at_ms(600), TARGET, 1);
+    let wrong = RawEvent::new(RawKind::FileWrite, at_ms(600), 77, 1);
+    assert!(!same_process(&old, &id));
+    assert!(same_process(&new, &id));
+    assert!(!same_process(&wrong, &id));
+}
+
+#[test]
+fn loss_warning_none_when_zero() {
+    assert_eq!(loss_warning(&no_loss()), None);
+}
+
+#[test]
+fn loss_warning_mentions_counts() {
+    let w = loss_warning(&LossStats {
+        events_lost: 12,
+        buffers_lost: 3,
+    })
+    .unwrap();
+    assert!(w.starts_with("ETW dropped"), "{w}");
+    assert!(w.contains("12") && w.contains('3'), "{w}");
+}
+
+#[test]
+fn build_artifacts_only_requested_kinds() {
+    let a = build_artifacts(
+        &agg_with_io(),
+        &window(),
+        &no_loss(),
+        &[ProfileKind::BlockIo],
+    );
+    assert_eq!(a.len(), 1);
+    assert_eq!(a[0].kind, ProfileKind::BlockIo);
+    assert!(a[0].timeline.is_some());
+    assert_eq!(a[0].warning, None);
+}
+
+#[test]
+fn empty_kind_still_yields_artifact_with_warning() {
+    let a = build_artifacts(
+        &agg_with_io(),
+        &window(),
+        &no_loss(),
+        &[ProfileKind::BlockIo, ProfileKind::OffCpu],
+    );
+    let off = a.iter().find(|x| x.kind == ProfileKind::OffCpu).unwrap();
+    assert_eq!(
+        off.warning.as_deref(),
+        Some("no off_cpu events were seen for the target")
+    );
+}
+
+#[test]
+fn loss_warning_attached_to_every_artifact() {
+    let loss = LossStats {
+        events_lost: 5,
+        buffers_lost: 1,
+    };
+    let a = build_artifacts(
+        &agg_with_io(),
+        &window(),
+        &loss,
+        &[ProfileKind::BlockIo, ProfileKind::SchedDelay],
+    );
+    assert_eq!(a.len(), 2);
+    for x in &a {
+        assert!(
+            x.warning.as_deref().unwrap().contains("ETW dropped"),
+            "{:?}",
+            x.warning
+        );
+    }
+}
+
+#[test]
+fn unresolved_frames_warning_has_count() {
+    let mut agg = agg_with_io();
+    agg.unresolved_frames = 42;
+    let a = build_artifacts(&agg, &window(), &no_loss(), &[ProfileKind::BlockIo]);
+    let w = a[0].warning.as_deref().unwrap();
+    assert!(w.contains("42") && w.contains("unresolved"), "{w}");
+}
+
+#[test]
+fn disk_coverage_is_found_among_overlapping_file_spans() {
+    // a long read starts first and still covers a disk event after a short one
+    let long = file_write(TARGET, 7, 100, 50, 1, "C:/a");
+    let short = file_write(TARGET, 7, 110, 1, 1, "C:/a");
+    let mut d = RawEvent::new(RawKind::DiskWrite, at_ms(130), TARGET, 7);
+    d.duration_qpc = ticks_ms(1);
+    assert_eq!(run(&[long, short, d]).block_io.len(), 2);
+}
+
+#[test]
+fn many_disk_events_against_many_file_events_stay_fast() {
+    let mut ev = Vec::new();
+    for i in 0..100_000i64 {
+        let mut f = file_write(TARGET, 7, i / 20, 0, 1, "C:/a");
+        f.qpc += i; // distinct times
+        ev.push(f);
+    }
+    for i in 0..50_000i64 {
+        let mut d = RawEvent::new(RawKind::DiskWrite, at_ms(i / 10), TARGET, 7);
+        d.qpc += i;
+        d.duration_qpc = 1;
+        ev.push(d);
+    }
+    let t = std::time::Instant::now();
+    let a = run(&ev);
+    assert!(a.block_io.len() >= 100_000);
+    assert!(
+        t.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        t.elapsed()
+    );
+}
+
+#[test]
+fn off_cpu_stack_ends_in_the_wait_reason_of_the_switch_out() {
+    let mut out = cswitch(77, 999, 7, 100, vec![]);
+    out.wait_reason = 13; // WrUserRequest
+    let a = run(&[out, cswitch(TARGET, 7, 999, 150, vec![1])]);
+    assert_eq!(a.off_cpu[0].stack, vec!["fn1", "[wait: WrUserRequest]"]);
+}
+
+#[test]
+fn off_cpu_without_user_frames_still_has_a_wait_frame() {
+    // the kernel could not walk user frames: the row must not become an empty stack
+    let mut out = cswitch(77, 999, 7, 100, vec![]);
+    out.wait_reason = 15; // WrQueue
+    let a = run(&[out, cswitch(TARGET, 7, 999, 150, vec![])]);
+    assert_eq!(a.off_cpu[0].stack, vec!["[wait: WrQueue]"]);
+}
+
+#[test]
+fn first_seen_switch_in_has_an_unknown_wait_reason() {
+    let a = run(&[cswitch(TARGET, 7, 999, 150, vec![1])]);
+    assert_eq!(a.off_cpu[0].stack, vec!["fn1", "[wait: unknown]"]);
+}
+
+#[test]
+fn unknown_wait_reason_codes_are_numbered() {
+    let mut out = cswitch(77, 999, 7, 100, vec![]);
+    out.wait_reason = 200;
+    let a = run(&[out, cswitch(TARGET, 7, 999, 150, vec![])]);
+    assert_eq!(a.off_cpu[0].stack, vec!["[wait: reason 200]"]);
+}
+
+#[test]
+fn sched_delay_without_user_frames_names_the_scheduler_queue() {
+    let a = run(&[
+        cswitch(77, 999, 7, 100, vec![]),
+        ready(TARGET, 7, 200),
+        cswitch(TARGET, 7, 999, 203, vec![]),
+    ]);
+    assert_eq!(a.sched_delay[0].stack, vec!["[scheduler queue]"]);
+}

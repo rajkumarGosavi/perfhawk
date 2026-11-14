@@ -95,8 +95,5 @@ fn perf_500mb_gate() {
         focus_t <= Duration::from_secs(6),
         "focused flame took {focus_t:?}"
     );
-    assert!(
-        sand_t <= Duration::from_secs(6),
-        "sandwich took {sand_t:?}"
-    );
+    assert!(sand_t <= Duration::from_secs(6), "sandwich took {sand_t:?}");
 }

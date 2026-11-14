@@ -14,3 +14,6 @@
 # Release artifacts (generated)
 /dist/
 /THIRD_PARTY_NOTICES.txt
+
+# Third-party sample apps (cloned by scripts, not vendored)
+/examples/external/

@@ -36,6 +36,8 @@ impl ProviderRegistry {
         let mut r = ProviderRegistry::default();
         r.register(Box::new(crate::go::GoProvider::new()));
         r.register(Box::new(crate::dotnet::DotnetProvider::new()));
+        #[cfg(windows)]
+        r.register_system(Box::new(crate::etw::EtwProvider::new()));
         r
     }
 

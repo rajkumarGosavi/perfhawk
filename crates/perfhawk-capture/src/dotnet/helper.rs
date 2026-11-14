@@ -263,7 +263,8 @@ pub fn run_helper(
                         Ok(())
                     } else if !saw_hello {
                         Err(CaptureError::Helper(
-                            "perfhawk-dotnet produced no output (is it a valid helper build?)".into(),
+                            "perfhawk-dotnet produced no output (is it a valid helper build?)"
+                                .into(),
                         ))
                     } else {
                         Err(CaptureError::Helper(

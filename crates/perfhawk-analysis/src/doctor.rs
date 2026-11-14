@@ -16,8 +16,7 @@ const IO_PATTERN: &str = r"^(syscall\.(Read|Write|Pread|Pwrite|FlushFileBuffers|
 /// A goroutine parked in `runtime.gopark` is idle unless one of its frames says it is
 /// waiting on a mutex, which costs the program time. Sleeping and `WaitGroup.Wait` are
 /// idle: they are not evidence of a bottleneck.
-const WAIT_PATTERN: &str =
-    r"^sync\.(\(\*(Mutex|RWMutex)\)\.|runtime_Semacquire(RW)?Mutex)";
+const WAIT_PATTERN: &str = r"^sync\.(\(\*(Mutex|RWMutex)\)\.|runtime_Semacquire(RW)?Mutex)";
 
 /// .NET threads waiting for work (thread-pool workers, the finalizer, event waits). The
 /// .NET helper samples every managed thread every tick, so these must not count as busy.
@@ -165,7 +164,9 @@ fn weakest(fs: &[&Fidelity]) -> Fidelity {
 fn confidence(share: f64, threshold: f64, fidelity: &Fidelity) -> Confidence {
     match fidelity {
         Fidelity::Approximate | Fidelity::Unknown => Confidence::Low,
-        Fidelity::Native | Fidelity::SampledExternal if share >= threshold * 1.5 => Confidence::High,
+        Fidelity::Native | Fidelity::SampledExternal if share >= threshold * 1.5 => {
+            Confidence::High
+        }
         _ => Confidence::Medium,
     }
 }
@@ -238,10 +239,10 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
         let p = dp.profile;
         let mut internal = 0i64;
         for_each_sample(p, p.default_sample_type, &Filter::default(), |funcs, v| {
-            if funcs
-                .last()
-                .is_some_and(|&l| p.str(p.functions[l.0 as usize].name).starts_with("runtime."))
-            {
+            if funcs.last().is_some_and(|&l| {
+                p.str(p.functions[l.0 as usize].name)
+                    .starts_with("runtime.")
+            }) {
                 internal = internal.saturating_add(v);
             }
         });
@@ -271,7 +272,11 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
     let st = wall_dp.profile.default_sample_type;
     let mut idle_ns = 0i64;
     let mut io_guess_ns = 0i64;
-    let name_of = |f: perfhawk_model::FuncId| wall_dp.profile.str(wall_dp.profile.functions[f.0 as usize].name);
+    let name_of = |f: perfhawk_model::FuncId| {
+        wall_dp
+            .profile
+            .str(wall_dp.profile.functions[f.0 as usize].name)
+    };
     for_each_sample(wall_dp.profile, st, &Filter::default(), |funcs, v| {
         if let Some(&leaf) = funcs.last() {
             let leaf_name = name_of(leaf);
@@ -332,7 +337,13 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
             };
             (share, dp.fidelity.clone(), c, Some(dp.short_id), false)
         }
-        None => (pct(io_guess_ns, busy_ns), Fidelity::Approximate, Confidence::Low, None, true),
+        None => (
+            pct(io_guess_ns, busy_ns),
+            Fidelity::Approximate,
+            Confidence::Low,
+            None,
+            true,
+        ),
     };
     let io_hit = io_share >= cfg.io_pct;
 
@@ -351,11 +362,17 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
             share_pct: io_share,
             title: format!(
                 "I/O-bound: {io_share:.0}% of busy time waits on I/O{}",
-                if io_estimated { " (estimated from wall-clock stacks)" } else { "" }
+                if io_estimated {
+                    " (estimated from wall-clock stacks)"
+                } else {
+                    ""
+                }
             ),
             detail: "Threads spend this share of their busy time in file or disk I/O.".into(),
             next,
-            hints: vec!["Cache or batch reads on the top files; check disk or volume latency.".into()],
+            hints: vec![
+                "Cache or batch reads on the top files; check disk or volume latency.".into(),
+            ],
         });
         triggered.push((Verdict::IoBound, io_share));
     }
@@ -383,10 +400,15 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
                 confidence: confidence(share, cfg.sched_pct, &dp.fidelity),
                 fidelity: dp.fidelity.clone(),
                 share_pct: share,
-                title: format!("Scheduler delay: runnable threads wait for a CPU for {share:.0}% of busy time"),
+                title: format!(
+                    "Scheduler delay: runnable threads wait for a CPU for {share:.0}% of busy time"
+                ),
                 detail: "Threads were ready to run but no CPU was free.".into(),
                 next: vec![ctx.show(dp.short_id, "", "Where the delay lands")],
-                hints: vec!["Check CPU limits and throttling of the container, or reduce runnable threads.".into()],
+                hints: vec![
+                    "Check CPU limits and throttling of the container, or reduce runnable threads."
+                        .into(),
+                ],
             });
             triggered.push((Verdict::SchedulerStarved, share));
         }
@@ -424,14 +446,21 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
                     title,
                     detail: detail.into(),
                     next: vec![ctx.show(cpu_dp.short_id, "", "Hottest functions")],
-                    hints: vec!["Optimise the top self-time functions; use `perfhawk diff` after a change.".into()],
+                    hints: vec![
+                        "Optimise the top self-time functions; use `perfhawk diff` after a change."
+                            .into(),
+                    ],
                 });
                 triggered.push((Verdict::CpuBound, share));
             }
             let wait_share = 100.0 - cpu_share.max(runnable_share);
             if wait_share >= cfg.wait_pct && !io_hit && !lock_hit {
                 let fid = weakest(&[&cpu_dp.fidelity, wall_f]);
-                let conf = if fidelity_rank(&fid) <= 1 { Confidence::Low } else { Confidence::Medium };
+                let conf = if fidelity_rank(&fid) <= 1 {
+                    Confidence::Low
+                } else {
+                    Confidence::Medium
+                };
                 findings.push(DoctorFinding {
                     rule: "waiting_unknown",
                     confidence: conf,
@@ -471,7 +500,9 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
                 }
             }
         }
-        None => notes.push("no usable CPU profile: CPU-bound and waiting rules were skipped".into()),
+        None => {
+            notes.push("no usable CPU profile: CPU-bound and waiting rules were skipped".into())
+        }
     }
 
     findings.sort_by(|a, b| b.share_pct.total_cmp(&a.share_pct));
@@ -488,7 +519,8 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
     let verdict = triggered.first().map_or(Verdict::Inconclusive, |t| t.0);
     let summary = match verdict {
         Verdict::Inconclusive => {
-            "No single bottleneck stands out; look at the top functions of each profile.".to_string()
+            "No single bottleneck stands out; look at the top functions of each profile."
+                .to_string()
         }
         v => {
             let rule = match v {
