@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { keyAction } from './analysis/keys'
+import { topicForView } from './help/content'
+import { HelpContext } from './help/HelpContext'
 import { mergeViewState, readViewState, writeViewState, type ViewState } from './url'
 import { DiffView } from './views/DiffView'
 import { History } from './views/History'
+import { HelpPanel } from './views/HelpPanel'
 import { Home } from './views/Home'
 import { ProfileView } from './views/ProfileView'
 import { ThemeSwitch } from './views/ThemeSwitch'
@@ -10,6 +14,9 @@ export default function App() {
   const [state, setState] = useState<ViewState>(() => readViewState(window.location.search))
 
   const ref = useRef(state)
+  const [helpTopic, setHelpTopic] = useState<string | null>(null)
+  const stateView = state.profile || state.view === 'history' ? state.view : 'summary'
+  const help = useMemo(() => ({ open: (topic?: string) => setHelpTopic(topic ?? topicForView(stateView)) }), [stateView])
 
   useEffect(() => {
     const onPop = () => {
@@ -19,6 +26,14 @@ export default function App() {
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (keyAction(e)?.type === 'help') setHelpTopic((t) => (t === null ? topicForView(stateView) : null))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [stateView])
 
   // push = new history entry (view/profile changes); replace = filter typing.
   // The patch is merged into the *latest* state, so deferred callers (debounce
@@ -33,7 +48,7 @@ export default function App() {
   }, [])
 
   return (
-    <>
+    <HelpContext.Provider value={help}>
       <header className="app-header">
         <h1>
           <button className="linklike" onClick={() => navigate({}, 'push', true)}>
@@ -41,7 +56,10 @@ export default function App() {
           </button>
         </h1>
         <span className="muted">local profiling workbench</span>
-        <span style={{ marginLeft: 'auto' }}><ThemeSwitch /></span>
+        <span className="header-actions">
+          <button onClick={() => help.open()} title="Help (?)">Help</button>
+          <ThemeSwitch />
+        </span>
       </header>
       <main>
         {state.profile && state.view === 'diff' ? (
@@ -59,6 +77,7 @@ export default function App() {
           />
         )}
       </main>
-    </>
+      {helpTopic !== null && <HelpPanel topic={helpTopic} onClose={() => setHelpTopic(null)} />}
+    </HelpContext.Provider>
   )
 }

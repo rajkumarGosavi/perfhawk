@@ -6,7 +6,7 @@ import {
 import { ErrorNotice } from './ErrorNotice'
 import { reloadPage } from './reload'
 import { hotPath } from '../analysis/hotPath'
-import { SHORTCUTS, keyAction } from '../analysis/keys'
+import { keyAction } from '../analysis/keys'
 import { effectiveExclude } from '../analysis/perfhawk'
 import { addTransform, decodeTx, encodeTx, type Transform } from '../analysis/transforms'
 import { FlameGraph, type FlameExportApi } from '../flame/FlameGraph'
@@ -67,7 +67,6 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
   const [error, setError] = useState<unknown>(null)
   const [loading, setLoading] = useState(false)
   const [others, setOthers] = useState<ProfileRecord[]>([])
-  const [helpOpen, setHelpOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const exportRef = useRef<FlameExportApi | null>(null)
   const [exportMsg, setExportMsg] = useState<string | null>(null)
@@ -145,18 +144,11 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       else if (a.type === 'search') {
         e.preventDefault()
         searchRef.current?.focus()
-      } else setHelpOpen((o) => !o)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [navigate, hot])
-
-  useEffect(() => {
-    if (!helpOpen) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setHelpOpen(false) }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [helpOpen])
 
   const stem = fileStem(record?.name ?? ref)
   const say = (m: string) => setExportMsg(m)
@@ -232,7 +224,6 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           </button>
         )}
         <ExportMenu items={exportItems} />
-        <button onClick={() => setHelpOpen(true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
       </div>
       <div className="toolbar">
         <span className="field-wrap"><label className="field">
@@ -388,28 +379,6 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         />
       )}
       </div>
-      {helpOpen && (
-        <div className="help-overlay" onClick={() => setHelpOpen(false)}>
-          <div
-            className="help-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Keyboard shortcuts"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ marginTop: 0 }}>Keyboard shortcuts</h2>
-            <dl>
-              {SHORTCUTS.map((k) => (
-                <div key={k.keys} style={{ display: 'contents' }}>
-                  <dt>{k.keys}</dt>
-                  <dd>{k.label}</dd>
-                </div>
-              ))}
-            </dl>
-            <button autoFocus onClick={() => setHelpOpen(false)}>Close (Esc)</button>
-          </div>
-        </div>
-      )}
     </section>
   )
 }
