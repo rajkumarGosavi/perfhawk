@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 const read = (f: string) => readFileSync(new URL(`./${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '')
 const tokens = read('tokens.css')
 const base = read('base.css')
-const components = read('components.css')
+const components = read('components.css') + read('shell.css')
 
 describe('stylesheets', () => {
   it('every var(--x) without a fallback is declared in tokens.css', () => {
