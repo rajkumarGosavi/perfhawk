@@ -6,6 +6,7 @@ pub mod dotnet;
 mod duration;
 #[cfg(windows)]
 pub mod etw;
+pub mod etwdecode;
 mod events;
 pub mod go;
 mod provider;
