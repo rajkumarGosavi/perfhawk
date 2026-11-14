@@ -21,6 +21,9 @@ import { ApiError } from '../api'
 import { Button } from '../ui/Button'
 import { Chip } from '../ui/Chip'
 import { Tabs } from '../ui/Tabs'
+import { EmptyState } from '../ui/EmptyState'
+import { Skeleton } from '../views/Skeleton'
+import { Rail } from '../shell/Rail'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -64,6 +67,9 @@ const cases: [string, () => ReactElement][] = [
   ['Button + Chip', () => <div><Button variant="primary">Go</Button><Chip label="Focus: db" onRemove={() => {}} /></div>],
   ['Tabs', () => <Tabs label="Demo" value="a" onValueChange={() => {}} tabs={[{ value: 'a', label: 'A', panel: <p>a</p> }, { value: 'b', label: 'B', panel: <p>b</p> }]} />],
   ['TopTable', () => <TopTable rows={ROWS} unit="samples" sort="self" onSort={() => {}} onSelect={() => {}} />],
+  ['EmptyState', () => <EmptyState title="No samples in this view.">Widen the time range.</EmptyState>],
+  ['Skeleton', () => <Skeleton />],
+  ['Rail', () => <Rail state={{ view: 'flame' } as never} navigate={() => {}} hasTime hasGc diffBase="b1" />],
   ['FidelityBadge', () => <FidelityBadge fidelity={'native' as Fidelity} />],
   ['ExportMenu', () => <ExportMenu items={[{ label: 'Download SVG', run: () => {} }, { label: 'Copy link', run: () => {} }]} />],
 ]

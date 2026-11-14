@@ -5,6 +5,7 @@ import { ErrorNotice } from './ErrorNotice'
 import { FidelityBadge } from './FidelityBadge'
 import { formatValue } from '../format'
 import { Skeleton } from './Skeleton'
+import { EmptyState } from '../ui/EmptyState'
 
 export function ProfileList({
   onOpen,
@@ -103,7 +104,7 @@ export function ProfileList({
       {profiles === null ? (
         !error && <Skeleton />
       ) : profiles.length === 0 ? (
-        <p className="muted">No profiles yet. Import a file above, record one from the Record tab, or from a terminal with <code>perfhawk record --pid &lt;pid&gt; --open</code>.</p>
+        <EmptyState title="No profiles yet.">Import a file above, record one from the Record tab, or from a terminal with <code>perfhawk record --pid &lt;pid&gt; --open</code>.</EmptyState>
       ) : (
         <div className="table-wrap">
           <table>

@@ -1,5 +1,6 @@
 import type { GroupRow } from '../api'
 import { formatPct, formatValue } from '../format'
+import { EmptyState } from '../ui/EmptyState'
 
 type Props = {
   rows: GroupRow[]
@@ -16,7 +17,7 @@ export function Groups({ rows, unit, by, onBy }: Props) {
         <button aria-pressed={by === 'stack'} onClick={() => onBy('stack')}>By identical stack</button>
       </div>
       {rows.length === 0 ? (
-        <p className="muted">No samples in this view.</p>
+        <EmptyState title="No samples in this view.">Widen the time range or remove a filter.</EmptyState>
       ) : (
         <table>
           <thead>

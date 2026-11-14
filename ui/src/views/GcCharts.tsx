@@ -4,6 +4,7 @@ import { formatValue } from '../format'
 import {
   formatPause, generationLabel, generationShape, rangeAround, stackedHeap, type GcRange, type GcShape,
 } from '../analysis/gc'
+import { EmptyState } from '../ui/EmptyState'
 
 const W = 800
 const H = 170
@@ -90,7 +91,7 @@ export function HeapChart({
 export function AllocChart({
   points, durationNs, range,
 }: { points: GcRatePoint[]; durationNs: number; range: GcRange | null }) {
-  if (points.length === 0) return <p className="muted">No allocation data was captured.</p>
+  if (points.length === 0) return <EmptyState title="No allocation data was captured." />
   const peak = Math.max(...points.map((p) => p.bytesPerS), 1)
   const line = points.map((p) => `${x(p.tNs, durationNs, LW)},${y(p.bytesPerS, peak, LH)}`).join(' L')
   return (

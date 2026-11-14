@@ -6,6 +6,7 @@ import {
   formatPause, generationLabel, generationShape, rowsInRange, type GcRange,
 } from '../analysis/gc'
 import { AllocChart, HeapChart, PauseTimeline } from './GcCharts'
+import { EmptyState } from '../ui/EmptyState'
 
 const SHAPE_GLYPH = { circle: '●', square: '■', triangle: '▲', diamond: '◆' } as const
 
@@ -93,7 +94,7 @@ function Report({ r }: { r: GcReport }) {
   const s = r.summary
   const gens = s.byGeneration.map((g) => `${generationLabel(g.generation)} ${g.count.toLocaleString('en-US')}`).join(', ')
   if (s.totalGcs === 0) {
-    return <p className="muted">No collections happened during this capture.</p>
+    return <EmptyState title="No collections happened during this capture." />
   }
   const events = rowsInRange(r.events, range)
   return (

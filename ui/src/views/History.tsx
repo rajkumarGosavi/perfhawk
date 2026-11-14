@@ -9,6 +9,7 @@ import { deltaFromPrevious, linePath, nearest, scale, type Metric } from '../his
 import { formatPct, formatValue } from '../format'
 import type { ViewState } from '../url'
 import { Button } from '../ui/Button'
+import { EmptyState } from '../ui/EmptyState'
 
 type Nav = (patch: Partial<ViewState>, mode?: 'push' | 'replace', reset?: boolean) => void
 
@@ -167,7 +168,7 @@ export function History({ state, navigate }: { state: ViewState; navigate: Nav }
       <ErrorNotice error={error} onRetry={reloadPage} />
       {!state.series && <p className="muted">Pick a series to see how a function changes across sessions. Tag recordings with <code>--tag series:name</code> to group them.</p>}
       {state.series && !fn && <p className="muted">Pick or type a function name.</p>}
-      {data && data.points.length === 0 && <p className="muted">No sessions of this series captured a {kind} profile.</p>}
+      {data && data.points.length === 0 && <EmptyState title={`No sessions of this series captured a ${kind} profile.`} />}
       {data && data.points.length > 0 && (
         <>
           {foundCount < 2 && <p className="muted">Need at least 2 sessions to show a trend.</p>}

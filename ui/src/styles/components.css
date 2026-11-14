@@ -253,3 +253,19 @@ td.target { max-width: 28ch; overflow: hidden; text-overflow: ellipsis; }
 .palette-item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); min-height: var(--control-h); border-radius: var(--radius-sm); cursor: pointer; }
 .palette-item[data-selected="true"] { background: var(--accent-soft); }
 .palette-hint { font-family: var(--font-code); font-size: var(--text-xs); color: var(--muted); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 0 6px; }
+
+/* Empty states */
+.empty-state { padding: var(--space-5) var(--space-4); text-align: center; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface); white-space: normal; }
+.empty-title { margin: 0; font-weight: 600; }
+.empty-hint { margin: var(--space-1) 0 0; }
+
+/* Motion: short enter transitions for overlays. Reduced-motion rule above flattens them. */
+@keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes palette-in { from { opacity: 0; transform: translateX(-50%) translateY(-4px); } to { opacity: 1; transform: translateX(-50%); } }
+@keyframes side-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.palette-overlay, .panel-scrim { animation: overlay-in 120ms ease-out; }
+.palette { animation: palette-in 120ms ease-out; }
+.panel { animation: pop-in 140ms ease-out; }
+.panel-side .panel { animation: side-in 160ms ease-out; }
+.menu, .tooltip-pop { animation: pop-in 100ms ease-out; }

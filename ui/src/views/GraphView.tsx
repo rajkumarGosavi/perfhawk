@@ -6,6 +6,7 @@ import { formatPct, formatValue } from '../format'
 import { layoutGraph, type Route } from '../graph/layout'
 import { edgeWidth, heat, moveFocus, neighbours, nodeSize, type Dir } from '../graph/model'
 import { pinchScale, pointerDistance, type Point } from '../flame/gesture'
+import { EmptyState } from '../ui/EmptyState'
 
 type Props = {
   graph: CallGraph
@@ -93,7 +94,7 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
     if (selected !== null) nodeRefs.current.get(selected)?.focus()
   }, [selected])
 
-  if (graph.nodes.length === 0 || graph.totalValue <= 0) return <p className="muted">No samples in this view.</p>
+  if (graph.nodes.length === 0 || graph.totalValue <= 0) return <EmptyState title="No samples in this view.">Widen the time range or remove a filter.</EmptyState>
 
   const placedById = new Map(layout.nodes.map((p) => [p.id, p]))
   const zoom = (f: number) => setView((v) => ({ ...v, k: Math.min(4, Math.max(0.1, v.k * f)) }))

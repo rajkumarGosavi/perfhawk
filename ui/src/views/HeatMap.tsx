@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Heatmap } from '../api'
 import { cellColor, cellRect, pointToTime, timeToX } from '../time/heatLayout'
 import { formatRange, normalizeRange, nudge, type Range } from '../time/range'
+import { EmptyState } from '../ui/EmptyState'
 
 type Props = {
   heat: Heatmap
@@ -128,7 +129,7 @@ export function HeatMap({ heat, range, baseline, onRange, onBaseline }: Props) {
         {Math.round(heat.bucketNs / 1e6)} ms. Drag to select a window, Shift-drag for a baseline, Esc to clear.
         Keyboard: arrows move (Left/Right) and resize (Up/Down) the window, Shift for the baseline.
       </p>
-      {heat.cells.length === 0 && <p className="muted">No activity in this capture.</p>}
+      {heat.cells.length === 0 && <EmptyState title="No activity in this capture." />}
       <div ref={wrapRef}>
         <canvas
           ref={canvasRef}
