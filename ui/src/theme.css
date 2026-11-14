@@ -228,3 +228,11 @@ td.down { color: var(--diff-down-3); }
 .panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
 .panel-head h2 { margin: 0; font-size: var(--text-lg); }
 .panel:focus { outline: none; }
+
+/* Term popovers */
+.term-wrap { position: relative; display: inline-block; }
+.term { background: none; border: 0; padding: 0; min-height: 0; color: inherit; font: inherit; cursor: help; border-bottom: 1px dotted currentColor; }
+.term-icon { border: 1px solid var(--border); border-radius: 50%; width: 18px; height: 18px; line-height: 14px; font-size: var(--text-xs); color: var(--muted); margin-left: var(--space-1); text-align: center; }
+.term-pop { position: absolute; z-index: 25; left: 0; top: 100%; margin-top: 2px; width: max-content; max-width: 280px; padding: var(--space-2) var(--space-3); background: var(--surface); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow-1); font-size: var(--text-sm); font-weight: 400; text-align: left; white-space: normal; }
+.term-pop .term-more { display: block; margin-top: var(--space-1); }
+.field-wrap { display: inline-flex; align-items: flex-end; gap: 2px; }

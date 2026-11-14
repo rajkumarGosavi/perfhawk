@@ -27,6 +27,7 @@ import { Summary } from './Summary'
 import { FidelityBadge } from './FidelityBadge'
 import { TopTable } from './TopTable'
 import { TransformBar } from './TransformBar'
+import { Term } from '../help/Term'
 
 type Nav = (patch: Partial<ViewState>, mode?: 'push' | 'replace', reset?: boolean) => void
 type Data =
@@ -219,7 +220,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       <div className="toolbar">
         <button onClick={() => navigate({}, 'push', true)}>&larr; Profiles</button>
         <strong className="mono">{record?.name ?? ref}</strong>
-        {record && <FidelityBadge fidelity={record.fidelity} />}
+        {record && <><FidelityBadge fidelity={record.fidelity} /><Term k="fidelity" icon /></>}
         <div className="tabs" role="group" aria-label="View">
           {VIEW_LABELS.filter(([v]) => v !== 'time' || hasTime).map(([v, label]) => (
             <button key={v} aria-pressed={view === v} onClick={() => pushView({ view: v })}>{label}</button>
@@ -234,7 +235,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         <button onClick={() => setHelpOpen(true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
       </div>
       <div className="toolbar">
-        <label className="field">
+        <span className="field-wrap"><label className="field">
           Sample type
           <select
             value={st ?? ''}
@@ -245,7 +246,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
               <option key={i} value={i}>{t.name} ({t.unit})</option>
             ))}
           </select>
-        </label>
+        </label><Term k="sampleType" icon /></span>
         <label className="field">
           Compare with…
           <select
@@ -259,9 +260,9 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
             ))}
           </select>
         </label>
-        <label className="field">Focus<input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="regex" /></label>
-        <label className="field">Exclude<input value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder="regex" /></label>
-        <label className="field">Hide<input value={hide} onChange={(e) => setHide(e.target.value)} placeholder="regex" /></label>
+        <span className="field-wrap"><label className="field">Focus<input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="regex" /></label><Term k="focus" icon /></span>
+        <span className="field-wrap"><label className="field">Exclude<input value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder="regex" /></label><Term k="exclude" icon /></span>
+        <span className="field-wrap"><label className="field">Hide<input value={hide} onChange={(e) => setHide(e.target.value)} placeholder="regex" /></label><Term k="hide" icon /></span>
         <label className="field check" title="Drop samples from Perfhawk's own in-process Go agent (agent, fgprof, pprof decoder), so percentages describe your app only.">
           <input type="checkbox" checked={!!state.hidePh} onChange={(e) => navigate({ hidePh: e.target.checked ? true : undefined }, 'push')} />
           Hide Perfhawk frames

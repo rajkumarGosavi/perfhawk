@@ -12,6 +12,7 @@ import type { ViewState } from '../url'
 import { FidelityBadge, fidelityTip } from './FidelityBadge'
 import { Findings } from './Findings'
 import { PivotPanel } from './PivotPanel'
+import { Term } from '../help/Term'
 
 type Props = {
   profileRef: string
@@ -74,7 +75,7 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
       <h2>{title}</h2>
       <table>
         <thead>
-          <tr><th>Function</th><th className="num">Self</th><th className="num">Total</th></tr>
+          <tr><th>Function</th><th className="num">Self <Term k="self" icon /></th><th className="num">Total <Term k="total" icon /></th></tr>
         </thead>
         <tbody>
           {rows.map((r) => (

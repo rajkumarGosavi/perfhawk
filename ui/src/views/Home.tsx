@@ -3,6 +3,7 @@ import { listSessions } from '../api'
 import type { Range } from '../time/range'
 import { ProfileList } from './ProfileList'
 import { SessionList } from './SessionList'
+import { Term } from '../help/Term'
 
 type Tab = 'sessions' | 'profiles'
 
@@ -39,8 +40,8 @@ export function Home({
     <>
       <div className="toolbar">
         <div className="tabs" role="group" aria-label="Home">
-          <button aria-pressed={tab === 'sessions'} onClick={() => setTab('sessions')}>Sessions</button>
-          <button aria-pressed={tab === 'profiles'} onClick={() => setTab('profiles')}>Profiles</button>
+          <button aria-pressed={tab === 'sessions'} onClick={() => setTab('sessions')}>Sessions</button><Term k="session" icon />
+          <button aria-pressed={tab === 'profiles'} onClick={() => setTab('profiles')}>Profiles</button><Term k="profile" icon />
         </div>
         {onHistory && <button onClick={onHistory}>History</button>}
       </div>

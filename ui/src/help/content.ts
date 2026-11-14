@@ -143,3 +143,25 @@ const VIEW_TOPIC: Record<ViewName, string> = {
 export function topicForView(view: ViewName): string {
   return VIEW_TOPIC[view]
 }
+
+const TERM_TOPIC: Record<TermKey, string> = {
+  self: 'self-total',
+  total: 'self-total',
+  sampleType: 'getting-started',
+  fidelity: 'getting-started',
+  session: 'getting-started',
+  profile: 'getting-started',
+  window: 'compare',
+  baseline: 'compare',
+  hotPath: 'flame-graph',
+  focus: 'flame-graph',
+  exclude: 'flame-graph',
+  hide: 'flame-graph',
+  flame: 'flame-graph',
+  icicle: 'flame-graph',
+  sandwich: 'self-total',
+}
+
+export function topicForTerm(k: TermKey): string {
+  return TERM_TOPIC[k]
+}

@@ -1,5 +1,6 @@
 import type { TopRow } from '../api'
 import { formatPct, formatValue } from '../format'
+import { Term } from '../help/Term'
 
 export function TopTable({
   rows,
@@ -20,6 +21,7 @@ export function TopTable({
         {label}
         {sort === k ? ' ▼' : ''}
       </button>
+      <Term k={k} icon />
     </th>
   )
   return (
