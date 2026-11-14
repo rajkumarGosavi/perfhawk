@@ -100,3 +100,23 @@ describe('Shell', () => {
     expect(res.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([])
   })
 })
+
+import { CommandPalette } from './CommandPalette'
+import { Panel } from '../views/Panel'
+
+describe('layering', () => {
+  it('Escape in the palette closes only the palette, not the panel under it', async () => {
+    const closePanel = vi.fn()
+    const closePalette = vi.fn()
+    await mount(
+      <>
+        <Panel title="Help" onClose={closePanel}><p>body</p></Panel>
+        <CommandPalette open onOpenChange={closePalette} commands={[]} />
+      </>,
+    )
+    const pin = document.querySelector('.palette-input') as HTMLInputElement
+    await act(async () => { pin.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
+    expect(closePalette).toHaveBeenCalledWith(false)
+    expect(closePanel).not.toHaveBeenCalled()
+  })
+})
