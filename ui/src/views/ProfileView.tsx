@@ -304,6 +304,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           highlight={highlight}
           exportRef={exportRef}
           onSelectFunc={(f) => pushView({ view: 'sandwich', func: f })}
+          onViewAsTree={() => pushView({ view: 'tree' })}
         />
       )}
       {data?.kind === 'flame' && view === 'tree' && (
@@ -325,6 +326,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
             highlight={highlight}
             exportRef={exportRef}
             onSelectFunc={(f) => pushView({ view: 'sandwich', func: f })}
+            onViewAsTree={() => pushView({ view: 'tree' })}
           />
           <TopTable
             rows={data.rows}
