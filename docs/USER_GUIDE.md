@@ -279,6 +279,22 @@ Verdict: I/O-bound: 57% of busy time waits on I/O (estimated from wall-clock sta
 To try it, run the Go demo in a single-purpose mode (`-mode cpu`, `lock` or `disk`),
 see [examples](../examples/README.md).
 
+### Block I/O, off-CPU and scheduler delay (Windows)
+
+On Windows, `--kinds block_io,off_cpu,sched_delay` records what happens outside the language runtime, for one process, from a Windows kernel trace (ETW):
+
+```
+# from an elevated (administrator) shell
+perfhawk record --pid 4242 --kinds block_io,off_cpu,sched_delay --duration 30s
+```
+
+- **Needs administrator rights.** Perfhawk never elevates itself. From a normal shell it stops and prints the same command to run from an elevated shell.
+- **Block I/O:** time and bytes per stack; the file is the last frame (`[file: C:\data\x.db]`), so the flame graph groups by file. **Off-CPU:** time a thread of the process spent waiting, with the stack it was blocked on. **Scheduler delay:** time between a thread becoming runnable and getting a CPU.
+- **Cost:** about 2-8% CPU on the target while tracing, announced before the capture starts, and capped by `--duration`.
+- Go frames are named from the executable's symbols (not for binaries built with `-ldflags=-s -w`). System DLL frames show as `module+0xoffset`. .NET managed frames are not named yet.
+- The trace uses its own session, so it can run beside Windows Performance Recorder or PerfView. Under heavy load Windows can drop events; the profile then carries a warning with the counts.
+- With these kinds in the session, `perfhawk doctor` states an I/O verdict with the file and stack as evidence.
+
 ### `perfhawk targets [--json]`
 
 Lists what can be attached to: Go processes running the agent and .NET 8+

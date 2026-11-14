@@ -119,7 +119,10 @@ fn blocking_profile_is_not_lock_evidence() {
     );
     let cpu = ns(ProfileKind::Cpu, &[(&["main", "work"], 2_000_000_000)]);
     let lock = ns(ProfileKind::Lock, &[(lock_stack, 5_500_000_000)]);
-    let blocking = ns(ProfileKind::Blocking, &[(&["runtime.selectgo"], 9_000_000_000)]);
+    let blocking = ns(
+        ProfileKind::Blocking,
+        &[(&["runtime.selectgo"], 9_000_000_000)],
+    );
     let with_lock = run(
         &[
             (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
@@ -150,7 +153,10 @@ fn blocking_profile_is_not_lock_evidence() {
         ],
         None,
     );
-    assert!(only_blocking.findings.iter().all(|f| f.rule != "lock_bound"));
+    assert!(only_blocking
+        .findings
+        .iter()
+        .all(|f| f.rule != "lock_bound"));
 }
 
 #[test]
@@ -168,7 +174,10 @@ fn mutex_waiters_parked_in_gopark_count_as_busy() {
         &[
             (parked_on_mutex, 6_000_000_000),
             (&["main", "work"], 2_000_000_000),
-            (&["worker", "runtime.chanrecv", "runtime.gopark"], 9_000_000_000),
+            (
+                &["worker", "runtime.chanrecv", "runtime.gopark"],
+                9_000_000_000,
+            ),
         ],
     );
     let d = run(&[(ProfileKind::Wall, "w", &wall, Fidelity::Derived)], None);
@@ -220,7 +229,10 @@ fn idle_dotnet_threads_are_not_busy() {
         "System.Threading.LowLevelLifoSemaphore.WaitForSignal",
     ];
     let hot: &[&str] = &["Program.Main", "Program.Work"];
-    let wall = ns(ProfileKind::Wall, &[(idle, 11_000_000_000), (hot, 1_000_000_000)]);
+    let wall = ns(
+        ProfileKind::Wall,
+        &[(idle, 11_000_000_000), (hot, 1_000_000_000)],
+    );
     let cpu = ns(ProfileKind::Cpu, &[(hot, 900_000_000)]);
     let d = run(
         &[
@@ -233,7 +245,10 @@ fn idle_dotnet_threads_are_not_busy() {
     assert_eq!(d.verdict, Verdict::CpuBound);
 
     let only_idle = ns(ProfileKind::Wall, &[(idle, 12_000_000_000)]);
-    let d = run(&[(ProfileKind::Wall, "w", &only_idle, Fidelity::Derived)], None);
+    let d = run(
+        &[(ProfileKind::Wall, "w", &only_idle, Fidelity::Derived)],
+        None,
+    );
     assert_eq!(d.verdict, Verdict::Idle);
 }
 
@@ -244,10 +259,24 @@ fn idle_go_service_with_waitgroup_and_sleep_is_idle() {
         ProfileKind::Wall,
         &[
             (
-                &["main", "sync.(*WaitGroup).Wait", "sync.runtime_SemacquireWaitGroup", "runtime.gopark"],
+                &[
+                    "main",
+                    "sync.(*WaitGroup).Wait",
+                    "sync.runtime_SemacquireWaitGroup",
+                    "runtime.gopark",
+                ],
                 9_900_000_000,
             ),
-            (&["main", "flush", "time.Sleep", "runtime.timeSleep", "runtime.gopark"], 9_900_000_000),
+            (
+                &[
+                    "main",
+                    "flush",
+                    "time.Sleep",
+                    "runtime.timeSleep",
+                    "runtime.gopark",
+                ],
+                9_900_000_000,
+            ),
             (&["main", "work"], 10_000_000),
         ],
     );
@@ -258,8 +287,14 @@ fn idle_go_service_with_waitgroup_and_sleep_is_idle() {
 #[test]
 fn cpu_saturated_service_with_more_goroutines_than_cores_is_cpu_bound() {
     // 16 runnable goroutines on 4 cores: goroutine-seconds in user code are 4x the CPU time.
-    let wall = ns(ProfileKind::Wall, &[(&["main", "handler", "checksum"], 16_000_000_000)]);
-    let cpu = ns(ProfileKind::Cpu, &[(&["main", "handler", "checksum"], 4_000_000_000)]);
+    let wall = ns(
+        ProfileKind::Wall,
+        &[(&["main", "handler", "checksum"], 16_000_000_000)],
+    );
+    let cpu = ns(
+        ProfileKind::Cpu,
+        &[(&["main", "handler", "checksum"], 4_000_000_000)],
+    );
     let d = run(
         &[
             (ProfileKind::Wall, "w", &wall, Fidelity::Derived),
@@ -276,7 +311,15 @@ fn fsync_waits_count_as_io() {
     let wall = ns(
         ProfileKind::Wall,
         &[
-            (&["main", "save", "os.(*File).Sync", "syscall.FlushFileBuffers"], 6_000_000_000),
+            (
+                &[
+                    "main",
+                    "save",
+                    "os.(*File).Sync",
+                    "syscall.FlushFileBuffers",
+                ],
+                6_000_000_000,
+            ),
             (&["main", "work"], 2_000_000_000),
         ],
     );
@@ -308,7 +351,10 @@ fn block_io(t: i64) -> Profile {
     prof(
         ProfileKind::BlockIo,
         &[("io_bytes", Unit::Bytes), ("io_time", Unit::Nanoseconds)],
-        &[(&["main", "load", "os.(*File).Read", "[file: /data/x.db]"], t)],
+        &[(
+            &["main", "load", "os.(*File).Read", "[file: /data/x.db]"],
+            t,
+        )],
         Fidelity::Native,
     )
 }

@@ -45,6 +45,9 @@ fn new_kinds_round_trip() {
 
 #[test]
 fn file_leaf_wraps_path() {
-    assert_eq!(perfhawk_model::file_leaf("/data/x.db"), "[file: /data/x.db]");
+    assert_eq!(
+        perfhawk_model::file_leaf("/data/x.db"),
+        "[file: /data/x.db]"
+    );
     assert_eq!(perfhawk_model::sample_types::IO_TIME, "io_time");
 }

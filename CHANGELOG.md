@@ -7,6 +7,7 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- Windows OS-level tracing (ETW): `perfhawk record --kinds block_io,off_cpu,sched_delay` records Block I/O (by file), off-CPU time and scheduler delay for one process, with Go frames named from symbols. Needs an administrator shell; Perfhawk never elevates itself and prints the exact command to rerun.
 - Windows x64 release package: `perfhawk.exe` with the UI embedded, a self-contained `perfhawk-dotnet.exe` recording helper, checksums, and a PowerShell installer.
 - Third-party notices generated for each release.
 - Browser hardening headers on every response (`X-Frame-Options`, `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`).

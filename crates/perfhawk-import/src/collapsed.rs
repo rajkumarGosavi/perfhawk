@@ -1,7 +1,9 @@
 //! Collapsed-stack ("folded") importer: `frame;frame;frame <count>` per line.
 
 use crate::{infer_kind, ImportError, ImportHints};
-use perfhawk_model::{Fidelity, Profile, ProfileBuilder, ProfileMeta, SampleType, SourceFormat, Unit};
+use perfhawk_model::{
+    Fidelity, Profile, ProfileBuilder, ProfileMeta, SampleType, SourceFormat, Unit,
+};
 
 /// Splits `line` into (stack text, count) if it ends in ` <digits>` with a non-empty stack.
 pub(crate) fn split_line(line: &[u8]) -> Option<(&[u8], &[u8])> {

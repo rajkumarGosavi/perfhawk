@@ -51,3 +51,14 @@ Items found during reviews and deliberately deferred. ~~Struck through~~ items w
 - **Deferred from the Phase 2a review (minor or not reachable yet):** a failed language capture still waits for a running system capture and discards its data, and cancelling needs a child token (`session.rs`); two system providers can pass the kind check but capture nothing when no single provider has all requested kinds; Ctrl-C does not stop the `--follow-up` capture and a cancelled first capture still starts it (`install_ctrlc` is called twice); `--json --follow-up` prints non-JSON lines to stdout and `--check --json` prints a table; an empty wall profile reads Idle without a note; Doctor's regexes run per frame per sample without the per-function cache `filter.rs` uses; the `disk` demo mode and its e2e test only work on Windows (on Linux/macOS a blocked pipe read parks in `gopark` and counts as idle).
 - **Doctor heuristics to revisit with OS data:** the "running or runnable" estimate (busy wall samples whose leaf is not a blocking frame) and the .NET idle-frame list (`LowLevelLifoSemaphore`, `WaitHandle.WaitOne`, `Monitor.Wait`, `SemaphoreSlim.Wait`, `ManualResetEventSlim.Wait`) come from reading code, not from a real .NET run. In the `disk` demo the secondary "CPU-bound 74%" finding is close to the I/O verdict (80%).
 
+
+## From Phase 2 M3 (ETW provider)
+
+- **.NET managed frames.** Subscribe to `Microsoft-Windows-DotNETRuntime` and its Rundown provider (JIT, Loader and NGen keywords) in a second user-mode session and feed `MethodLoad` events to `Symbolizer::add_method` (the resolver and `load_methods` already exist). Until then .NET frames in Block I/O and off-CPU profiles show as module+offset or `[unknown]`.
+- **PDB names** for system and native DLL frames (DbgHelp or a PDB reader); today they are `module+0xoffset`. ReadyToRun names too.
+- **Stale sessions.** A crashed run leaves `perfhawk-kernel-<pid>` registered; enumerate with `QueryAllTraces` and stop the ones whose process is gone at the next start.
+- **Event volume.** The callback decodes every kernel record of the machine and keeps only the target's; for very long captures, measure memory and consider a kernel-side process filter.
+- **Off-CPU for threads parked all window.** No row is produced (the blocked stack arrives at resume). Could add a "still waiting" row with an `[unknown wait]` frame at window end.
+- **Scheduler delay stack** reuses the resumed thread's blocked stack; the waker's stack from ReadyThread events does not match the woken thread and is not used.
+- **Linux (M4)** can reuse `sysevents::aggregate`, `build_artifacts` and `Symbolizer`; only the event source differs.
+- **Unverified here:** the real-trace e2e tests (`etw_real.rs`, `e2e.rs` `etw_*`) have to be run from an elevated shell with `PERFHAWK_ETW=1`.

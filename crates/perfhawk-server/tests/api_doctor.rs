@@ -89,10 +89,16 @@ async fn doctor_endpoint_returns_verdict() {
     let (_d, store, addr) = start().await;
     let wall = time_profile(
         ProfileKind::Wall,
-        &[(&["main", "work"], 8_000_000_000), (&["main", "runtime.gopark"], 1_000_000_000)],
+        &[
+            (&["main", "work"], 8_000_000_000),
+            (&["main", "runtime.gopark"], 1_000_000_000),
+        ],
     );
     let cpu = time_profile(ProfileKind::Cpu, &[(&["main", "work"], 7_500_000_000)]);
-    let s = session(&store, &[(ProfileKind::Wall, wall), (ProfileKind::Cpu, cpu)]);
+    let s = session(
+        &store,
+        &[(ProfileKind::Wall, wall), (ProfileKind::Cpu, cpu)],
+    );
     let (st, v) = get(addr, &format!("/api/sessions/{}/doctor", s.short_id)).await;
     assert_eq!(st, 200, "{v}");
     assert_eq!(v["verdict"], "cpuBound");

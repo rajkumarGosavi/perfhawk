@@ -376,3 +376,93 @@ fn target_exit_partial() {
     .unwrap();
     assert_eq!(s.status, SessionStatus::Partial, "{:?}", s.warnings);
 }
+
+// ---- Windows OS-level tracing (ETW). Elevated shell, PERFHAWK_E2E=1 and PERFHAWK_ETW=1. ----
+
+#[cfg(windows)]
+fn etw_ready() -> bool {
+    enabled()
+        && std::env::var("PERFHAWK_ETW").as_deref() == Ok("1")
+        && perfhawk_capture::etw::is_elevated()
+}
+
+#[cfg(windows)]
+fn all_names(store: &Store, s: &SessionRecord, kind: ProfileKind) -> Vec<String> {
+    let rec = profiles(store, s)
+        .into_iter()
+        .find(|r| r.kind == kind)
+        .unwrap_or_else(|| panic!("session has no {kind} profile"));
+    function_names(store, &rec.id)
+}
+
+#[cfg(windows)]
+#[test]
+#[ignore = "e2e: needs an elevated shell, PERFHAWK_E2E=1, PERFHAWK_ETW=1, go"]
+fn etw_go_disk_mode_block_io_names_function_and_file() {
+    if !etw_ready() {
+        return;
+    }
+    let demo = spawn_go_demo(&["-mode", "disk"]);
+    wait_for_agent(demo.0.id());
+    let (_d, store) = store();
+    let s = run(
+        &store,
+        Target::Pid(demo.0.id()),
+        vec![
+            ProfileKind::BlockIo,
+            ProfileKind::OffCpu,
+            ProfileKind::SchedDelay,
+        ],
+        5,
+        "etw-go-disk",
+    )
+    .unwrap();
+    assert_eq!(s.status, SessionStatus::Complete, "{:?}", s.warnings);
+    let io = all_names(&store, &s, ProfileKind::BlockIo);
+    assert!(
+        io.iter()
+            .any(|n| n.starts_with("[file: ") && n.contains("perfhawk-demo-")),
+        "no demo file leaf in {io:?}"
+    );
+    assert!(
+        io.iter().any(|n| n.contains("fileWorker")),
+        "no Go function name in {io:?}"
+    );
+    let off = all_names(&store, &s, ProfileKind::OffCpu);
+    assert!(!off.is_empty(), "off-CPU profile is empty");
+    // the scheduler profile exists (it may be small on an idle machine)
+    let _ = all_names(&store, &s, ProfileKind::SchedDelay);
+}
+
+#[cfg(windows)]
+#[test]
+#[ignore = "e2e: needs an elevated shell, PERFHAWK_E2E=1, PERFHAWK_ETW=1, dotnet"]
+fn etw_dotnet_io_mode_block_io_names_the_audit_log() {
+    if !etw_ready() {
+        return;
+    }
+    let child = Killer(
+        Command::new("dotnet")
+            .arg(dotnet_demo_dll())
+            .args(["io", "30"])
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    std::thread::sleep(Duration::from_secs(2));
+    let (_d, store) = store();
+    let s = run(
+        &store,
+        Target::Pid(child.0.id()),
+        vec![ProfileKind::BlockIo],
+        4,
+        "etw-dotnet-io",
+    )
+    .unwrap();
+    assert_eq!(s.status, SessionStatus::Complete, "{:?}", s.warnings);
+    let io = all_names(&store, &s, ProfileKind::BlockIo);
+    assert!(
+        io.iter().any(|n| n.contains("dotnet-demo-audit")),
+        "no audit-log file leaf in {io:?}"
+    );
+}

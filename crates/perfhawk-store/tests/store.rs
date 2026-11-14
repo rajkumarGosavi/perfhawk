@@ -243,7 +243,11 @@ mod pick_home {
 
     #[test]
     fn perfhawk_home_wins_everywhere() {
-        let e = env(&[("PERFHAWK_HOME", "/x"), ("LOCALAPPDATA", "L"), ("HOME", "/h")]);
+        let e = env(&[
+            ("PERFHAWK_HOME", "/x"),
+            ("LOCALAPPDATA", "L"),
+            ("HOME", "/h"),
+        ]);
         for os in [HomeOs::Windows, HomeOs::MacOs, HomeOs::Other] {
             assert_eq!(pick_home(os, &e, &|_: &Path| false), p("/x"));
         }
@@ -269,6 +273,9 @@ mod pick_home {
             xdg.join("perfhawk")
         );
         let e = env(&[]);
-        assert_eq!(pick_home(HomeOs::Other, &e, &|_: &Path| false), p(".perfhawk"));
+        assert_eq!(
+            pick_home(HomeOs::Other, &e, &|_: &Path| false),
+            p(".perfhawk")
+        );
     }
 }
