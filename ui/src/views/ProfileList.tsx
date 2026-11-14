@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { deleteProfile, listProfiles, uploadProfile, type ProfileRecord } from '../api'
+import { ConfirmDialog } from './ConfirmDialog'
 import { ErrorNotice } from './ErrorNotice'
 import { FidelityBadge } from './FidelityBadge'
 import { formatValue } from '../format'
@@ -25,8 +26,10 @@ export function ProfileList({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [load, version])
 
+  const [pendingDelete, setPendingDelete] = useState<ProfileRecord | null>(null)
+
   const remove = async (p: ProfileRecord) => {
-    if (!window.confirm(`Delete ${p.name}? This removes the profile data and cannot be undone.`)) return
+    setPendingDelete(null)
     try {
       await deleteProfile(p.id)
       load()
@@ -60,6 +63,15 @@ export function ProfileList({
 
   return (
     <section aria-label="Profiles">
+      {pendingDelete && (
+        <ConfirmDialog
+          title={`Delete ${pendingDelete.name}?`}
+          message="This removes the profile data and cannot be undone."
+          confirmLabel="Delete"
+          onConfirm={() => void remove(pendingDelete)}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
       <ErrorNotice error={error} onRetry={load} />
       {uploadErrors.map((u) => <ErrorNotice key={u.file} error={u.error} context={u.file} />)}
       <div
@@ -116,7 +128,7 @@ export function ProfileList({
                     <td className="num">{formatValue(p.default_total, unit)}</td>
                     <td>{new Date(p.imported_at_unix_ms).toLocaleString()}</td>
                     <td>
-                      <button onClick={() => void remove(p)} aria-label={`Delete ${p.name}`}>Delete</button>
+                      <button onClick={() => setPendingDelete(p)} aria-label={`Delete ${p.name}`}>Delete</button>
                     </td>
                   </tr>
                 )

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError, deleteSession, listProfiles, listSessions, type ProfileRecord, type SessionRecord,
 } from '../api'
+import { ConfirmDialog } from './ConfirmDialog'
 import { ErrorNotice } from './ErrorNotice'
 import { reloadPage } from './reload'
 import { formatValue } from '../format'
@@ -63,8 +64,10 @@ export function SessionList({
       return n
     })
 
+  const [pendingDelete, setPendingDelete] = useState<SessionRecord | null>(null)
+
   const remove = async (s: SessionRecord) => {
-    if (!window.confirm(`Delete ${s.name}? This removes the profile data and cannot be undone.`)) return
+    setPendingDelete(null)
     try {
       await deleteSession(s.id)
       onChanged()
@@ -75,6 +78,15 @@ export function SessionList({
 
   return (
     <section aria-label="Sessions">
+      {pendingDelete && (
+        <ConfirmDialog
+          title={`Delete ${pendingDelete.name}?`}
+          message="This removes the profile data and cannot be undone."
+          confirmLabel="Delete"
+          onConfirm={() => void remove(pendingDelete)}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
       <ErrorNotice error={error} onRetry={reloadPage} />
       {sessions === null ? (
         !error && <p className="muted">Loading...</p>
@@ -125,7 +137,7 @@ export function SessionList({
                       )}
                     </td>
                     <td>
-                      <button onClick={() => void remove(s)} aria-label={`Delete session ${s.name}`}>Delete</button>
+                      <button onClick={() => setPendingDelete(s)} aria-label={`Delete session ${s.name}`}>Delete</button>
                     </td>
                   </tr>,
                   open && (

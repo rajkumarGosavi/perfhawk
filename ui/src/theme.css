@@ -248,3 +248,7 @@ td.down { color: var(--diff-down-3); }
 
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .flame-wrap canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.confirm-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }
+button.danger { background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-fg); }
+.export-list button[role='menuitem']:focus-visible { outline-offset: -2px; }
