@@ -3,6 +3,8 @@ import {
   ApiError, getFlame, getGraph, getGroups, getHeatmap, getProfile, getSandwich, getTop, listProfiles,
   type CallGraph, type FlameNode, type GroupRow, type Heatmap, type ProfileRecord, type Sandwich as SandwichData, type TopRow,
 } from '../api'
+import { ErrorNotice } from './ErrorNotice'
+import { reloadPage } from './reload'
 import { hotPath } from '../analysis/hotPath'
 import { SHORTCUTS, keyAction } from '../analysis/keys'
 import { effectiveExclude } from '../analysis/perfhawk'
@@ -61,7 +63,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
   const ref = state.profile!
   const [record, setRecord] = useState<ProfileRecord | null>(null)
   const [data, setData] = useState<Data | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [loading, setLoading] = useState(false)
   const [others, setOthers] = useState<ProfileRecord[]>([])
   const [helpOpen, setHelpOpen] = useState(false)
@@ -76,7 +78,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
   const [search, setSearch] = useDebounced(state.search ?? '', (v) => replace({ search: v || undefined }))
 
   useEffect(() => {
-    getProfile(ref).then(setRecord, (e: ApiError) => setError(e.message))
+    getProfile(ref).then(setRecord, (e: ApiError) => setError(e))
   }, [ref])
   // Profiles of the same kind that this one can be compared with, newest first.
   useEffect(() => {
@@ -123,7 +125,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           : getFlame(ref, q).then((tree) => ({ kind: 'flame', tree }))
     p.then(
       (d) => { if (!stale) { setData(d); setError(null); setLoading(false) } },
-      (e: ApiError) => { if (!stale) { setData(null); setError(e.message); setLoading(false) } },
+      (e: ApiError) => { if (!stale) { setData(null); setError(e); setLoading(false) } },
     )
     return () => { stale = true }
   }, [record, ref, view, func, st, qf, qe, qh, sort, depth, tx, groupBy, state.graphNodes, t0, t1])
@@ -287,7 +289,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       )}
       <TransformBar tx={tx} onChange={(next) => navigate({ tx: next }, 'push')} />
       {exportMsg && <p className="muted" role="status">{exportMsg}</p>}
-      {error && <div className="banner" role="alert">{error}</div>}
+      <ErrorNotice error={error} onRetry={reloadPage} />
       {loading && !error && <p className="muted" role="status">Loading...</p>}
       {view === 'sandwich' && func === undefined && (
         <p className="muted">Pick a function in the Top view to see its callers and callees.</p>

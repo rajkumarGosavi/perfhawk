@@ -3,6 +3,8 @@ import {
   ApiError, getDiffFlame, getDiffTop, getProfile, listProfiles,
   type DiffFlame, type DiffTop, type ProfileRecord,
 } from '../api'
+import { ErrorNotice } from './ErrorNotice'
+import { reloadPage } from './reload'
 import { diffColor } from '../flame/diffColor'
 import { FlameGraph, type FlameExportApi } from '../flame/FlameGraph'
 import { copyText, downloadBlob, downloadText, fileStem } from '../export/download'
@@ -51,7 +53,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
   const [stName, setStName] = useState<string | undefined>(undefined)
   const [flame, setFlame] = useState<DiffFlame | null>(null)
   const [top, setTop] = useState<DiffTop | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<'flame' | 'tree'>('flame')
   const [cb, setCb] = useState(readPalette)
@@ -59,12 +61,12 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
   const [exportMsg, setExportMsg] = useState<string | null>(null)
 
   useEffect(() => {
-    getProfile(headRef).then(setHead, (e: ApiError) => setError(e.message))
+    getProfile(headRef).then(setHead, (e: ApiError) => setError(e))
     listProfiles().then(setCandidates, () => {})
   }, [headRef])
   useEffect(() => {
     setBase(null)
-    if (baseRef) getProfile(baseRef).then(setBase, (e: ApiError) => setError(e.message))
+    if (baseRef) getProfile(baseRef).then(setBase, (e: ApiError) => setError(e))
   }, [baseRef])
 
   const { focus, hide, depth, tx, diffFilter, diffSort, diffLayout, t0, t1, b0, b1 } = state
@@ -100,7 +102,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
         if (stale) return
         setFlame(null)
         setTop(null)
-        setError(e.message)
+        setError(e)
         setLoading(false)
       },
     )
@@ -241,7 +243,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
       <TransformBar tx={tx} onChange={(next) => navigate({ tx: next }, 'push')} />
       <div className="toolbar"><ExportMenu items={exportItems} /></div>
       {exportMsg && <p className="muted" role="status">{exportMsg}</p>}
-      {error && <div className="banner" role="alert">{error}</div>}
+      <ErrorNotice error={error} onRetry={reloadPage} />
       {!baseRef && <p className="muted">Pick a base profile to compare against.</p>}
       {loading && !error && <p className="muted" role="status">Loading...</p>}
       <div className="diff-legend muted" aria-hidden="true">

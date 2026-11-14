@@ -3,6 +3,8 @@ import {
   getHistory, getSeries, getTop, listProfiles,
   type ApiError, type HistoryResponse, type SeriesInfo,
 } from '../api'
+import { ErrorNotice } from './ErrorNotice'
+import { reloadPage } from './reload'
 import { deltaFromPrevious, linePath, nearest, scale, type Metric } from '../history/chart'
 import { formatPct, formatValue } from '../format'
 import type { ViewState } from '../url'
@@ -16,7 +18,7 @@ const PAD = 24
 export function History({ state, navigate }: { state: ViewState; navigate: Nav }) {
   const [series, setSeries] = useState<SeriesInfo[] | null>(null)
   const [data, setData] = useState<HistoryResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [metric, setMetric] = useState<Metric>('value')
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [focusIdx, setFocusIdx] = useState<number | null>(null)
@@ -28,7 +30,7 @@ export function History({ state, navigate }: { state: ViewState; navigate: Nav }
     let stale = false
     getSeries().then(
       (s) => { if (!stale) setSeries(s) },
-      (e: ApiError) => { if (!stale) setError(e.message) },
+      (e: ApiError) => { if (!stale) setError(e) },
     )
     return () => { stale = true }
   }, [])
@@ -61,7 +63,7 @@ export function History({ state, navigate }: { state: ViewState; navigate: Nav }
     if (!state.series || !kind || !fn) return
     getHistory({ series: state.series, kind, func: fn }).then(
       (d) => { if (!stale) { setData(d); setError(null) } },
-      (e: ApiError) => { if (!stale) setError(e.message) },
+      (e: ApiError) => { if (!stale) setError(e) },
     )
     return () => { stale = true }
   }, [state.series, kind, fn])
@@ -157,7 +159,7 @@ export function History({ state, navigate }: { state: ViewState; navigate: Nav }
           <button aria-pressed={metric === 'pct'} onClick={() => setMetric('pct')}>% of total</button>
         </div>
       </div>
-      {error && <div className="banner" role="alert">{error}</div>}
+      <ErrorNotice error={error} onRetry={reloadPage} />
       {!state.series && <p className="muted">Pick a series to see how a function changes across sessions. Tag recordings with <code>--tag series:name</code> to group them.</p>}
       {state.series && !fn && <p className="muted">Pick or type a function name.</p>}
       {data && data.points.length === 0 && <p className="muted">No sessions of this series captured a {kind} profile.</p>}

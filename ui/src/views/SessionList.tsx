@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError, deleteSession, listProfiles, listSessions, type ProfileRecord, type SessionRecord,
 } from '../api'
+import { ErrorNotice } from './ErrorNotice'
+import { reloadPage } from './reload'
 import { formatValue } from '../format'
 import type { Range } from '../time/range'
 import { FidelityBadge } from './FidelityBadge'
@@ -33,7 +35,7 @@ export function SessionList({
 }) {
   const [sessions, setSessions] = useState<SessionRecord[] | null>(null)
   const [profiles, setProfiles] = useState<Map<string, ProfileRecord>>(new Map())
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const load = useCallback(() => {
@@ -47,7 +49,7 @@ export function SessionList({
           if (hit) setExpanded((e) => new Set(e).add(hit.id))
         }
       },
-      (e: ApiError) => setError(e.message),
+      (e: ApiError) => setError(e),
     )
   }, [initialExpanded])
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -67,13 +69,13 @@ export function SessionList({
       await deleteSession(s.id)
       onChanged()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e))
+      setError(e)
     }
   }
 
   return (
     <section aria-label="Sessions">
-      {error && <div className="banner" role="alert">{error}</div>}
+      <ErrorNotice error={error} onRetry={reloadPage} />
       {sessions === null ? (
         !error && <p className="muted">Loading...</p>
       ) : sessions.length === 0 ? (

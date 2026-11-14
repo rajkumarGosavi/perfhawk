@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ApiError, deleteProfile, listProfiles, uploadProfile, type ProfileRecord } from '../api'
+import { deleteProfile, listProfiles, uploadProfile, type ProfileRecord } from '../api'
+import { ErrorNotice } from './ErrorNotice'
 import { FidelityBadge } from './FidelityBadge'
 import { formatValue } from '../format'
 
@@ -13,12 +14,13 @@ export function ProfileList({
   onChanged?: () => void
 }) {
   const [profiles, setProfiles] = useState<ProfileRecord[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
+  const [uploadErrors, setUploadErrors] = useState<{ file: string; error: unknown }[]>([])
   const [over, setOver] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(() => {
-    listProfiles().then(setProfiles, (e: ApiError) => setError(e.message))
+    listProfiles().then(setProfiles, setError)
   }, [])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [load, version])
@@ -30,24 +32,25 @@ export function ProfileList({
       load()
       onChanged?.()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e))
+      setError(e)
     }
   }
 
   const upload = async (files: FileList | File[]) => {
     setBusy(true)
     setError(null)
-    const errors: string[] = []
+    setUploadErrors([])
+    const errors: { file: string; error: unknown }[] = []
     let last: ProfileRecord | null = null
     try {
       for (const f of Array.from(files)) {
         try {
           last = (await uploadProfile(f)).record
         } catch (e) {
-          errors.push(`${f.name}: ${e instanceof ApiError ? e.message : String(e)}`)
+          errors.push({ file: f.name, error: e })
         }
       }
-      if (errors.length) setError(errors.join('\n'))
+      if (errors.length) setUploadErrors(errors)
       if (last && files.length === 1 && !errors.length) onOpen(last.short_id)
     } finally {
       load()
@@ -57,7 +60,8 @@ export function ProfileList({
 
   return (
     <section aria-label="Profiles">
-      {error && <div className="banner" role="alert" style={{ whiteSpace: 'pre-line' }}>{error}</div>}
+      <ErrorNotice error={error} onRetry={load} />
+      {uploadErrors.map((u) => <ErrorNotice key={u.file} error={u.error} context={u.file} />)}
       <div
         className={`dropzone${over ? ' over' : ''}`}
         onDragOver={(e) => { e.preventDefault(); setOver(true) }}

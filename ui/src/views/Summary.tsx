@@ -3,6 +3,8 @@ import {
   getFlame, getSession, getTop,
   type AnalysisQuery, type ApiError, type FlameNode, type ProfileRecord, type SessionRecord, type TopRow,
 } from '../api'
+import { ErrorNotice } from './ErrorNotice'
+import { reloadPage } from './reload'
 import { concentration, headline, kindGuide } from '../analysis/guide'
 import { hotPath, hotPathEndsTruncated } from '../analysis/hotPath'
 import { formatPct, formatValue } from '../format'
@@ -24,7 +26,7 @@ const MAX_FRAMES = 25
 
 export function Summary({ profileRef, record, query, navigate }: Props) {
   const [data, setData] = useState<Loaded | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [session, setSession] = useState<SessionRecord | null>(null)
 
   const { st, focus, exclude, hide, depth, tx, t0, t1 } = query
@@ -39,7 +41,7 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
       getFlame(profileRef, q),
     ]).then(
       ([bySelf, byTotal, tree]) => { if (!stale) { setData({ bySelf, byTotal, tree }); setError(null) } },
-      (e: ApiError) => { if (!stale) { setData(null); setError(e.message) } },
+      (e: ApiError) => { if (!stale) { setData(null); setError(e) } },
     )
     return () => { stale = true }
   }, [profileRef, st, focus, exclude, hide, depth, tx, t0, t1])
@@ -91,7 +93,7 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
 
   return (
     <section aria-label="Summary">
-      {error && <div className="banner" role="alert">{error}</div>}
+      <ErrorNotice error={error} onRetry={reloadPage} />
       {!data && !error && <p className="muted" role="status">Loading...</p>}
       {data && (
         <>
