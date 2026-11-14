@@ -65,6 +65,7 @@ fn run(profiles: &[Entry], target: Option<&str>) -> perfhawk_analysis::Diagnosis
             })
             .collect(),
         record_target: target.map(String::from),
+        gc: None,
     };
     diagnose(&input, &DoctorConfig::default())
 }
@@ -494,6 +495,7 @@ fn empty_profiles_are_finite() {
                 },
             ],
             record_target: None,
+            gc: None,
         };
         let d = diagnose(&input, &DoctorConfig::default());
         assert_eq!(d.verdict, Verdict::Idle);
@@ -538,4 +540,159 @@ fn diagnosis_serialises_camel_case() {
     assert_eq!(v["findings"][0]["confidence"], "medium");
     assert!(v["busyThreads"].is_number());
     assert!(v["findings"][0]["sharePct"].is_number());
+}
+
+// ---- GC (event-based) -------------------------------------------------------------
+
+fn gc_summary(share_pct: f64) -> perfhawk_analysis::gc::GcSummary {
+    use perfhawk_model::{AllocSeries, GcData, GcEvent, GC_SCHEMA};
+    let pause_ns = (WINDOW as f64 * share_pct / 100.0) as u64;
+    let d = GcData {
+        schema: GC_SCHEMA,
+        runtime: "dotnet".into(),
+        start_unix_ns: 0,
+        duration_ns: WINDOW,
+        fidelity: Fidelity::Native,
+        events: vec![GcEvent {
+            id: 1,
+            start_ns: 0,
+            generation: Some(0),
+            kind: "blocking".into(),
+            reason: "allocation".into(),
+            reason_raw: None,
+            induced: false,
+            pause_ns,
+            duration_ns: pause_ns,
+            heap_before_bytes: None,
+            heap_after_bytes: None,
+            gen_after: None,
+            promoted_bytes: None,
+        }],
+        heap: vec![],
+        alloc: AllocSeries {
+            bucket_ns: 1_000_000_000,
+            bytes: vec![],
+        },
+        notes: vec![],
+    };
+    perfhawk_analysis::gc::summarize(&d, &perfhawk_analysis::gc::GcConfig::default())
+}
+
+fn run_gc(
+    profiles: &[Entry],
+    gc: Option<&perfhawk_analysis::gc::GcSummary>,
+) -> perfhawk_analysis::Diagnosis {
+    let input = DoctorInput {
+        window_ns: WINDOW,
+        profiles: profiles
+            .iter()
+            .map(|(k, id, p, f)| DoctorProfile {
+                kind: *k,
+                short_id: id,
+                profile: p,
+                fidelity: f.clone(),
+            })
+            .collect(),
+        record_target: None,
+        gc,
+    };
+    diagnose(&input, &DoctorConfig::default())
+}
+
+/// CPU-bound set where half the CPU samples are GC frames (the sample-based signal).
+fn gc_heavy_set() -> (Profile, Profile) {
+    let wall = ns(
+        ProfileKind::Wall,
+        &[
+            (&["main", "work"], 4_000_000_000),
+            (&["runtime.gcBgMarkWorker"], 4_000_000_000),
+        ],
+    );
+    let cpu = ns(
+        ProfileKind::Cpu,
+        &[
+            (&["main", "work"], 4_000_000_000),
+            (&["runtime.gcBgMarkWorker"], 4_000_000_000),
+        ],
+    );
+    (wall, cpu)
+}
+
+fn gc_rule(d: &perfhawk_analysis::Diagnosis) -> Option<&perfhawk_analysis::DoctorFinding> {
+    d.findings.iter().find(|f| f.rule == "gc_pressure")
+}
+
+#[test]
+fn no_gc_data_keeps_old_behaviour() {
+    let (wall, cpu) = gc_heavy_set();
+    let d = run_gc(
+        &[
+            (ProfileKind::Wall, "w1", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c1", &cpu, Fidelity::Native),
+        ],
+        None,
+    );
+    let f = gc_rule(&d).expect("sample-based GC pressure");
+    assert!(f.title.contains("of CPU time"), "{}", f.title);
+}
+
+#[test]
+fn event_based_gc_pressure_replaces_sample_based() {
+    let (wall, cpu) = gc_heavy_set();
+    let low = gc_summary(1.0);
+    let d = run_gc(
+        &[
+            (ProfileKind::Wall, "w1", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c1", &cpu, Fidelity::Native),
+        ],
+        Some(&low),
+    );
+    assert!(
+        gc_rule(&d).is_none(),
+        "real pause share is 1%, so no GC pressure: {:?}",
+        d.findings
+    );
+}
+
+#[test]
+fn event_based_gc_pressure_fires_at_threshold() {
+    let (wall, cpu) = cpu_bound_set();
+    let high = gc_summary(25.0);
+    let d = run_gc(
+        &[
+            (ProfileKind::Wall, "w1", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c1", &cpu, Fidelity::Native),
+        ],
+        Some(&high),
+    );
+    let f = gc_rule(&d).expect("GC pressure from events");
+    assert_eq!(f.fidelity, Fidelity::Native);
+    assert!((f.share_pct - 25.0).abs() < 0.01, "{}", f.share_pct);
+    assert!(f.title.contains("of wall time is GC pause"), "{}", f.title);
+}
+
+#[test]
+fn gc_never_becomes_the_verdict() {
+    let (wall, cpu) = cpu_bound_set();
+    let huge = gc_summary(90.0);
+    let d = run_gc(
+        &[
+            (ProfileKind::Wall, "w1", &wall, Fidelity::Derived),
+            (ProfileKind::Cpu, "c1", &cpu, Fidelity::Native),
+        ],
+        Some(&huge),
+    );
+    assert_eq!(d.verdict, Verdict::CpuBound);
+    assert!(gc_rule(&d).is_some());
+}
+
+#[test]
+fn event_based_gc_pressure_needs_no_cpu_profile() {
+    let (wall, _) = cpu_bound_set();
+    let high = gc_summary(30.0);
+    let d = run_gc(
+        &[(ProfileKind::Wall, "w1", &wall, Fidelity::Derived)],
+        Some(&high),
+    );
+    assert!(gc_rule(&d).is_some(), "{:?}", d.findings);
 }

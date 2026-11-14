@@ -123,3 +123,61 @@ async fn doctor_unknown_session_is_404() {
     let (st, _) = get(addr, "/api/sessions/deadbeefcafe/doctor").await;
     assert_eq!(st, 404);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn doctor_uses_stored_gc_data_as_native_evidence() {
+    use perfhawk_model::{AllocSeries, GcData, GcEvent, GC_SCHEMA};
+    let (_d, store, addr) = start().await;
+    let wall = time_profile(
+        ProfileKind::Wall,
+        &[
+            (&["main", "work"], 8_000_000_000),
+            (&["main", "runtime.gopark"], 1_000_000_000),
+        ],
+    );
+    let cpu = time_profile(ProfileKind::Cpu, &[(&["main", "work"], 7_500_000_000)]);
+    let s = session(
+        &store,
+        &[(ProfileKind::Wall, wall), (ProfileKind::Cpu, cpu)],
+    );
+    // 3 s of pause in a 10 s session.
+    let gc = GcData {
+        schema: GC_SCHEMA,
+        runtime: "dotnet".into(),
+        start_unix_ns: 0,
+        duration_ns: 10_000_000_000,
+        fidelity: Fidelity::Native,
+        events: vec![GcEvent {
+            id: 1,
+            start_ns: 0,
+            generation: Some(2),
+            kind: "blocking".into(),
+            reason: "allocation".into(),
+            reason_raw: None,
+            induced: false,
+            pause_ns: 3_000_000_000,
+            duration_ns: 3_000_000_000,
+            heap_before_bytes: None,
+            heap_after_bytes: None,
+            gen_after: None,
+            promoted_bytes: None,
+        }],
+        heap: vec![],
+        alloc: AllocSeries {
+            bucket_ns: 1_000_000_000,
+            bytes: vec![],
+        },
+        notes: vec![],
+    };
+    store.save_gc(&s.id, &gc).unwrap();
+    let (st, v) = get(addr, &format!("/api/sessions/{}/doctor", s.short_id)).await;
+    assert_eq!(st, 200, "{v}");
+    let f = v["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["rule"] == "gc_pressure")
+        .expect("gc_pressure finding");
+    assert_eq!(f["fidelity"], "native");
+    assert_eq!(v["verdict"], "cpuBound", "GC is never the verdict");
+}
