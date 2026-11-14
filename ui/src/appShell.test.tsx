@@ -53,10 +53,10 @@ describe('App shell', () => {
     expect(document.querySelector('[aria-label="View"]')).toBeNull()
     expect(item('Summary').getAttribute('aria-current')).toBe('page')
   })
-  it('disables Timeline and ignores key 5 for a profile without time data', async () => {
+  it('disables Timeline and ignores key 4 for a profile without time data', async () => {
     await open('/?profile=p1&view=summary', false)
     expect(item('Timeline').disabled).toBe(true)
-    await press('5')
+    await press('4')
     expect(window.location.search).not.toContain('view=time')
   })
   it('key 8 opens History', async () => {

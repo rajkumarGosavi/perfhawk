@@ -8,6 +8,7 @@ import { reloadPage } from './reload'
 import { deltaFromPrevious, linePath, nearest, scale, type Metric } from '../history/chart'
 import { formatPct, formatValue } from '../format'
 import type { ViewState } from '../url'
+import { Button } from '../ui/Button'
 
 type Nav = (patch: Partial<ViewState>, mode?: 'push' | 'replace', reset?: boolean) => void
 
@@ -114,10 +115,13 @@ export function History({ state, navigate }: { state: ViewState; navigate: Nav }
 
   return (
     <section aria-label="History">
-      <div className="toolbar">
-        <button onClick={() => navigate({}, 'push', true)}>&larr; Home</button>
-        <h2 className="view-title">History</h2>
-        <strong>History</strong>
+      <header className="page-head">
+        <h2 className="page-title">History</h2>
+        <div className="page-actions">
+          <Button size="sm" variant="ghost" onClick={() => navigate({}, 'push', true)}>&larr; Home</Button>
+        </div>
+      </header>
+      <div className="toolbar card history-controls">
         <label className="field">
           Series
           <select
@@ -156,8 +160,8 @@ export function History({ state, navigate }: { state: ViewState; navigate: Nav }
           </datalist>
         </label>
         <div className="tabs" role="group" aria-label="Metric">
-          <button aria-pressed={metric === 'value'} onClick={() => setMetric('value')}>Value</button>
-          <button aria-pressed={metric === 'pct'} onClick={() => setMetric('pct')}>% of total</button>
+          <Button size="sm" aria-pressed={metric === 'value'} onClick={() => setMetric('value')}>Value</Button>
+          <Button size="sm" aria-pressed={metric === 'pct'} onClick={() => setMetric('pct')}>% of total</Button>
         </div>
       </div>
       <ErrorNotice error={error} onRetry={reloadPage} />
@@ -218,8 +222,8 @@ export function History({ state, navigate }: { state: ViewState; navigate: Nav }
                             {d === null ? '–' : `${d > 0 ? '+' : ''}${metric === 'pct' ? formatPct(d) : formatValue(d, unit)}`}
                           </td>
                           <td>
-                            <button onClick={() => open(i)}>Open</button>{' '}
-                            <button onClick={() => diffWithPrevious(i)} disabled={i === 0}>Diff with previous</button>
+                            <Button size="sm" onClick={() => open(i)}>Open</Button>{' '}
+                            <Button size="sm" onClick={() => diffWithPrevious(i)} disabled={i === 0}>Diff with previous</Button>
                           </td>
                         </>
                       ) : (

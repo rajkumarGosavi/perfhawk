@@ -137,6 +137,7 @@ const VIEW_TOPIC: Record<ViewName, string> = {
   groups: 'self-total',
   graph: 'flame-graph',
   time: 'compare',
+  gc: 'getting-started',
   history: 'compare',
 }
 

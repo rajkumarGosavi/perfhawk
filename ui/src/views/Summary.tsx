@@ -13,6 +13,7 @@ import { FidelityBadge, fidelityTip } from './FidelityBadge'
 import { Findings } from './Findings'
 import { PivotPanel } from './PivotPanel'
 import { Term } from '../help/Term'
+import { Button } from '../ui/Button'
 import { Skeleton } from './Skeleton'
 
 type Props = {
@@ -99,19 +100,21 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
       {!data && !error && <Skeleton lines={5} />}
       {data && (
         <>
-          <p className="muted summary-question">{guide.questions[0]}</p>
-          <p className="summary-headline" role="heading" aria-level={2}>
-            {headline(data.bySelf, unit)}
-            {!empty && (
-              <span className="muted headline-note">
-                {' '}
-                ({concentration(data.bySelf) === 'concentrated' ? 'concentrated in one function' : 'spread across many functions'})
-              </span>
-            )}
-          </p>
-          <p>
-            <FidelityBadge fidelity={record.fidelity} /> <span className="muted">{fidelityTip(record.fidelity)}</span>
-          </p>
+          <header className="summary-hero">
+            <p className="muted summary-question">{guide.questions[0]}</p>
+            <p className="summary-headline" role="heading" aria-level={2}>
+              {headline(data.bySelf, unit)}
+              {!empty && (
+                <span className="muted headline-note">
+                  {' '}
+                  ({concentration(data.bySelf) === 'concentrated' ? 'concentrated in one function' : 'spread across many functions'})
+                </span>
+              )}
+            </p>
+            <p className="summary-fidelity">
+              <FidelityBadge fidelity={record.fidelity} /> <span className="muted">{fidelityTip(record.fidelity)}</span>
+            </p>
+          </header>
           {warnings.length > 0 && (
             <div className="banner" role="status">
               <strong>Capture warnings</strong>
@@ -137,8 +140,8 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
                 {path.length > MAX_FRAMES && <p className="muted">… {path.length - MAX_FRAMES} more frames</p>}
                 {hotPathEndsTruncated(path) && <p className="muted">(deeper frames folded)</p>}
                 <div className="summary-actions">
-                  <button onClick={() => navigate({ view: 'flame', hot: true })}>Show in flame</button>
-                  <button onClick={() => navigate({ view: 'tree', hot: true })}>Open in call tree</button>
+                  <Button size="sm" variant="primary" onClick={() => navigate({ view: 'flame', hot: true })}>Show in flame</Button>
+                  <Button size="sm" onClick={() => navigate({ view: 'tree', hot: true })}>Open in call tree</Button>
                 </div>
               </section>
               <PivotPanel
@@ -147,16 +150,16 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
                 currentProfileId={record.id}
                 navigate={navigate}
               />
-              <section className="card" aria-label="What to look at">
-                <h3>What to look at: {guide.title}</h3>
+              <details className="card summary-guide">
+                <summary>What to look at: {guide.title}</summary>
                 <ul>{guide.questions.map((q) => <li key={q}>{q}</li>)}</ul>
                 <p className="muted">How this was measured: {guide.measured}</p>
                 <div className="summary-actions">
                   {guide.actions.map((a) => (
-                    <button key={a.label} onClick={() => navigate(a.patch)}>{a.label}</button>
+                    <Button key={a.label} size="sm" onClick={() => navigate(a.patch)}>{a.label}</Button>
                   ))}
                 </div>
-              </section>
+              </details>
             </div>
           )}
         </>

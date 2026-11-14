@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode, type RefObject } from 'react'
 import type { Nav } from '../nav'
-import { writeThemePref } from '../theme'
+import { writeDensity, writeThemePref } from '../theme'
 import { TooltipProvider } from '../ui/Tooltip'
 import type { ViewState } from '../url'
 import { CommandPalette } from './CommandPalette'
@@ -31,9 +31,13 @@ export function Shell({
   const commands = buildCommands({
     hasProfile,
     hasTimeline: !!info?.hasTime,
+    hasGc: !!info?.hasGc,
+    diffBase: info?.diffBase,
+    base: state.base,
     navigate,
     openHelp: onHelp,
     setTheme: writeThemePref,
+    setDensity: writeDensity,
     focusSearch: () => document.getElementById('fn-search')?.focus(),
   })
 
@@ -49,7 +53,7 @@ export function Shell({
         onPalette={() => setPaletteOpen(true)}
       />
       <div className="shell-body">
-        {hasProfile && <Rail state={state} navigate={navigate} hasTime={!!info?.hasTime} />}
+        {hasProfile && <Rail state={state} navigate={navigate} hasTime={!!info?.hasTime} hasGc={!!info?.hasGc} diffBase={info?.diffBase} />}
         <main id="main" ref={mainRef} tabIndex={-1}>{main}</main>
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={commands} />

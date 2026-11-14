@@ -4,7 +4,7 @@ import { RAIL, railView } from './views'
 describe('RAIL', () => {
   it('lists the views in key order with unique keys', () => {
     expect(RAIL.map((r) => [r.key, r.view])).toEqual([
-      ['1', 'summary'], ['2', 'flame'], ['3', 'tree'], ['4', 'top'], ['5', 'time'], ['6', 'graph'], ['7', 'groups'], ['8', 'history'],
+      ['1', 'summary'], ['2', 'flame'], ['3', 'tree'], ['4', 'time'], ['5', 'graph'], ['6', 'gc'], ['7', 'diff'], ['8', 'history'],
     ])
     expect(new Set(RAIL.map((r) => r.key)).size).toBe(RAIL.length)
   })
@@ -21,5 +21,14 @@ describe('railView', () => {
     expect(railView('sandwich')).toBe('flame')
     expect(railView('diff')).toBe('diff')
     expect(railView('tree')).toBe('tree')
+  })
+})
+
+describe('RAIL gating', () => {
+  it('GC needs session GC data, Diff needs another profile; Top and Groups light Flame', () => {
+    expect(RAIL.filter((r) => r.needsGc).map((r) => r.view)).toEqual(['gc'])
+    expect(RAIL.filter((r) => r.needsDiff).map((r) => r.view)).toEqual(['diff'])
+    expect(railView('top')).toBe('flame')
+    expect(railView('groups')).toBe('flame')
   })
 })

@@ -1,4 +1,4 @@
-export type ViewName = 'summary' | 'flame' | 'icicle' | 'tree' | 'top' | 'both' | 'sandwich' | 'diff' | 'groups' | 'graph' | 'time' | 'history'
+export type ViewName = 'summary' | 'flame' | 'icicle' | 'tree' | 'top' | 'both' | 'sandwich' | 'diff' | 'groups' | 'graph' | 'time' | 'gc' | 'history'
 export type ViewState = {
   profile?: string
   /** Session to expand on the home page. */
@@ -48,7 +48,7 @@ export type ViewState = {
   fn?: string
 }
 
-const VIEWS: ViewName[] = ['summary', 'flame', 'icicle', 'tree', 'top', 'both', 'sandwich', 'diff', 'groups', 'graph', 'time', 'history']
+const VIEWS: ViewName[] = ['summary', 'flame', 'icicle', 'tree', 'top', 'both', 'sandwich', 'diff', 'groups', 'graph', 'time', 'gc', 'history']
 
 function int(s: string | null): number | undefined {
   if (s === null || s === '') return undefined

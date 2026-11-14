@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Button } from '../ui/Button'
 import {
   ApiError, getDiffFlame, getDiffTop, getProfile, listProfiles,
   type DiffFlame, type DiffTop, type ProfileRecord,
@@ -170,17 +171,17 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
   return (
     <section aria-label="Diff">
       <div className="toolbar">
-        <button onClick={() => navigate({ view: 'summary', base: undefined, normalize: undefined }, 'push')}>
+        <Button size="sm" onClick={() => navigate({ view: 'summary', base: undefined, normalize: undefined }, 'push')}>
           &larr; Profile
-        </button>
+        </Button>
         <h2 className="view-title">Diff</h2>
-        <button
+        <Button size="sm"
           onClick={() => navigate({ profile: baseRef, base: headRef, t0: b0, t1: b1, b0: t0, b1: t1 }, 'push')}
           disabled={!baseRef}
           title="Swap base and head"
         >
           Swap
-        </button>
+        </Button>
       </div>
       {(t0 !== undefined || b0 !== undefined) && (
         <p className="muted" role="status">
@@ -232,18 +233,18 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
           Normalize to head total
         </label>
         <div className="tabs" role="group" aria-label="Diff filter">
-          <button aria-pressed={diffFilter === 'regressions'} onClick={() => navigate({ diffFilter: diffFilter === 'regressions' ? undefined : 'regressions' }, 'replace')}>Regressions only</button>
-          <button aria-pressed={diffFilter === 'improvements'} onClick={() => navigate({ diffFilter: diffFilter === 'improvements' ? undefined : 'improvements' }, 'replace')}>Improvements only</button>
+          <Button size="sm" aria-pressed={diffFilter === 'regressions'} onClick={() => navigate({ diffFilter: diffFilter === 'regressions' ? undefined : 'regressions' }, 'replace')}>Regressions only</Button>
+          <Button size="sm" aria-pressed={diffFilter === 'improvements'} onClick={() => navigate({ diffFilter: diffFilter === 'improvements' ? undefined : 'improvements' }, 'replace')}>Improvements only</Button>
         </div>
-        <button aria-pressed={diffSort === 'percent'} onClick={() => navigate({ diffSort: diffSort === 'percent' ? undefined : 'percent' }, 'replace')}>Sort changes by %</button>
-        <button aria-pressed={diffLayout === 'side'} onClick={() => navigate({ diffLayout: diffLayout === 'side' ? undefined : 'side' }, 'replace')}>Side by side</button>
+        <Button size="sm" aria-pressed={diffSort === 'percent'} onClick={() => navigate({ diffSort: diffSort === 'percent' ? undefined : 'percent' }, 'replace')}>Sort changes by %</Button>
+        <Button size="sm" aria-pressed={diffLayout === 'side'} onClick={() => navigate({ diffLayout: diffLayout === 'side' ? undefined : 'side' }, 'replace')}>Side by side</Button>
         <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <input type="checkbox" checked={cb} onChange={(e) => setPalette(e.target.checked)} />
           Colour-blind palette
         </label>
         <div className="tabs" role="group" aria-label="Diff view">
-          <button aria-pressed={tab === 'flame'} onClick={() => setTab('flame')}>Flame</button>
-          <button aria-pressed={tab === 'tree'} onClick={() => setTab('tree')}>Call tree</button>
+          <Button size="sm" aria-pressed={tab === 'flame'} onClick={() => setTab('flame')}>Flame</Button>
+          <Button size="sm" aria-pressed={tab === 'tree'} onClick={() => setTab('tree')}>Call tree</Button>
         </div>
       </div>
       {baseRef && head && base && (
