@@ -25,6 +25,7 @@ export async function mount(ui: ReactElement): Promise<HTMLElement> {
 
 const key = (el: Element, k: string) => act(async () => {
   el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }))
+  await new Promise((r) => setTimeout(r, 10))
 })
 
 describe('Panel', () => {
@@ -81,5 +82,59 @@ describe('ExportMenu', () => {
     expect(document.querySelector('[role="menu"]')).not.toBeNull()
     await key(document.querySelector('[role="menu"]')!, 'Escape')
     expect(document.querySelector('[role="menu"]')).toBeNull()
+  })
+})
+
+import { Button } from './Button'
+import { Chip } from './Chip'
+import { Tabs } from './Tabs'
+import { Tooltip, TooltipProvider } from './Tooltip'
+import { useState } from 'react'
+
+describe('Button and Chip', () => {
+  it('Button sets variant and type=button', async () => {
+    await mount(<Button variant="primary">Go</Button>)
+    const b = document.querySelector('button')!
+    expect(b.dataset.variant).toBe('primary')
+    expect(b.type).toBe('button')
+  })
+  it('Chip remove calls onRemove with a descriptive label', async () => {
+    const onRemove = vi.fn()
+    await mount(<Chip label="Focus: db" onRemove={onRemove} />)
+    const rm = document.querySelector('button')!
+    expect(rm.getAttribute('aria-label')).toBe('Remove Focus: db')
+    await act(async () => rm.click())
+    expect(onRemove).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Tabs', () => {
+  function Demo({ onChange }: { onChange: (v: string) => void }) {
+    const [v, setV] = useState('a')
+    return <Tabs label="Demo" value={v} onValueChange={(x) => { setV(x); onChange(x) }} tabs={[
+      { value: 'a', label: 'A', panel: <p>panel a</p> },
+      { value: 'b', label: 'B', panel: <p>panel b</p> },
+    ]} />
+  }
+  it('shows only the active panel and ArrowRight moves to the next tab', async () => {
+    const onChange = vi.fn()
+    await mount(<Demo onChange={onChange} />)
+    expect(document.querySelector('[role="tablist"]')?.getAttribute('aria-label')).toBe('Demo')
+    expect(document.body.textContent).toContain('panel a')
+    expect(document.body.textContent).not.toContain('panel b')
+    const tabA = document.querySelector('[role="tab"]') as HTMLElement
+    tabA.focus()
+    await key(tabA, 'ArrowRight')
+    expect(onChange).toHaveBeenCalledWith('b')
+    expect(document.body.textContent).toContain('panel b')
+  })
+})
+
+describe('Tooltip', () => {
+  it('shows its content on keyboard focus of the child', async () => {
+    await mount(<TooltipProvider><Tooltip content="Open help"><button>?</button></Tooltip></TooltipProvider>)
+    const b = document.querySelector('button')!
+    await act(async () => { b.focus() })
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Open help')
   })
 })
