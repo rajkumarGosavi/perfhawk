@@ -99,3 +99,8 @@
     --diff-down-0: #1c3a5a; --diff-down-1: #24507d; --diff-down-2: #2f69a2; --diff-down-3: #4a8bcf; --diff-down-4: #70aef0;
     --heat-1: #9b8b4b; --heat-2: #c28529; --heat-3: #e87430; --heat-4: #ff5cad;
 }
+:root[data-density='compact'] {
+  --control-h: 28px;
+  --space-2: 6px; --space-3: 8px; --space-4: 12px;
+  --text-md: 13px;
+}
