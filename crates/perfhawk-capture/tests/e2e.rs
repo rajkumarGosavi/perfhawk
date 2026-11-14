@@ -217,7 +217,11 @@ fn go_record_gc_via_agent() {
     assert_eq!(gc.runtime, "go");
     assert!(!gc.events.is_empty(), "no GC events recorded");
     let sum = perfhawk_analysis::gc::summarize(&gc, &Default::default());
-    assert!(sum.total_gcs > 0 && sum.pause_share_pct > 0.0, "{sum:?}");
+    assert!(sum.total_gcs > 0 && sum.alloc_total_bytes > 0, "{sum:?}");
+    // Go's clock on Windows is too coarse to time short pauses, so they can all read 0 ns.
+    if !cfg!(windows) {
+        assert!(sum.pause_share_pct > 0.0, "{sum:?}");
+    }
 }
 
 #[test]
