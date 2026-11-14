@@ -18,6 +18,15 @@ describe('url state', () => {
   })
 })
 
+describe('hide Perfhawk frames flag', () => {
+  it('roundtrips hph', () => {
+    const s = { profile: 'ab', view: 'flame' as const, hidePh: true as const }
+    expect(writeViewState(s)).toContain('hph=1')
+    expect(readViewState(writeViewState(s)).hidePh).toBe(true)
+    expect(readViewState('?hph=0').hidePh).toBeUndefined()
+  })
+})
+
 describe('summary default and hot flag', () => {
   it('defaults missing or unknown view to summary', () => {
     expect(readViewState('?profile=ab').view).toBe('summary')

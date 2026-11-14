@@ -14,6 +14,8 @@ export type ViewState = {
   focus?: string
   exclude?: string
   hide?: string
+  /** Hide Perfhawk's own frames (the in-process Go agent); written as hph=1. */
+  hidePh?: true
   func?: number
   search?: string
   /** Top table ordering; 'self' is the default and is omitted from the URL. */
@@ -75,6 +77,7 @@ export function readViewState(search: string): ViewState {
   if (func !== undefined) s.func = func
   if (p.get('sort') === 'total') s.sort = 'total'
   if (p.get('hot') === '1') s.hot = true
+  if (p.get('hph') === '1') s.hidePh = true
   const tx = p.get('tx')
   if (tx) s.tx = tx
   const gb = p.get('gb')
@@ -117,6 +120,7 @@ export function writeViewState(s: ViewState): string {
   if (s.search) p.set('search', s.search)
   if (s.sort === 'total') p.set('sort', 'total')
   if (s.hot) p.set('hot', '1')
+  if (s.hidePh) p.set('hph', '1')
   if (s.tx) p.set('tx', s.tx)
   if (s.groupBy) p.set('gb', s.groupBy)
   if (s.diffLayout) p.set('layout', s.diffLayout)
