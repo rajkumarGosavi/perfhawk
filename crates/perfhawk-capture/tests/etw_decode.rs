@@ -364,3 +364,46 @@ fn event_limit_stops_recording_and_counts_the_overflow() {
     assert_eq!(d.dropped(), 7);
     assert_eq!(d.finish().len(), 3);
 }
+
+#[test]
+fn kernel_and_user_stack_records_for_one_switch_are_joined() {
+    const KERNEL: u64 = 0xffff_f800_1234_0000;
+    let mut d = Decoder::new(TARGET, [444]);
+    d.feed(&rec(GUID_THREAD, 36, 0, 0, 3_000, &hex(CSWITCH)));
+    // Kernel half first, then the user half, same time and thread.
+    let kernel = stack_record(3_000, 444, &[KERNEL, KERNEL + 8]);
+    let user = stack_record(3_000, 444, &[0x7ff8_0010, 0x7ff8_0020]);
+    d.feed(&rec(GUID_STACK_WALK, 32, 0, 0, 3_000, &kernel));
+    d.feed(&rec(GUID_STACK_WALK, 32, 0, 0, 3_000, &user));
+    assert_eq!(d.kernel_only_stacks(), 1);
+    let ev = d.finish();
+    assert_eq!(
+        names(&ev, RawKind::CSwitch)[0].stack,
+        vec![0x7ff8_0010, 0x7ff8_0020]
+    );
+}
+
+#[test]
+fn both_stack_records_arriving_before_the_event_are_joined() {
+    const KERNEL: u64 = 0xffff_f800_1234_0000;
+    let mut d = Decoder::new(TARGET, [444]);
+    d.feed(&rec(
+        GUID_STACK_WALK,
+        32,
+        0,
+        0,
+        3_000,
+        &stack_record(3_000, 444, &[KERNEL]),
+    ));
+    d.feed(&rec(
+        GUID_STACK_WALK,
+        32,
+        0,
+        0,
+        3_000,
+        &stack_record(3_000, 444, &[0x7ff8_0010]),
+    ));
+    d.feed(&rec(GUID_THREAD, 36, 0, 0, 3_000, &hex(CSWITCH)));
+    let ev = d.finish();
+    assert_eq!(names(&ev, RawKind::CSwitch)[0].stack, vec![0x7ff8_0010]);
+}

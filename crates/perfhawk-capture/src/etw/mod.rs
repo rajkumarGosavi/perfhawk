@@ -205,6 +205,7 @@ impl SystemProvider for EtwProvider {
             .into_inner()
             .map_err(|_| CaptureError::Helper("trace decoder failed".into()))?;
         let dropped = decoder.dropped();
+        let kernel_only = decoder.kernel_only_stacks();
         let mut events = decoder.finish();
         let devices = os::dos_devices();
         for e in &mut events {
@@ -256,6 +257,17 @@ impl SystemProvider for EtwProvider {
             },
             &kinds,
         );
+        let waits: Vec<&RawEvent> = events
+            .iter()
+            .filter(|e| e.kind == RawKind::CSwitch && e.pid == pid)
+            .collect();
+        let bare = waits.iter().filter(|e| e.stack.is_empty()).count();
+        if !waits.is_empty() && bare * 2 > waits.len() {
+            warnings.push(format!(
+                "{bare} of {} off-CPU waits have no user-mode stack ({kernel_only} stack walks held only kernel frames), so those rows show only the wait reason",
+                waits.len()
+            ));
+        }
         if dropped > 0 {
             warnings.push(format!(
                 "{dropped} events were not recorded because the capture hit its event limit; numbers undercount. Use a shorter --duration"
