@@ -9,6 +9,7 @@ import { hotPath } from '../analysis/hotPath'
 import { useDocumentTitle } from '../a11y/announce'
 import { viewTitle } from '../a11y/title'
 import { keyAction } from '../analysis/keys'
+import { activeFilterCount } from './filters'
 import { effectiveExclude } from '../analysis/perfhawk'
 import { addTransform, decodeTx, encodeTx, type Transform } from '../analysis/transforms'
 import { FlameGraph, type FlameExportApi } from '../flame/FlameGraph'
@@ -134,6 +135,8 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
 
   const pushView = (patch: Partial<ViewState>) => navigate(patch, 'push')
   const hot = !!state.hot
+  const filterCount = activeFilterCount({ focus, exclude, hide, hidePh: state.hidePh })
+  const [filtersOpen, setFiltersOpen] = useState(() => filterCount > 0)
   useDocumentTitle(viewTitle(state, record?.name))
   const onTransform = (t: Transform) => navigate({ tx: encodeTx(addTransform(decodeTx(tx), t)) }, 'push')
   const toggleHot = () => navigate({ hot: hot ? undefined : true }, 'replace')
@@ -254,15 +257,27 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
             ))}
           </select>
         </label>
-        <span className="field-wrap"><label className="field">Focus<input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="regex" /></label><Term k="focus" icon /></span>
+        <label className="field">Search<input ref={searchRef} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="highlight" /></label>
+        <button
+          type="button"
+          aria-expanded={filtersOpen}
+          aria-controls="profile-filters"
+          onClick={() => setFiltersOpen((o) => !o)}
+        >
+          Filters{filterCount > 0 ? ` (${filterCount})` : ''}
+        </button>
+      </div>
+      {filtersOpen && (
+        <div className="toolbar" id="profile-filters" role="group" aria-label="Filters">
+          <span className="field-wrap"><label className="field">Focus<input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="regex" /></label><Term k="focus" icon /></span>
         <span className="field-wrap"><label className="field">Exclude<input value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder="regex" /></label><Term k="exclude" icon /></span>
         <span className="field-wrap"><label className="field">Hide<input value={hide} onChange={(e) => setHide(e.target.value)} placeholder="regex" /></label><Term k="hide" icon /></span>
         <label className="field check" title="Drop samples from Perfhawk's own in-process Go agent (agent, fgprof, pprof decoder), so percentages describe your app only.">
           <input type="checkbox" checked={!!state.hidePh} onChange={(e) => navigate({ hidePh: e.target.checked ? true : undefined }, 'push')} />
           Hide Perfhawk frames
         </label>
-        <label className="field">Search<input ref={searchRef} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="highlight" /></label>
-      </div>
+        </div>
+      )}
       {(t0 !== undefined || state.b0 !== undefined) && (
         <div className="toolbar" role="group" aria-label="Time selection">
           {t0 !== undefined && t1 !== undefined && (
