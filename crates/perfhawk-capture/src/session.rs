@@ -197,6 +197,7 @@ pub fn record(
     }
 
     let mut warnings = outcome.warnings;
+    let gc = outcome.gc;
     for a in outcome.artifacts {
         if let Some(w) = &a.warning {
             warnings.push(format!("{}: {w}", a.kind));
@@ -244,6 +245,14 @@ pub fn record(
                 degraded = true;
             }
         }
+    }
+    if let Some(g) = &gc {
+        if let Err(e) = store.save_gc(&session.id, g) {
+            warnings.push(format!("could not store GC data: {e}"));
+            degraded = true;
+        }
+    } else if req.plan.gc && provider.supports_gc() {
+        warnings.push("no GC data was captured".into());
     }
     // A terminal Ctrl-C reaches the whole process group, so the target can die at the
     // same moment the user cancels; the user's cancellation is what gets recorded.
