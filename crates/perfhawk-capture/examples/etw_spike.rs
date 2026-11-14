@@ -42,7 +42,7 @@ fn main() {
     #[derive(Default)]
     struct Data {
         events: HashMap<i64, Vec<Ev>>,
-        stacks: Vec<(i64, u32, u32, usize)>,
+        stacks: Vec<(i64, u32, u32, usize, usize)>,
         first_event_qpc: Vec<i64>,
     }
     let data = Arc::new(Mutex::new(Data::default()));
@@ -75,6 +75,12 @@ fn main() {
                         u32at(r.data, 8),
                         u32at(r.data, 12),
                         (r.data.len() - 16) / 8,
+                        r.data[16..]
+                            .as_chunks::<8>()
+                            .0
+                            .iter()
+                            .filter(|c| u64::from_le_bytes(**c) < 0xffff_8000_0000_0000)
+                            .count(),
                     ));
                 }
                 return;
@@ -162,7 +168,9 @@ fn main() {
     let mut by_label: HashMap<&str, [u64; 5]> = HashMap::new(); // total, ts match, hdr tid, payload0, payload1
     let mut unmatched_ts = 0u64;
     let mut sample_unmatched: Vec<i64> = vec![];
-    for (ts, _pid, tid, _n) in &s.stacks {
+    let mut frames: HashMap<&str, [u64; 3]> = HashMap::new(); // matched, with user frames, user frame sum
+    for (ts, _pid, tid, n, user) in &s.stacks {
+        let _ = n;
         match s.events.get(ts) {
             None => {
                 unmatched_ts += 1;
@@ -172,6 +180,10 @@ fn main() {
             }
             Some(evs) => {
                 for e in evs {
+                    let f = frames.entry(e.label).or_insert([0; 3]);
+                    f[0] += 1;
+                    f[1] += (*user > 0) as u64;
+                    f[2] += *user as u64;
                     let a = by_label.entry(e.label).or_insert([0; 5]);
                     a[1] += 1;
                     if e.hdr_tid == *tid {
@@ -204,6 +216,15 @@ fn main() {
         println!(
             "{l:<10} | {:>6} | {:>6} | {:>6} | {:>6} | {:>6}",
             a[0], a[1], a[2], a[3], a[4]
+        );
+    }
+    println!("event type | matched stacks | with user-mode frames | avg user frames");
+    for (l, f) in &frames {
+        println!(
+            "{l:<10} | {:>8} | {:>8} | {:.1}",
+            f[0],
+            f[1],
+            f[2] as f64 / f[0].max(1) as f64
         );
     }
     let pids: HashMap<u32, u64> = s

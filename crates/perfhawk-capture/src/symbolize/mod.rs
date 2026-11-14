@@ -3,8 +3,12 @@
 
 mod dotnet;
 mod go;
+pub mod r2r;
 
-pub use dotnet::{load_methods, method_name};
+pub use dotnet::{
+    decode_method_event, load_methods, method_name, DOTNET_KEYWORDS, DOTNET_RUNDOWN_KEYWORDS,
+    GUID_DOTNET_RUNDOWN, GUID_DOTNET_RUNTIME,
+};
 pub use go::{go_symbols, GoSym};
 
 use std::collections::BTreeMap;
@@ -57,10 +61,23 @@ impl Symbolizer {
     }
 
     /// Register a loaded image. Symbols are read from `path` when the file has
-    /// them (Go and other unstripped binaries); otherwise addresses in it
-    /// resolve to `module+offset`.
+    /// them (Go and other unstripped binaries, or ReadyToRun .NET images whose
+    /// on-disk size matches `size`); otherwise addresses in it resolve to
+    /// `module+offset`.
     pub fn add_image(&mut self, base: u64, size: u64, path: &Path) {
         let mut syms = go_symbols(path).unwrap_or_default();
+        if syms.is_empty() {
+            // Precompiled .NET code (System.Private.CoreLib and friends).
+            syms = r2r::r2r_symbols_for_image(path, size)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|s| GoSym {
+                    start: s.start,
+                    size: s.size,
+                    name: s.name,
+                })
+                .collect();
+        }
         syms.sort_by_key(|s| s.start);
         let module = path
             .file_name()

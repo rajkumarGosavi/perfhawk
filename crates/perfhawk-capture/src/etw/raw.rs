@@ -50,6 +50,7 @@ pub fn is_elevated() -> bool {
 /// One ETW record, borrowed for the duration of the callback.
 pub struct RawRecord<'a> {
     pub provider: GUID,
+    pub id: u16,
     pub opcode: u8,
     pub version: u8,
     pub pid: u32,
@@ -91,6 +92,7 @@ unsafe extern "system" fn record_cb(rec: *mut EVENT_RECORD) {
     };
     (*cb)(&RawRecord {
         provider: h.ProviderId,
+        id: h.EventDescriptor.Id,
         opcode: h.EventDescriptor.Opcode,
         version: h.EventDescriptor.Version,
         pid: h.ProcessId,
@@ -102,6 +104,33 @@ unsafe extern "system" fn record_cb(rec: *mut EVENT_RECORD) {
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// Open the real-time session `name` and deliver its records to `on_record`
+/// on a background thread until the session is stopped.
+fn spawn_consumer(
+    mut consumer_name: Vec<u16>,
+    on_record: impl FnMut(&RawRecord) + Send + 'static,
+) -> JoinHandle<()> {
+    let cb: Box<Callback> = Box::new(Box::new(on_record));
+    let cb_ptr = Box::into_raw(cb) as usize;
+    std::thread::spawn(move || unsafe {
+        let mut lf = EVENT_TRACE_LOGFILEW {
+            LoggerName: PWSTR(consumer_name.as_mut_ptr()),
+            Context: cb_ptr as *mut c_void,
+            ..Default::default()
+        };
+        lf.Anonymous1.ProcessTraceMode = PROCESS_TRACE_MODE_REAL_TIME
+            | PROCESS_TRACE_MODE_EVENT_RECORD
+            | PROCESS_TRACE_MODE_RAW_TIMESTAMP;
+        lf.Anonymous2.EventRecordCallback = Some(record_cb);
+        let h = OpenTraceW(&mut lf);
+        if h.Value != u64::MAX {
+            let _ = ProcessTrace(&[h], None, None);
+            let _ = CloseTrace(h);
+        }
+        drop(Box::from_raw(cb_ptr as *mut Callback));
+    })
 }
 
 impl RawTrace {
@@ -219,27 +248,7 @@ impl RawTrace {
                 }
             }
 
-            // Consumer side.
-            let cb: Box<Callback> = Box::new(Box::new(on_record));
-            let cb_ptr = Box::into_raw(cb) as usize;
-            let mut consumer_name = name_w.clone();
-            let thread = std::thread::spawn(move || {
-                let mut lf = EVENT_TRACE_LOGFILEW {
-                    LoggerName: PWSTR(consumer_name.as_mut_ptr()),
-                    Context: cb_ptr as *mut c_void,
-                    ..Default::default()
-                };
-                lf.Anonymous1.ProcessTraceMode = PROCESS_TRACE_MODE_REAL_TIME
-                    | PROCESS_TRACE_MODE_EVENT_RECORD
-                    | PROCESS_TRACE_MODE_RAW_TIMESTAMP;
-                lf.Anonymous2.EventRecordCallback = Some(record_cb);
-                let h = OpenTraceW(&mut lf);
-                if h.Value != u64::MAX {
-                    let _ = ProcessTrace(&[h], None, None);
-                    let _ = CloseTrace(h);
-                }
-                drop(Box::from_raw(cb_ptr as *mut Callback));
-            });
+            let thread = spawn_consumer(name_w.clone(), on_record);
             Ok(RawTrace {
                 handle,
                 props,
@@ -285,5 +294,128 @@ impl Drop for RawTrace {
         if self.thread.is_some() {
             self.shutdown();
         }
+    }
+}
+
+/// A private user-mode session for ordinary providers (for example the .NET
+/// runtime), filtered to one process.
+pub struct UserTrace {
+    handle: CONTROLTRACE_HANDLE,
+    props: Vec<u64>,
+    name: Vec<u16>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl UserTrace {
+    /// Start session `name` and enable each `(provider, keywords)` for `pid`
+    /// only (`EVENT_FILTER_TYPE_PID`), delivering records to `on_record`.
+    pub fn start(
+        name: &str,
+        providers: &[(GUID, u64)],
+        pid: u32,
+        on_record: impl FnMut(&RawRecord) + Send + 'static,
+    ) -> Result<UserTrace, EtwError> {
+        if !is_elevated() {
+            return Err(EtwError::NotElevated);
+        }
+        let name_w = wide(name);
+        let header = std::mem::size_of::<EVENT_TRACE_PROPERTIES>();
+        let total = header + name_w.len() * 2;
+        let mut props = vec![0u64; total.div_ceil(8)];
+        let p = props.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES;
+        let mut handle = CONTROLTRACE_HANDLE::default();
+        let err = unsafe {
+            (*p).Wnode.BufferSize = total as u32;
+            (*p).Wnode.Guid = GUID::from_u128(
+                0x7065_7266_6861_776b_0001_0000_0000_0000u128 | std::process::id() as u128,
+            );
+            (*p).Wnode.ClientContext = 1; // QPC timestamps
+            (*p).Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+            (*p).BufferSize = 256; // KB
+            (*p).MinimumBuffers = 8;
+            (*p).MaximumBuffers = 64;
+            (*p).LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
+            (*p).LoggerNameOffset = header as u32;
+            let dst = (props.as_mut_ptr() as *mut u8).add(header) as *mut u16;
+            std::ptr::copy_nonoverlapping(name_w.as_ptr(), dst, name_w.len());
+            StartTraceW(&mut handle, PCWSTR(name_w.as_ptr()), p)
+        };
+        if err == ERROR_ACCESS_DENIED {
+            return Err(EtwError::NotElevated);
+        }
+        if err.0 != 0 {
+            return Err(EtwError::Other(format!(
+                "StartTrace (user session) failed: error {}",
+                err.0
+            )));
+        }
+        let mut trace = UserTrace {
+            handle,
+            props,
+            name: name_w,
+            thread: None,
+        };
+        // Consume first so no early record is missed, then enable.
+        trace.thread = Some(spawn_consumer(trace.name.clone(), on_record));
+        let pids = [pid];
+        for (guid, keywords) in providers {
+            let mut filter = EVENT_FILTER_DESCRIPTOR {
+                Ptr: pids.as_ptr() as u64,
+                Size: std::mem::size_of_val(&pids) as u32,
+                Type: EVENT_FILTER_TYPE_PID,
+            };
+            let params = ENABLE_TRACE_PARAMETERS {
+                Version: ENABLE_TRACE_PARAMETERS_VERSION_2,
+                EnableFilterDesc: &mut filter,
+                FilterDescCount: 1,
+                ..Default::default()
+            };
+            let err = unsafe {
+                EnableTraceEx2(
+                    handle,
+                    guid,
+                    EVENT_CONTROL_CODE_ENABLE_PROVIDER.0,
+                    5, // verbose
+                    *keywords,
+                    0,
+                    0,
+                    Some(&params),
+                )
+            };
+            if err.0 != 0 {
+                // Dropping `trace` stops the session.
+                return Err(EtwError::Other(format!(
+                    "enabling provider failed: error {}",
+                    err.0
+                )));
+            }
+        }
+        Ok(trace)
+    }
+
+    /// Stop the session and wait for the consumer to drain.
+    pub fn stop(mut self) {
+        self.shutdown();
+    }
+
+    fn shutdown(&mut self) {
+        unsafe {
+            let p = self.props.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES;
+            let _ = ControlTraceW(
+                self.handle,
+                PCWSTR(self.name.as_ptr()),
+                p,
+                EVENT_TRACE_CONTROL_STOP,
+            );
+        }
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+impl Drop for UserTrace {
+    fn drop(&mut self) {
+        self.shutdown();
     }
 }

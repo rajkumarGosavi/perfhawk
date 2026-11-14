@@ -58,6 +58,8 @@ fn wstr_at(d: &[u8], o: usize) -> Option<String> {
 pub struct Decoder {
     limit: usize,
     dropped: u64,
+    /// Stack walks that had only kernel frames (the user part was not captured).
+    kernel_only: u64,
     target_pid: u32,
     tids: HashSet<u32>,
     events: Vec<RawEvent>,
@@ -65,6 +67,10 @@ pub struct Decoder {
     pending: HashMap<(i64, u32), usize>,
     /// Stack-walk records that arrived before their event.
     early: HashMap<(i64, u32), Vec<u64>>,
+    /// Events that already got a stack-walk record, so a second record for the
+    /// same (time, thread) can add to it: Windows sends a context switch's
+    /// kernel stack and its user-mode stack as separate records.
+    walked: HashMap<(i64, u32), usize>,
     /// In-flight file operations by IRP, to time them at completion.
     irps: HashMap<u64, usize>,
     /// (event index, file key, file object) for name resolution at the end.
@@ -89,11 +95,13 @@ impl Decoder {
         Decoder {
             limit,
             dropped: 0,
+            kernel_only: 0,
             target_pid,
             tids: seed_tids.into_iter().collect(),
             events: Vec::new(),
             pending: HashMap::new(),
             early: HashMap::new(),
+            walked: HashMap::new(),
             irps: HashMap::new(),
             file_refs: Vec::new(),
             names_by_key: HashMap::new(),
@@ -131,10 +139,24 @@ impl Decoder {
         self.dropped
     }
 
+    fn mark_walked(&mut self, key: (i64, u32), idx: usize) {
+        if self.walked.len() < MAX_EARLY_STACKS {
+            self.walked.insert(key, idx);
+        }
+    }
+
+    /// Stack walks of the target that held only kernel frames.
+    pub fn kernel_only_stacks(&self) -> u64 {
+        self.kernel_only
+    }
+
     /// Register an event that gets its stack from a later (or earlier) stack-walk record.
     fn expect_stack(&mut self, idx: usize, qpc: i64, tid: u32) {
         match self.early.remove(&(qpc, tid)) {
-            Some(frames) => self.events[idx].stack = frames,
+            Some(frames) => {
+                self.events[idx].stack = frames;
+                self.mark_walked((qpc, tid), idx);
+            }
             None => {
                 self.pending.insert((qpc, tid), idx);
             }
@@ -255,22 +277,32 @@ impl Decoder {
         let (ts, tid) = (u64_at(d, 0)? as i64, u32_at(d, 12)?);
         let key = (ts, tid);
         if !self.pending.contains_key(&key)
+            && !self.walked.contains_key(&key)
             && (!self.tids.contains(&tid) || self.early.len() >= MAX_EARLY_STACKS)
         {
             return None;
         }
-        let frames: Vec<u64> = d
-            .get(16..)?
-            .as_chunks::<8>()
-            .0
+        let raw = d.get(16..)?.as_chunks::<8>().0;
+        let frames: Vec<u64> = raw
             .iter()
             .map(|c| u64::from_le_bytes(*c))
             .filter(|&a| a < KERNEL_BASE)
             .collect();
+        if frames.is_empty() && !raw.is_empty() {
+            self.kernel_only += 1;
+        }
+        if let Some(&idx) = self.walked.get(&key) {
+            // The user-mode half of a stack whose kernel half came first.
+            self.events[idx].stack.extend(frames);
+            return Some(());
+        }
         match self.pending.remove(&key) {
-            Some(idx) => self.events[idx].stack = frames,
+            Some(idx) => {
+                self.events[idx].stack = frames;
+                self.mark_walked(key, idx);
+            }
             None => {
-                self.early.insert(key, frames);
+                self.early.entry(key).or_default().extend(frames);
             }
         }
         Some(())

@@ -3,7 +3,13 @@
 mod os;
 pub mod raw;
 
-pub use raw::{is_elevated, EtwError, RawRecord, RawTrace, TraceCounters};
+pub use raw::{is_elevated, EtwError, RawRecord, RawTrace, TraceCounters, UserTrace};
+
+use crate::symbolize::{
+    decode_method_event, DOTNET_KEYWORDS, DOTNET_RUNDOWN_KEYWORDS, GUID_DOTNET_RUNDOWN,
+    GUID_DOTNET_RUNTIME,
+};
+use crate::sysevents::MethodInfo;
 
 use crate::cancel::CancelToken;
 use crate::etwdecode::{nt_to_dos, Decoder, Record, GUID_FILE_IO, GUID_THREAD};
@@ -132,6 +138,47 @@ impl SystemProvider for EtwProvider {
             EtwError::Other(m) => CaptureError::Helper(m),
         })?;
 
+        // .NET method names: JIT events for new methods plus a rundown of the
+        // ones that already exist. Best effort; frames stay module+offset if
+        // this session cannot start.
+        let mut warnings = Vec::new();
+        let methods: Arc<Mutex<Vec<MethodInfo>>> = Arc::default();
+        let dotnet_trace = if rt.provider == "dotnet" {
+            let sink = methods.clone();
+            let started = UserTrace::start(
+                &format!("perfhawk-dotnet-{}", std::process::id()),
+                &[
+                    (GUID::from_u128(GUID_DOTNET_RUNTIME), DOTNET_KEYWORDS),
+                    (
+                        GUID::from_u128(GUID_DOTNET_RUNDOWN),
+                        DOTNET_RUNDOWN_KEYWORDS,
+                    ),
+                ],
+                pid,
+                move |r: &RawRecord| {
+                    if r.pid != pid {
+                        return;
+                    }
+                    if let Some(m) = decode_method_event(r.id, r.data) {
+                        if let Ok(mut v) = sink.lock() {
+                            v.push(m);
+                        }
+                    }
+                },
+            );
+            match started {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    warnings.push(format!(
+                        ".NET method names are unavailable ({e}); managed frames show as module+offset"
+                    ));
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let started = Instant::now();
         let clock_start = os::qpc_now();
         let unix_start_ns = SystemTime::now()
@@ -152,6 +199,9 @@ impl SystemProvider for EtwProvider {
         }
         let window_ns = started.elapsed().as_nanos() as u64;
         let counters = trace.stop();
+        if let Some(t) = dotnet_trace {
+            t.stop();
+        }
 
         progress("resolving symbols");
         let decoder = Arc::try_unwrap(decoder)
@@ -159,6 +209,7 @@ impl SystemProvider for EtwProvider {
             .into_inner()
             .map_err(|_| CaptureError::Helper("trace decoder failed".into()))?;
         let dropped = decoder.dropped();
+        let kernel_only = decoder.kernel_only_stacks();
         let mut events = decoder.finish();
         let devices = os::dos_devices();
         for e in &mut events {
@@ -167,6 +218,11 @@ impl SystemProvider for EtwProvider {
             }
         }
         let mut symbolizer = Symbolizer::new();
+        if let Ok(ms) = methods.lock() {
+            for m in ms.iter() {
+                symbolizer.add_method(m.start, m.size, m.name.clone());
+            }
+        }
         for e in &events {
             if let (RawKind::ImageLoad, Some(im)) = (e.kind, &e.image) {
                 symbolizer.add_image(im.base, im.size, Path::new(&nt_to_dos(&im.path, &devices)));
@@ -205,7 +261,17 @@ impl SystemProvider for EtwProvider {
             },
             &kinds,
         );
-        let mut warnings = Vec::new();
+        let waits: Vec<&RawEvent> = events
+            .iter()
+            .filter(|e| e.kind == RawKind::CSwitch && e.pid == pid)
+            .collect();
+        let bare = waits.iter().filter(|e| e.stack.is_empty()).count();
+        if !waits.is_empty() && bare * 2 > waits.len() {
+            warnings.push(format!(
+                "{bare} of {} off-CPU waits have no user-mode stack ({kernel_only} stack walks held only kernel frames), so those rows show only the wait reason",
+                waits.len()
+            ));
+        }
         if dropped > 0 {
             warnings.push(format!(
                 "{dropped} events were not recorded because the capture hit its event limit; numbers undercount. Use a shorter --duration"
