@@ -60,3 +60,39 @@ fn finds_r2r_sections_in_corelib() {
     assert!(!img.method_def_entry_points.is_empty());
     assert!(!img.metadata.is_empty());
 }
+
+#[test]
+fn corelib_method_entry_points_decode_to_valid_runtime_function_indexes() {
+    let Some(p) = find_corelib() else {
+        eprintln!("skipped: no .NET runtime installed");
+        return;
+    };
+    let data = std::fs::read(&p).unwrap();
+    let img = r2r::open(&data).unwrap();
+    let section = &data[img.method_def_entry_points.clone()];
+    let arr = r2r::NativeArray::new(section, 0).expect("entry point array parses");
+    let rf_count = (img.runtime_functions.len() / 12) as u32;
+    let (mut present, mut max_index) = (0u32, 0u32);
+    let mut seen = std::collections::HashSet::new();
+    for i in 0..arr.len() {
+        let Some(off) = arr.get(i) else { continue };
+        let (v, _) = r2r::decode_unsigned(section, off).expect("element decodes");
+        let idx = if v & 1 == 0 { v >> 1 } else { v >> 2 };
+        assert!(
+            idx < rf_count,
+            "row {i}: index {idx} >= {rf_count} runtime functions"
+        );
+        assert!(
+            seen.insert(idx),
+            "row {i}: runtime function {idx} used by two methods"
+        );
+        present += 1;
+        max_index = max_index.max(idx);
+    }
+    eprintln!(
+        "{} rows, {present} precompiled, {rf_count} runtime functions, max index {max_index}",
+        arr.len()
+    );
+    assert!(arr.len() > 20_000, "MethodDef rows: {}", arr.len());
+    assert!(present > 10_000, "precompiled methods: {present}");
+}
