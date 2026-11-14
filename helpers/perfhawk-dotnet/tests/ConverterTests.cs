@@ -112,6 +112,51 @@ public class ConverterTests
     }
 
     [Fact]
+    public async Task CollectsGcEventsFromOwnProcess()
+    {
+        var (cts, threads) = Workload.Start();
+        var forcer = new Thread(() =>
+        {
+            var keep = new List<byte[]>();
+            while (!cts.IsCancellationRequested)
+            {
+                keep.Add(new byte[200_000]);
+                if (keep.Count > 20) keep.Clear();
+                GC.Collect(2, GCCollectionMode.Forced, true);
+                Thread.Sleep(30);
+            }
+        }) { IsBackground = true, Name = "gc-forcer" };
+        forcer.Start();
+        var outDir = TempDir();
+        try
+        {
+            var client = new DiagnosticsClient(Environment.ProcessId);
+            var result = await Collector.CollectAsync(client, 2000, new HashSet<string> { "gc" }, outDir, CancellationToken.None, null);
+            var art = result.Artifacts.Single(a => a.Kind == "gc");
+            Assert.True(art.Samples > 0, "gc events");
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(art.Path));
+            var root = doc.RootElement;
+            Assert.Equal(1, root.GetProperty("schema").GetInt32());
+            var events = root.GetProperty("events").EnumerateArray().ToList();
+            Assert.Contains(events, e => e.GetProperty("generation").GetInt32() == 2 && e.GetProperty("induced").GetBoolean());
+            Assert.All(events, e =>
+                Assert.True(e.GetProperty("pause_ns").GetUInt64() <= e.GetProperty("duration_ns").GetUInt64(), "pause <= duration"));
+            // A GC whose suspension events fall outside the trace has no pause; that is rare (about 0.5% observed).
+            var withPause = events.Count(e => e.GetProperty("pause_ns").GetUInt64() > 0);
+            Assert.True(withPause >= events.Count * 0.98, $"{withPause} of {events.Count} GCs have a pause");
+            Assert.True(root.GetProperty("heap").GetArrayLength() > 0, "heap points");
+            Assert.Contains(events, e => e.TryGetProperty("heap_after_bytes", out _));
+        }
+        finally
+        {
+            cts.Cancel();
+            foreach (var t in threads) t.Join(2000);
+            forcer.Join(2000);
+            try { Directory.Delete(outDir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task BucketLabelsAreWrittenOnlyWhenRequestedAndSpreadOverTime()
     {
         var (cts, threads) = Workload.Start();
