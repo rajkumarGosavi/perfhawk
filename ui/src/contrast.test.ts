@@ -59,3 +59,25 @@ describe('diff delta text colours meet AA in every theme and palette', () => {
     }
   }
 })
+
+describe('semantic and heat tokens meet contrast in every theme and palette', () => {
+  const base = vars(':root')
+  const dark = { ...base, ...vars(":root[data-theme='dark']") }
+  const cb = { ...base, ...vars(":root[data-palette='cb']") }
+  const darkCb = { ...dark, ...vars(":root[data-palette='cb']"), ...vars(":root[data-theme='dark'][data-palette='cb']") }
+  const sets: [string, Record<string, string>][] = [['light', base], ['dark', dark], ['light cb', cb], ['dark cb', darkCb]]
+  for (const [name, t] of sets) {
+    for (const n of [1, 2, 3, 4]) {
+      it(`${name}: --heat-${n} is a 3:1 graphic on --surface and holds --on-heat text at 4.5:1`, () => {
+        expect(contrastRatio(t[`--heat-${n}`], t['--surface'])).toBeGreaterThanOrEqual(3)
+        expect(contrastRatio(t['--on-heat'], t[`--heat-${n}`])).toBeGreaterThanOrEqual(4.5)
+      })
+    }
+    it(`${name}: --warn on --warn-bg, --accent-fg on --accent, --muted on --surface-2`, () => {
+      expect(contrastRatio(t['--warn'], t['--warn-bg'])).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(t['--accent-fg'], t['--accent'])).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(t['--muted'], t['--surface-2'])).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(t['--fg'], t['--surface-raised'])).toBeGreaterThanOrEqual(4.5)
+    })
+  }
+})
