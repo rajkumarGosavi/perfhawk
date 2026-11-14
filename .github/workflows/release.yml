@@ -1,8 +1,8 @@
 name: Release
 
-# Pushing a tag like v0.1.0 builds the Windows x64 package and opens a DRAFT
-# GitHub Release. Review the draft, then publish it by hand.
-# Tags with a hyphen (v0.1.0-rc.1) become pre-releases.
+# Pushing a tag like v0.1.0 builds, smoke-tests and PUBLISHES a GitHub Release.
+# Tags with a hyphen (v0.1.0-rc.1) are published as pre-releases (never "latest").
+# Use tools/release/release.ps1 to tag; see docs/RELEASING.md.
 on:
   push:
     tags: ["v*"]
@@ -79,12 +79,12 @@ jobs:
           name: perfhawk-windows-x64
           path: dist/*
 
-      - name: Draft GitHub Release
+      - name: Publish GitHub Release
         if: github.ref_type == 'tag'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          flags="--draft --title $GITHUB_REF_NAME --generate-notes"
-          case "$GITHUB_REF_NAME" in *-*) flags="$flags --prerelease";; esac
+          flags="--title $GITHUB_REF_NAME --generate-notes"
+          case "$GITHUB_REF_NAME" in *-*) flags="$flags --prerelease";; *) flags="$flags --latest";; esac
           gh release create "$GITHUB_REF_NAME" dist/* scripts/install.ps1 $flags
