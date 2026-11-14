@@ -12,6 +12,7 @@ const VIEW_TITLES: Record<ViewName, string> = {
   groups: 'Groups',
   graph: 'Call graph',
   time: 'Time heat map',
+  gc: 'Garbage collection',
   history: 'History',
 }
 

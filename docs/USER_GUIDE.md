@@ -469,8 +469,8 @@ deepest rows are clipped with a notice; use Focus or zoom to see them.
 - **Filters**: applied Focus, Exclude and Hide filters show as chips under the toolbar; remove one with its x. **+ Add filter** opens a small form: pick the type, enter a regular expression (checked before it is applied; see §6). **Hide Perfhawk frames** is a toggle next to them.
 - **Time range** (recordings with time data): a strip above the view shows activity over time. Drag on it to select a window; the view, tables and findings follow. Esc, double-click or **Full recording** clears it; with the strip focused, arrow keys move and resize the window.
 - **Search**: highlights matching frames in the graph without filtering anything.
-- **Views**: the left rail lists Summary, Flame graph, Call tree, Top functions, Timeline (recordings only), Call graph, Groups and History. The Flame graph page is a workbench: the flame graph, an **Inspector** for the clicked frame (self and total, Focus subtree / Merge / Drop / Hide / Sandwich, direct callers and callees) and **Top functions / Call tree / Findings** tabs below. A **Flame / Icicle** switch in the toolbar flips the graph. Sandwich is opened from a function; older links with `view=icicle`, `both` or `sandwich` still work (`both` now opens the workbench). `bt=tree` or `bt=findings` selects the lower tab.
-- **Command palette (Ctrl K)**: jump to a view, focus search, open help or switch the theme by typing.
+- **Views**: the left rail lists Summary (`1`), Flame graph (`2`), Call tree (`3`), Timeline (`4`, recordings with time data), Call graph (`5`), Garbage collection (`6`, sessions with GC data), Diff (`7`, when another profile of the same kind exists; it compares with the newest) and History (`8`). The Top functions and Groups tables are tabs and palette commands rather than rail items (`view=top` and `view=groups` links still work). The Flame graph page is a workbench: the flame graph, an **Inspector** for the clicked frame (self and total, Focus subtree / Merge / Drop / Hide / Sandwich, direct callers and callees) and **Top functions / Call tree / Findings** tabs below. A **Flame / Icicle** switch in the toolbar flips the graph. Sandwich is opened from a function; older links with `view=icicle`, `both` or `sandwich` still work (`both` now opens the workbench). `bt=tree` or `bt=findings` selects the lower tab.
+- **Command palette (Ctrl K)**: jump to a view, focus search, open help, switch the theme or the density (Comfortable or Compact) by typing.
 - **Hot path (h)**: highlights the hottest call path in Flame, Icicle, Call tree and Both.
 - **?**: lists the keyboard shortcuts.
 
@@ -538,7 +538,7 @@ a function did, and 2 for bad input, so it can gate a CI job. See
 example.
 
 ### Time
-Profiles recorded with time data show a **Time** tab (key `9`). The heat map is
+Profiles recorded with time data show a **Timeline** view (key `4`). The heat map is
 one column per second (wider for long captures) with the offset inside the second
 down the side; brighter cells are busier, so stalls and periodic bursts stand out
 where an averaged flame graph hides them. **Drag** to select a window, **Shift-drag**
@@ -579,7 +579,7 @@ Each chart has a **Data table** you can open for the exact numbers. See
 [`perfhawk gc`](#perfhawk-gc-ref---json) for what each number means.
 
 ### Call graph
-The Graph view (key `8`) draws the profile as a graph of functions: each box is a
+The Call graph view (key `5`) draws the profile as a graph of functions: each box is a
 function (taller and darker means more self cost), each arrow a caller-to-callee
 relationship, and thicker arrows carry more of the profile. A **dotted** arrow
 means functions that are not shown lie between the two (so the call is indirect).
@@ -626,7 +626,7 @@ name) or, in the Call tree, select a node and press `f`, `m` or `x`. Remove a
 chip with its × button. Transforms apply to every view, including Diff.
 
 ### Groups
-The Groups view (key `7`) groups samples. **By site** (default for lock and
+The Groups view (open it from Ctrl K, "Go to Groups table") groups samples. **By site** (default for lock and
 blocking profiles) groups by the innermost frame that is not `runtime.`, `sync.`
 or `internal/` and shows total, count and mean wait. **By identical stack**
 (default elsewhere; useful for thread and goroutine dumps) shows how many samples

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { Button } from '../ui/Button'
 import {
-  ApiError, getFlame, getGraph, getGroups, getHeatmap, getProfile, getSandwich, getTop, listProfiles,
+  ApiError, getFlame, getGraph, getSession, getGroups, getHeatmap, getProfile, getSandwich, getTop, listProfiles,
   type CallGraph, type FlameNode, type GroupRow, type Heatmap, type ProfileRecord, type Sandwich as SandwichData, type TopRow,
 } from '../api'
 import { ErrorNotice } from './ErrorNotice'
@@ -24,6 +25,7 @@ import { CallTree } from './CallTree'
 import { formatRange } from '../time/range'
 import { GraphView } from './GraphView'
 import { HeatMap } from './HeatMap'
+import { GcView } from './GcView'
 import { Groups } from './Groups'
 import { PivotPanel } from './PivotPanel'
 import { Sandwich } from './Sandwich'
@@ -96,13 +98,21 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
   const { view, func, focus: qf, hide: qh, depth, tx, t0, t1 } = state
   const qe = effectiveExclude(state.exclude, state.hidePh)
   const hasTime = !!record?.has_timeline
-  useProfileInfo(record ? { name: record.name, hasTime } : null)
+  const [hasGc, setHasGc] = useState(false)
+  useEffect(() => {
+    setHasGc(false)
+    if (!record?.session_id) return
+    let stale = false
+    getSession(record.session_id).then((s) => { if (!stale) setHasGc(!!s.has_gc) }, () => {})
+    return () => { stale = true }
+  }, [record?.session_id])
+  useProfileInfo(record ? { name: record.name, hasTime, hasGc, diffBase: others[0]?.short_id } : null)
   const groupBy = state.groupBy ?? defaultGroupBy(record?.kind ?? '')
   const sort = state.sort ?? 'self'
 
   useEffect(() => {
     if (!record) return
-    if (view === 'summary' || (view === 'sandwich' && func === undefined) || (view === 'time' && !record.has_timeline)) {
+    if (view === 'summary' || view === 'gc' || (view === 'sandwich' && func === undefined) || (view === 'time' && !record.has_timeline)) {
       setData(null)
       setLoading(false)
       return
@@ -149,6 +159,11 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       if (!a) return
       if (a.type === 'view') {
         if (a.view === 'time' && !hasTime) return
+        if (a.view === 'gc' && !hasGc) return
+        if (a.view === 'diff') {
+          if (others[0]) navigate({ view: 'diff', base: state.base ?? others[0].short_id }, 'push')
+          return
+        }
         navigate({ view: a.view }, 'push')
       }
       else if (a.type === 'hot') navigate({ hot: hot ? undefined : true }, 'replace')
@@ -159,7 +174,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [navigate, hot, hasTime])
+  }, [navigate, hot, hasTime, hasGc, others, state.base])
 
   const stem = fileStem(record?.name ?? ref)
   const say = (m: string) => setExportMsg(m)
@@ -226,14 +241,14 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         {(view === 'flame' || view === 'icicle' || view === 'both') && (
           <div className="tabs" role="group" aria-label="Flame layout">
             {FLAME_LAYOUTS.map(([v, label]) => (
-              <button key={v} aria-pressed={(view === 'both' ? 'flame' : view) === v} onClick={() => pushView({ view: v })}>{label}</button>
+              <Button size="sm" key={v} aria-pressed={(view === 'both' ? 'flame' : view) === v} onClick={() => pushView({ view: v })}>{label}</Button>
             ))}
           </div>
         )}
         {HOT_VIEWS.includes(view) && (
-          <button aria-pressed={hot} onClick={toggleHot} title="Highlight the hottest call path">
+          <Button size="sm" aria-pressed={hot} onClick={toggleHot} title="Highlight the hottest call path">
             Hot path (h)
-          </button>
+          </Button>
         )}
         <ExportMenu items={exportItems} />
       </div>
@@ -286,11 +301,11 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           {state.b0 !== undefined && state.b1 !== undefined && (
             <span className="chip">
               <span className="mono">Baseline: {formatRange({ t0: state.b0, t1: state.b1 })}</span>
-              <button aria-label="Clear baseline" onClick={() => navigate({ b0: undefined, b1: undefined }, 'push')}>×</button>
+              <Button size="sm" aria-label="Clear baseline" onClick={() => navigate({ b0: undefined, b1: undefined }, 'push')}>×</Button>
             </span>
           )}
           {t0 !== undefined && state.b0 !== undefined && (
-            <button onClick={() => navigate({ view: 'diff', base: ref }, 'push')}>Diff window vs baseline</button>
+            <Button size="sm" onClick={() => navigate({ view: 'diff', base: ref }, 'push')}>Diff window vs baseline</Button>
           )}
         </div>
       )}
@@ -362,6 +377,8 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       {data?.kind === 'groups' && view === 'groups' && (
         <Groups rows={data.rows} unit={unit} by={groupBy} onBy={(by) => pushView({ groupBy: by })} />
       )}
+      {view === 'gc' && record?.session_id && <GcView sessionId={record.session_id} />}
+      {view === 'gc' && !hasGc && <p className="muted">No garbage-collection data for this profile's session. .NET recordings with GC events include it.</p>}
       {view === 'time' && record && !record.has_timeline && (
         <p className="muted">This profile has no time data. Go CPU and .NET CPU/wall captures include it by default; imported files do not.</p>
       )}

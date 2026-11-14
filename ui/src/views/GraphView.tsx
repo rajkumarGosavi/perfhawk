@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Button } from '../ui/Button'
 import type { CallGraph, GraphNode } from '../api'
 import type { Transform } from '../analysis/transforms'
 import { formatPct, formatValue } from '../format'
@@ -140,9 +141,9 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
             onKeyUp={() => slider !== nodes && onNodes(slider)}
           />
         </label>
-        <button onClick={() => zoom(1.25)} aria-label="Zoom in">+</button>
-        <button onClick={() => zoom(0.8)} aria-label="Zoom out">−</button>
-        <button onClick={fit} aria-label="Fit">Fit</button>
+        <Button size="sm" onClick={() => zoom(1.25)} aria-label="Zoom in">+</Button>
+        <Button size="sm" onClick={() => zoom(0.8)} aria-label="Zoom out">−</Button>
+        <Button size="sm" onClick={fit} aria-label="Fit">Fit</Button>
         {graph.hiddenNodes > 0 && <span className="muted">{graph.hiddenNodes.toLocaleString('en-US')} more functions hidden</span>}
       </div>
       <div
@@ -261,7 +262,7 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
               ))}
             </ul>
           </div>
-          <button onClick={() => onOpenFunc(sel.funcId)}>Open in sandwich</button>
+          <Button size="sm" onClick={() => onOpenFunc(sel.funcId)}>Open in sandwich</Button>
         </div>
       )}
     </section>

@@ -15,10 +15,10 @@ describe('keyAction', () => {
     ['1', 'summary'],
     ['2', 'flame'],
     ['3', 'tree'],
-    ['4', 'top'],
-    ['5', 'time'],
-    ['6', 'graph'],
-    ['7', 'groups'],
+    ['4', 'time'],
+    ['5', 'graph'],
+    ['6', 'gc'],
+    ['7', 'diff'],
   ])('%s -> view %s', (k, view) => {
     expect(keyAction(ev(k))).toEqual({ type: 'view', view })
   })

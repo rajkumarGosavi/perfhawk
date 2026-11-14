@@ -36,9 +36,31 @@ export function writeThemePref(pref: ThemePref): void {
   applyThemePref(pref)
 }
 
+export type Density = 'comfortable' | 'compact'
+const DENSITY_KEY = 'perfhawk.density'
+
+export function parseDensity(raw: string | null): Density {
+  return raw === 'compact' ? 'compact' : 'comfortable'
+}
+
+export function readDensity(): Density {
+  return parseDensity(getPref(DENSITY_KEY))
+}
+
+/** Sets `data-density` on <html>; compact tightens spacing and control height through tokens. */
+export function applyDensity(d: Density): void {
+  document.documentElement.dataset.density = d
+}
+
+export function writeDensity(d: Density): void {
+  setPref(DENSITY_KEY, d)
+  applyDensity(d)
+}
+
 /** Apply the saved preference now and follow OS changes while the preference is "system". */
 export function initTheme(): void {
   applyThemePref(readThemePref())
+  applyDensity(readDensity())
   if (typeof matchMedia === 'function') {
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (readThemePref() === 'system') applyThemePref('system')
