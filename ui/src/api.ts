@@ -281,6 +281,78 @@ export type Diagnosis = {
   findings: DoctorFinding[]
   notes: string[]
 }
+// ---- GC analysis (model types are snake_case, analysis types camelCase, as the server serves them)
+export type GcGenSizes = { gen0: number; gen1: number; gen2: number; loh: number; poh?: number }
+export type GcEvent = {
+  id: number
+  start_ns: number
+  generation?: number
+  kind: string
+  reason: string
+  reason_raw?: string
+  induced: boolean
+  /** Time application threads were stopped. */
+  pause_ns: number
+  /** Wall time of the whole collection (>= pause_ns). */
+  duration_ns: number
+  heap_before_bytes?: number
+  heap_after_bytes?: number
+  gen_after?: GcGenSizes
+  promoted_bytes?: number
+}
+export type GcHeapPoint = {
+  t_ns: number
+  total_bytes: number
+  gen0?: number
+  gen1?: number
+  gen2?: number
+  loh?: number
+  poh?: number
+}
+export type GcPauseStats = {
+  count: number; totalNs: number; meanNs: number; p50Ns: number; p95Ns: number; p99Ns: number; maxNs: number
+}
+export type GcGenCount = { generation: number | null; count: number; pause: GcPauseStats }
+export type GcNamedCount = { name: string; count: number }
+export type GcSummary = {
+  totalGcs: number
+  byGeneration: GcGenCount[]
+  byReason: GcNamedCount[]
+  byKind: GcNamedCount[]
+  inducedCount: number
+  pause: GcPauseStats
+  pauseSharePct: number
+  peakHeapBytes: number | null
+  minPostGcHeapBytes: number | null
+  postGen2HeapBytes: number[]
+  allocTotalBytes: number
+  allocMeanBytesPerS: number
+  allocPeakBytesPerS: number
+}
+export type GcPausePoint = { id: number; startNs: number; pauseNs: number; generation: number | null }
+export type GcRatePoint = { tNs: number; bytesPerS: number }
+export type GcFinding = {
+  rule: string
+  severity: 'info' | 'warn' | 'high'
+  title: string
+  detail: string
+  value: number
+  basedOn: number
+}
+export type GcReport = {
+  available: true
+  runtime: string
+  /** Capture length: the x-axis extent of every chart. */
+  durationNs: number
+  notes: string[]
+  summary: GcSummary
+  series: { heap: GcHeapPoint[]; allocRate: GcRatePoint[]; pauses: GcPausePoint[] }
+  findings: GcFinding[]
+  events: GcEvent[]
+}
+export type GcUnavailable = { available: false; reason: string }
+export const getGc = (sessionRef: string) =>
+  request<GcReport | GcUnavailable>(`/api/sessions/${encodeURIComponent(sessionRef)}/gc`)
 export const getDoctor = (sessionRef: string) =>
   request<Diagnosis>(`/api/sessions/${encodeURIComponent(sessionRef)}/doctor`)
 export const getSessionTimeline = (sessionRef: string, points = 200) =>

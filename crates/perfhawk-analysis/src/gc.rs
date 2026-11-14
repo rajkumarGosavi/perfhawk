@@ -309,6 +309,8 @@ pub struct GcFinding {
 #[serde(rename_all = "camelCase")]
 pub struct GcReport {
     pub runtime: String,
+    /// Capture length in nanoseconds (the x-axis extent of every chart).
+    pub duration_ns: u64,
     pub notes: Vec<String>,
     pub summary: GcSummary,
     pub series: GcSeries,
@@ -475,6 +477,7 @@ pub fn report(d: &GcData, cfg: &GcConfig) -> GcReport {
     }
     GcReport {
         runtime: d.runtime.clone(),
+        duration_ns: d.duration_ns,
         notes: d.notes.clone(),
         series: series(d, cfg),
         summary,

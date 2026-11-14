@@ -183,6 +183,7 @@ fn report_bundles_summary_series_findings_sorted() {
     e.reason = "induced".into();
     let r = report(&data(vec![e]), &GcConfig::default());
     assert_eq!(r.runtime, "dotnet");
+    assert_eq!(r.duration_ns, 10_000 * MS, "capture length for chart axes");
     assert_eq!(r.summary.total_gcs, 1);
     assert_eq!(r.series.pauses.len(), 1);
     let rules: Vec<&str> = r.findings.iter().map(|f| f.rule).collect();
