@@ -53,10 +53,12 @@ export function Findings({ profileRef, query, navigate }: Props) {
             <li key={f.id} className={`finding sev-${f.severity}`}>
               <span className="sev">{SEVERITY_LABEL[f.severity]}</span> <strong>{f.title}</strong>
               <p>{f.detail}</p>
-              <p className="muted">
-                {f.evidence.name ? `${f.evidence.name}: ` : ''}
-                {formatPct(f.evidence.pct)}
-              </p>
+              {(f.evidence.name || f.evidence.pct > 0) && (
+                <p className="muted">
+                  {f.evidence.name ? `${f.evidence.name}: ` : ''}
+                  {formatPct(f.evidence.pct)}
+                </p>
+              )}
               <Button size="sm" aria-label={`${f.action.label}: ${f.title}`} onClick={() => navigate(actionToPatch(f.action))}>
                 {f.action.label}
               </Button>
