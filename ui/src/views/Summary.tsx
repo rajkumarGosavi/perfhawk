@@ -98,6 +98,7 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
       {!data && !error && <p className="muted" role="status">Loading...</p>}
       {data && (
         <>
+          <p className="muted summary-question">{guide.questions[0]}</p>
           <p className="summary-headline" role="heading" aria-level={2}>
             {headline(data.bySelf, unit)}
             {!empty && (

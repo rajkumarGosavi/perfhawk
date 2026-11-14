@@ -245,3 +245,5 @@ td.down { color: var(--diff-down-3); }
 .welcome-actions { display: grid; grid-template-columns: 1fr; gap: var(--space-3); margin: var(--space-3) 0; }
 @media (min-width: 700px) { .welcome-actions { grid-template-columns: 1fr 1fr; } }
 .tab-desc { margin: 0 0 var(--space-2); }
+
+.summary-question { margin: var(--space-3) 0 0; }
