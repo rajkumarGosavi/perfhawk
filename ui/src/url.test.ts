@@ -165,3 +165,21 @@ describe('history state', () => {
     expect(s.profile).toBeUndefined()
   })
 })
+
+describe('workbench bottom tab (bt)', () => {
+  it('roundtrips tree and findings', () => {
+    for (const bt of ['tree', 'findings'] as const) {
+      const s = { view: 'flame' as const, profile: 'p1', bt }
+      expect(readViewState(writeViewState(s))).toEqual(s)
+    }
+  })
+  it('reads top, empty and unknown values as unset', () => {
+    for (const q of ['bt=top', 'bt=', 'bt=nope']) expect(readViewState(`?profile=p1&view=flame&${q}`).bt).toBeUndefined()
+  })
+  it('omits an unset bt from the URL', () => {
+    expect(writeViewState({ view: 'flame', profile: 'p1' })).not.toContain('bt=')
+  })
+  it('a patch with bt undefined clears it', () => {
+    expect(mergeViewState({ view: 'flame', profile: 'p1', bt: 'tree' }, { bt: undefined }).bt).toBeUndefined()
+  })
+})
