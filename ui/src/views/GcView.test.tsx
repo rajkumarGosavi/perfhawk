@@ -75,8 +75,13 @@ async function show(r: GcReport | { available: false; reason: string }) {
   await act(async () => { root.render(<GcView sessionId="s1" />) })
 }
 
+async function openTab(name: string) {
+  const tab = [...host.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.startsWith(name)) as HTMLButtonElement
+  await act(async () => { tab.click() })
+}
+
 describe('GcView', () => {
-  it('shows summary, findings, charts with data tables, and the event table', async () => {
+  it('opens on an overview: summary, findings and the pause timeline', async () => {
     await show(report())
     const text = host.textContent ?? ''
     expect(text).toContain('Garbage collection')
@@ -85,9 +90,40 @@ describe('GcView', () => {
     expect(text).toContain('0.5% of time')
     expect(text).toContain('triggered explicitly')
     expect(text).toContain('not the GC')
-    expect(host.querySelectorAll('details table').length).toBe(2) // heap + allocation data tables
-    expect(host.querySelectorAll('tbody tr').length).toBeGreaterThanOrEqual(3 + 1) // event rows + data table rows
     expect(host.querySelector('svg[aria-label^="Pause timeline"]')).not.toBeNull()
+    // The charts and the table live on their own tabs, so the section stays short.
+    expect(host.querySelector('svg[aria-label^="Heap size"]')).toBeNull()
+    expect(host.querySelector('table.gc-table')).toBeNull()
+  })
+
+  it('shows heap and allocation charts with data tables on the second tab', async () => {
+    await show(report())
+    await openTab('Heap')
+    expect(host.querySelector('svg[aria-label^="Heap size"]')).not.toBeNull()
+    expect(host.querySelector('svg[aria-label^="Allocation rate"]')).not.toBeNull()
+    expect(host.querySelectorAll('details table').length).toBe(2)
+  })
+
+  it('lists the collections on the third tab', async () => {
+    await show(report())
+    await openTab('Collections')
+    expect(host.querySelectorAll('.gc-table-wrap tbody tr').length).toBe(3)
+    expect(host.textContent).toContain('(explicit)')
+  })
+
+  it('is a proper tab list: one selected tab, Left/Right moves and selects', async () => {
+    await show(report())
+    const tabs = () => [...host.querySelectorAll('[role="tab"]')] as HTMLButtonElement[]
+    expect(tabs().map((t) => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false'])
+    expect(tabs().map((t) => t.tabIndex)).toEqual([0, -1, -1])
+    await act(async () => { tabs()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })
+    expect(tabs().map((t) => t.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false'])
+    await act(async () => { tabs()[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })) })
+    expect(tabs()[2].getAttribute('aria-selected')).toBe('true')
+    await act(async () => { tabs()[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })
+    expect(tabs()[0].getAttribute('aria-selected')).toBe('true') // wraps around
+    const panel = host.querySelector('[role="tabpanel"]:not([hidden])')!
+    expect(panel.getAttribute('aria-labelledby')).toBe(tabs()[0].id)
   })
 
   it('renders nothing when the session has no GC data', async () => {
@@ -113,7 +149,8 @@ describe('GcView', () => {
     const text = host.textContent ?? ''
     expect(text).toContain('unknown')
     expect(text).toContain('cycle 3')
-    expect(text).toContain('reported no heap sizes')
+    await openTab('Heap')
+    expect(host.textContent).toContain('reported no heap sizes')
   })
 
   it('selects a window from the keyboard and can clear it', async () => {
@@ -129,6 +166,7 @@ describe('GcView', () => {
 
   it('sorts the event table by pause when the column header is activated', async () => {
     await show(report())
+    await openTab('Collections')
     const btn = [...host.querySelectorAll('th button')].find((b) => b.textContent?.startsWith('Pause')) as HTMLButtonElement
     await act(async () => { btn.click() })
     const eventTable = [...host.querySelectorAll('table.gc-table')].pop()!
@@ -138,12 +176,15 @@ describe('GcView', () => {
 
   it('has no serious accessibility violations', async () => {
     await show(report())
-    // jsdom cannot compute colours or layout; contrast is covered by the contrast tests.
-    const res = await axe.run(host, {
-      rules: { 'color-contrast': { enabled: false }, region: { enabled: false } },
-      resultTypes: ['violations'],
-    })
-    const bad = res.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
-    expect(bad.map((v) => `${v.id}: ${v.nodes.map((n) => n.html).join(' | ')}`)).toEqual([])
+    for (const tab of ['Overview', 'Heap', 'Collections']) {
+      await openTab(tab)
+      // jsdom cannot compute colours or layout; contrast is covered by the contrast tests.
+      const res = await axe.run(host, {
+        rules: { 'color-contrast': { enabled: false }, region: { enabled: false } },
+        resultTypes: ['violations'],
+      })
+      const bad = res.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
+      expect(bad.map((v) => `${tab} ${v.id}: ${v.nodes.map((n) => n.html).join(' | ')}`)).toEqual([])
+    }
   })
 })

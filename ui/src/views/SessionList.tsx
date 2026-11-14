@@ -122,7 +122,7 @@ export function SessionList({
                       <span className="muted mono"> {s.short_id}</span>
                     </td>
                     <td><span className={`pill pill-${s.status}`}>{s.status}</span></td>
-                    <td>{target(s)}</td>
+                    <td className="target" title={target(s)}>{target(s)}</td>
                     <td>{new Date(s.started_at_unix_ms).toLocaleString()}</td>
                     <td className="num">{duration(s.duration_ms)}</td>
                     <td className="num">
@@ -144,7 +144,7 @@ export function SessionList({
                   </tr>,
                   open && (
                     <tr key={`${s.id}-details`} id={`sess-${s.id}`}>
-                      <td colSpan={7}>
+                      <td colSpan={7} className="session-detail">
                         {s.profile_ids.length === 0 ? (
                           <span className="muted">No profiles were captured.</span>
                         ) : (

@@ -5,21 +5,25 @@ import {
   formatPause, generationLabel, generationShape, rangeAround, stackedHeap, type GcRange, type GcShape,
 } from '../analysis/gc'
 
-const W = 600
-const H = 120
+const W = 800
+const H = 170
 const PAD = 4
 
-const x = (tNs: number, durationNs: number) => PAD + (durationNs > 0 ? (tNs / durationNs) * (W - 2 * PAD) : 0)
-const y = (v: number, max: number) => H - PAD - (max > 0 ? (v / max) * (H - 2 * PAD) : 0)
+// Line and area charts are taller than the pause timeline so they stay readable side by side.
+const LW = 640
+const LH = 260
+
+const x = (tNs: number, durationNs: number, w = W) => PAD + (durationNs > 0 ? (tNs / durationNs) * (w - 2 * PAD) : 0)
+const y = (v: number, max: number, h = H) => h - PAD - (max > 0 ? (v / max) * (h - 2 * PAD) : 0)
 
 function seconds(ns: number): string {
   return `${(ns / 1e9).toFixed(2)} s`
 }
 
-function RangeBand({ range, durationNs }: { range: GcRange | null; durationNs: number }) {
+function RangeBand({ range, durationNs, w = W, h = H }: { range: GcRange | null; durationNs: number; w?: number; h?: number }) {
   if (!range) return null
-  const x0 = x(range[0], durationNs)
-  return <rect x={x0} y={0} width={Math.max(2, x(range[1], durationNs) - x0)} height={H} className="gc-band" />
+  const x0 = x(range[0], durationNs, w)
+  return <rect x={x0} y={0} width={Math.max(2, x(range[1], durationNs, w) - x0)} height={h} className="gc-band" />
 }
 
 function Marker({ shape, cx, cy }: { shape: GcShape; cx: number; cy: number }) {
@@ -40,24 +44,24 @@ export function HeapChart({
   const st = stackedHeap(points)
   const peak = Math.max(...points.map((p) => p.total_bytes), 1)
   const layers = st.keys.map((k, i) => {
-    const top = st.rows.map((r) => `${x(r.tNs, durationNs)},${y(r.cum[i], peak)}`)
-    const bottom = st.rows.map((r) => `${x(r.tNs, durationNs)},${y(i === 0 ? 0 : r.cum[i - 1], peak)}`).reverse()
+    const top = st.rows.map((r) => `${x(r.tNs, durationNs, LW)},${y(r.cum[i], peak, LH)}`)
+    const bottom = st.rows.map((r) => `${x(r.tNs, durationNs, LW)},${y(i === 0 ? 0 : r.cum[i - 1], peak, LH)}`).reverse()
     return { key: k, d: `M${[...top, ...bottom].join(' L')} Z` }
   })
-  const line = points.map((p) => `${x(p.t_ns, durationNs)},${y(p.total_bytes, peak)}`).join(' L')
+  const line = points.map((p) => `${x(p.t_ns, durationNs, LW)},${y(p.total_bytes, peak, LH)}`).join(' L')
   const last = st.rows[st.rows.length - 1]
   return (
     <figure className="gc-chart">
       <figcaption>Heap over time <span className="muted">(largest sample {formatValue(peak, 'bytes')})</span></figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Heap size over time, largest sample ${formatValue(peak, 'bytes')}. A data table follows.`}>
-        <RangeBand range={range} durationNs={durationNs} />
+      <svg viewBox={`0 0 ${LW} ${LH}`} role="img" aria-label={`Heap size over time, largest sample ${formatValue(peak, 'bytes')}. A data table follows.`}>
+        <RangeBand range={range} durationNs={durationNs} w={LW} h={LH} />
         {layers.map((l, i) => (
           <path key={l.key} d={l.d} fill="currentColor" fillOpacity={0.12 + i * 0.12} stroke="currentColor"
             strokeWidth={1} strokeDasharray={i % 2 ? '4 2' : undefined} vectorEffect="non-scaling-stroke" />
         ))}
         <path d={`M${line}`} fill="none" stroke="currentColor" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
         {last && st.keys.map((k, i) => (
-          <text key={k} x={W - PAD - 2} y={y((last.cum[i] + (i === 0 ? 0 : last.cum[i - 1])) / 2, peak)}
+          <text key={k} x={LW - PAD - 2} y={y((last.cum[i] + (i === 0 ? 0 : last.cum[i - 1])) / 2, peak, LH)}
             textAnchor="end" className="gc-label">{k}</text>
         ))}
       </svg>
@@ -88,12 +92,12 @@ export function AllocChart({
 }: { points: GcRatePoint[]; durationNs: number; range: GcRange | null }) {
   if (points.length === 0) return <p className="muted">No allocation data was captured.</p>
   const peak = Math.max(...points.map((p) => p.bytesPerS), 1)
-  const line = points.map((p) => `${x(p.tNs, durationNs)},${y(p.bytesPerS, peak)}`).join(' L')
+  const line = points.map((p) => `${x(p.tNs, durationNs, LW)},${y(p.bytesPerS, peak, LH)}`).join(' L')
   return (
     <figure className="gc-chart">
       <figcaption>Allocation rate <span className="muted">(peak {formatValue(peak, 'bytes')}/s)</span></figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Allocation rate over time, peak ${formatValue(peak, 'bytes')} per second. A data table follows.`}>
-        <RangeBand range={range} durationNs={durationNs} />
+      <svg viewBox={`0 0 ${LW} ${LH}`} role="img" aria-label={`Allocation rate over time, peak ${formatValue(peak, 'bytes')} per second. A data table follows.`}>
+        <RangeBand range={range} durationNs={durationNs} w={LW} h={LH} />
         <path d={`M${line}`} fill="none" stroke="currentColor" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
       </svg>
       <details>
