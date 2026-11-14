@@ -4,6 +4,7 @@ import { ConfirmDialog } from './ConfirmDialog'
 import { ErrorNotice } from './ErrorNotice'
 import { FidelityBadge } from './FidelityBadge'
 import { formatValue } from '../format'
+import { Skeleton } from './Skeleton'
 
 export function ProfileList({
   onOpen,
@@ -100,7 +101,7 @@ export function ProfileList({
         </label>
       </div>
       {profiles === null ? (
-        !error && <p className="muted">Loading...</p>
+        !error && <Skeleton />
       ) : profiles.length === 0 ? (
         <p className="muted">No profiles yet. Import a file above, or record one with <code>perfhawk record &lt;target&gt; --open</code>.</p>
       ) : (

@@ -66,7 +66,7 @@ export function Findings({ profileRef, query, navigate }: Props) {
         <details>
           <summary>Manage rules</summary>
           {rules.map((r) => (
-            <label key={r} className="field" style={{ flexDirection: 'row', gap: 6 }}>
+            <label key={r} className="field field-row">
               <input type="checkbox" aria-label={r} checked={!disabled.has(r)} onChange={(e) => toggle(r, e.target.checked)} />
               {r}
             </label>

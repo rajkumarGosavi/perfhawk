@@ -13,6 +13,7 @@ import { FidelityBadge, fidelityTip } from './FidelityBadge'
 import { Findings } from './Findings'
 import { PivotPanel } from './PivotPanel'
 import { Term } from '../help/Term'
+import { Skeleton } from './Skeleton'
 
 type Props = {
   profileRef: string
@@ -95,14 +96,14 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
   return (
     <section aria-label="Summary">
       <ErrorNotice error={error} onRetry={reloadPage} />
-      {!data && !error && <p className="muted" role="status">Loading...</p>}
+      {!data && !error && <Skeleton lines={5} />}
       {data && (
         <>
           <p className="muted summary-question">{guide.questions[0]}</p>
           <p className="summary-headline" role="heading" aria-level={2}>
             {headline(data.bySelf, unit)}
             {!empty && (
-              <span className="muted" style={{ fontSize: 13 }}>
+              <span className="muted headline-note">
                 {' '}
                 ({concentration(data.bySelf) === 'concentrated' ? 'concentrated in one function' : 'spread across many functions'})
               </span>

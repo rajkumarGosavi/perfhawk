@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import logo from './assets/profiler-icon.svg'
 import { AnnouncerProvider } from './a11y/Announcer'
 import { useDocumentTitle } from './a11y/announce'
 import { viewTitle } from './a11y/title'
@@ -77,7 +78,8 @@ export default function App() {
       </a>
       <header className="app-header">
         <h1>
-          <button className="linklike" onClick={() => navigate({}, 'push', true)}>
+          <button className="linklike brand" onClick={() => navigate({}, 'push', true)}>
+            <img src={logo} alt="" width={22} height={22} />
             PERFHAWK
           </button>
         </h1>

@@ -10,6 +10,7 @@ import type { Range } from '../time/range'
 import { FidelityBadge } from './FidelityBadge'
 import { Doctor } from './Doctor'
 import { SessionTimeline } from './SessionTimeline'
+import { Skeleton } from './Skeleton'
 
 function target(s: SessionRecord): string {
   const t = s.target
@@ -89,7 +90,7 @@ export function SessionList({
       )}
       <ErrorNotice error={error} onRetry={reloadPage} />
       {sessions === null ? (
-        !error && <p className="muted">Loading...</p>
+        !error && <Skeleton />
       ) : sessions.length === 0 ? (
         <p className="muted">
           No sessions yet. A session is one recording run: start one with <code>perfhawk record &lt;target&gt; --open</code>.

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Profiler app icon">
+  <defs>
+    <linearGradient id="p-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1E2A44"/><stop offset="1" stop-color="#0A0F1E"/>
+    </linearGradient>
+    <linearGradient id="p-accent" gradientUnits="userSpaceOnUse" x1="150" y1="390" x2="390" y2="110">
+      <stop offset="0" stop-color="#22D3EE"/><stop offset=".55" stop-color="#818CF8"/><stop offset="1" stop-color="#C084FC"/>
+    </linearGradient>
+    <radialGradient id="p-glow" cx=".3" cy=".2" r=".9">
+      <stop offset="0" stop-color="#38BDF8" stop-opacity=".22"/><stop offset="1" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="116" fill="url(#p-bg)"/>
+  <rect width="512" height="512" rx="116" fill="url(#p-glow)"/>
+  <rect x="9" y="9" width="494" height="494" rx="108" fill="none" stroke="#fff" stroke-opacity=".07" stroke-width="2"/>
+
+  <g transform="translate(0,-20)">
+    <!-- profiling trace (flame-graph hint) -->
+    <g fill="#7DD3FC" opacity=".4">
+      <rect x="150" y="410" width="14" height="16" rx="7"/>
+      <rect x="176" y="398" width="14" height="28" rx="7"/>
+      <rect x="202" y="406" width="14" height="20" rx="7"/>
+      <rect x="228" y="382" width="14" height="44" rx="7"/>
+      <rect x="254" y="394" width="14" height="32" rx="7"/>
+      <rect x="280" y="374" width="14" height="52" rx="7"/>
+      <rect x="306" y="402" width="14" height="24" rx="7"/>
+      <rect x="332" y="414" width="14" height="12" rx="7"/>
+    </g>
+
+    <!-- P: stem -->
+    <line x1="206" y1="156" x2="206" y2="360" stroke="url(#p-accent)" stroke-width="36" stroke-linecap="round"/>
+    <!-- P bowl = gauge dial (open on the right) -->
+    <path d="M309.5 249.3A58 58 0 1 1 309.5 182.7" fill="none" stroke="url(#p-accent)" stroke-width="36" stroke-linecap="round"/>
+    <circle cx="309.5" cy="182.7" r="10" fill="#F8FAFC"/>
+
+    <!-- needle -->
+    <circle cx="346" cy="201" r="26" fill="#7DD3FC" opacity=".18"/>
+    <line x1="262" y1="216" x2="346" y2="201" stroke="#F8FAFC" stroke-width="22" stroke-linecap="round"/>
+    <circle cx="262" cy="216" r="15" fill="#F8FAFC"/>
+  </g>
+</svg>

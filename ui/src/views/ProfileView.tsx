@@ -31,6 +31,7 @@ import { FidelityBadge } from './FidelityBadge'
 import { TopTable } from './TopTable'
 import { TransformBar } from './TransformBar'
 import { Term } from '../help/Term'
+import { Skeleton } from './Skeleton'
 
 type Nav = (patch: Partial<ViewState>, mode?: 'push' | 'replace', reset?: boolean) => void
 type Data =
@@ -300,7 +301,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       <TransformBar tx={tx} onChange={(next) => navigate({ tx: next }, 'push')} />
       {exportMsg && <p className="muted" role="status">{exportMsg}</p>}
       <ErrorNotice error={error} onRetry={reloadPage} />
-      {loading && !error && <p className="muted" role="status">Loading...</p>}
+      {loading && !error && <Skeleton />}
       {view === 'sandwich' && func === undefined && (
         <p className="muted">Pick a function in the Top view to see its callers and callees.</p>
       )}

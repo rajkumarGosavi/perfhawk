@@ -21,6 +21,7 @@ import { toFlameNodes, type DiffFlameNode } from './diffTree'
 import { effectiveExclude } from '../analysis/perfhawk'
 import { TransformBar } from './TransformBar'
 import { FidelityBadge } from './FidelityBadge'
+import { Skeleton } from './Skeleton'
 
 const PALETTE_KEY = 'perfhawk.palette'
 
@@ -248,7 +249,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
       {exportMsg && <p className="muted" role="status">{exportMsg}</p>}
       <ErrorNotice error={error} onRetry={reloadPage} />
       {!baseRef && <p className="muted">Pick a base profile to compare against.</p>}
-      {loading && !error && <p className="muted" role="status">Loading...</p>}
+      {loading && !error && <Skeleton />}
       <div className="diff-legend muted" aria-hidden="true">
         <span className="swatch" style={{ background: 'var(--diff-down-4)' }} /> ▼ shrank
         <span className="swatch" style={{ background: 'var(--diff-flat)' }} /> unchanged
