@@ -32,7 +32,8 @@ async function open(url: string, hasTime: boolean) {
   window.history.replaceState(null, '', url)
   vi.stubGlobal('fetch', async (u: string) => {
     const tree = { funcId: null, name: 'root', file: '', selfValue: 0, total: 0, children: [] }
-    const body = /\/api\/profiles\/p1(\?|$)/.test(u) ? record(hasTime) : /\/flame/.test(u) ? tree : []
+    const heat = { bucketNs: 1e7, startUnixNs: 0, cols: 4, rows: 1, colBuckets: 25, rowBuckets: 25, cells: [[0, 0, 3], [1, 0, 5]], max: 5, totalBuckets: 100 }
+    const body = /\/api\/profiles\/p1(\?|$)/.test(u) ? record(hasTime) : /\/flame/.test(u) ? tree : /\/heatmap/.test(u) ? heat : []
     return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
   })
   host = document.createElement('div')
@@ -63,5 +64,46 @@ describe('App shell', () => {
     await press('8')
     expect(window.location.search).toContain('view=history')
     expect(window.location.search).not.toContain('profile=')
+  })
+})
+
+describe('profile workbench', () => {
+  const section = (label: string) => document.querySelector(`section[aria-label="${label}"]`)
+  it('shows the time range strip only for profiles with time data', async () => {
+    await open('/?profile=p1&view=flame', true)
+    expect(section('Time range')).not.toBeNull()
+  })
+  it('hides the strip without time data', async () => {
+    await open('/?profile=p1&view=flame', false)
+    expect(section('Time range')).toBeNull()
+  })
+  it('replaces the Focus/Exclude/Hide inputs with an Add filter button', async () => {
+    await open('/?profile=p1&view=flame', true)
+    const labels = [...document.querySelectorAll('label.field')].map((l) => l.textContent ?? '')
+    expect(labels.some((l) => /^Focus/.test(l))).toBe(false)
+    expect([...document.querySelectorAll('button')].some((b) => b.textContent?.includes('Add filter'))).toBe(true)
+  })
+  it('shows a filter from the URL as a chip and removing it clears the URL', async () => {
+    await open('/?profile=p1&view=flame&focus=db', true)
+    expect(document.querySelector('.chip-pill')?.textContent).toContain('Focus: db')
+    await act(async () => (document.querySelector('[aria-label="Remove focus filter"]') as HTMLElement).click())
+    expect(window.location.search).not.toContain('focus=')
+  })
+  it.each(['flame', 'icicle', 'both'])('view=%s renders the inspector and the Tables tabs', async (view) => {
+    await open(`/?profile=p1&view=${view}`, true)
+    expect(document.querySelector('aside[aria-label="Inspector"]')).not.toBeNull()
+    expect([...document.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Top functions', 'Call tree', 'Findings'])
+    expect(item('Flame graph').getAttribute('aria-current')).toBe('page')
+  })
+  it('the layout switch offers only Flame and Icicle', async () => {
+    await open('/?profile=p1&view=flame', true)
+    const sw = document.querySelector('[aria-label="Flame layout"]')!
+    expect([...sw.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Flame', 'Icicle'])
+  })
+  it('choosing the Call tree tab writes bt=tree', async () => {
+    await open('/?profile=p1&view=flame', true)
+    const tab = [...document.querySelectorAll('[role="tab"]')].find((t) => t.textContent === 'Call tree')!
+    await act(async () => { tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })) })
+    expect(window.location.search).toContain('bt=tree')
   })
 })

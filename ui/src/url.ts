@@ -20,6 +20,8 @@ export type ViewState = {
   search?: string
   /** Top table ordering; 'self' is the default and is omitted from the URL. */
   sort?: 'self' | 'total'
+  /** Workbench bottom tab; 'top' is the default and is omitted from the URL. Written as bt. */
+  bt?: 'tree' | 'findings'
   /** Highlight / expand the hottest call path; written as hot=1. */
   hot?: true
   /** Stack transforms (`tx`), see analysis/transforms.ts. */
@@ -76,6 +78,8 @@ export function readViewState(search: string): ViewState {
   const func = int(p.get('func'))
   if (func !== undefined) s.func = func
   if (p.get('sort') === 'total') s.sort = 'total'
+  const bt = p.get('bt')
+  if (bt === 'tree' || bt === 'findings') s.bt = bt
   if (p.get('hot') === '1') s.hot = true
   if (p.get('hph') === '1') s.hidePh = true
   const tx = p.get('tx')
@@ -119,6 +123,7 @@ export function writeViewState(s: ViewState): string {
   if (s.func !== undefined) p.set('func', String(s.func))
   if (s.search) p.set('search', s.search)
   if (s.sort === 'total') p.set('sort', 'total')
+  if (s.bt) p.set('bt', s.bt)
   if (s.hot) p.set('hot', '1')
   if (s.hidePh) p.set('hph', '1')
   if (s.tx) p.set('tx', s.tx)

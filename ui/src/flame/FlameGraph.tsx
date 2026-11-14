@@ -28,6 +28,10 @@ type Props = {
   exportRef?: { current: FlameExportApi | null }
   /** Offers the call tree as the accessible alternative to the canvas. */
   onViewAsTree?: () => void
+  /** Called when a frame is clicked or activated with Enter (in addition to zooming). */
+  onSelectNode?: (n: FlameNode) => void
+  /** The frame drawn with a selection outline. */
+  selected?: FlameNode | null
 }
 
 export type FlameExportApi = {
@@ -40,7 +44,7 @@ function resolveColor(cs: CSSStyleDeclaration, c: string): string {
   return m ? cs.getPropertyValue(m[1]).trim() || '#888' : c
 }
 
-export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf, tooltipExtra, depthLimit = 1000, highlight, exportRef, onViewAsTree }: Props) {
+export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf, tooltipExtra, depthLimit = 1000, highlight, exportRef, onViewAsTree, onSelectNode, selected }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [width, setWidth] = useState(0)
@@ -136,6 +140,7 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
     const light = cs.getPropertyValue('--flame-light').trim() || '62%'
     const match = cs.getPropertyValue('--match').trim() || '#1e6fe0'
     const hotColor = cs.getPropertyValue('--flame-hot').trim() || '#000'
+    const selColor = cs.getPropertyValue('--fg').trim() || '#000'
     ctx.font = '11px ui-monospace, Consolas, monospace'
     ctx.textBaseline = 'middle'
     for (const r of rects) {
@@ -156,6 +161,11 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
       }
       if (highlight?.has(r.node)) {
         ctx.strokeStyle = hotColor
+        ctx.lineWidth = 2
+        ctx.strokeRect(r.x + 1, y + 1, Math.max(r.w - 3, 0.5), ROW_HEIGHT - 3)
+      }
+      if (selected && selected === r.node) {
+        ctx.strokeStyle = selColor
         ctx.lineWidth = 2
         ctx.strokeRect(r.x + 1, y + 1, Math.max(r.w - 3, 0.5), ROW_HEIGHT - 3)
       }
@@ -185,7 +195,7 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
         ctx.restore()
       }
     }
-  }, [rects, width, height, shift, needle, theme, colorOf, dpr, highlight, activeNode, kbFocus])
+  }, [rects, width, height, shift, needle, theme, colorOf, dpr, highlight, activeNode, kbFocus, selected])
 
   const hit = useCallback(
     (e: { clientX: number; clientY: number }) => {
@@ -218,7 +228,7 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
     else if (k === (inverted ? 'ArrowDown' : 'ArrowUp')) move('child')
     else if (k === (inverted ? 'ArrowUp' : 'ArrowDown')) move('parent')
     else if (k === 'Home') { setActive(top); setAnnounce(describeFrame(top, top, unit)) }
-    else if (k === 'Enter' && activeNode) setZoom(activeNode === root ? undefined : activeNode)
+    else if (k === 'Enter' && activeNode) { setZoom(activeNode === root ? undefined : activeNode); onSelectNode?.(activeNode) }
     else if ((k === 's' || k === 'S') && activeNode && activeNode.funcId !== null && onSelectFunc) onSelectFunc(activeNode.funcId)
     else if (k === 'Escape' && t) setTipHidden(true) // dismiss the tooltip first; a second Esc resets zoom
     else return
@@ -243,7 +253,10 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
         onClick={(e) => {
           if (pressed.current) { pressed.current = false; return } // a long-press already acted
           const h = hit(e)
-          if (h) setZoom(h.rect.node === root ? undefined : h.rect.node)
+          if (h) {
+            setZoom(h.rect.node === root ? undefined : h.rect.node)
+            onSelectNode?.(h.rect.node)
+          }
         }}
         onDoubleClick={() => setZoom(undefined)}
         onPointerDown={(e) => {
