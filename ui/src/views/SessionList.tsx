@@ -100,7 +100,7 @@ export function SessionList({
             <thead>
               <tr>
                 <th>Session</th><th>Status</th><th>Target</th><th>Started</th>
-                <th className="num">Duration</th><th className="num">Profiles</th><th aria-label="Actions" />
+                <th className="num">Duration</th><th className="num">Profiles</th><th><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>

@@ -201,7 +201,7 @@ export function History({ state, navigate }: { state: ViewState; navigate: Nav }
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Session</th><th>Started</th><th className="num">Value</th><th className="num">% of total</th><th className="num">Change vs previous</th><th aria-label="Actions" /></tr>
+                <tr><th>Session</th><th>Started</th><th className="num">Value</th><th className="num">% of total</th><th className="num">Change vs previous</th><th><span className="sr-only">Actions</span></th></tr>
               </thead>
               <tbody>
                 {data.points.map((p, i) => {

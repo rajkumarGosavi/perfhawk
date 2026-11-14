@@ -96,8 +96,13 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
 
   const placedById = new Map(layout.nodes.map((p) => [p.id, p]))
   const zoom = (f: number) => setView((v) => ({ ...v, k: Math.min(4, Math.max(0.1, v.k * f)) }))
-  const label = (n: GraphNode) =>
-    `${n.name}, self ${formatValue(n.selfValue, unit)} (${formatPct((n.selfValue / graph.totalValue) * 100)}), total ${formatValue(n.total, unit)} (${formatPct((n.total / graph.totalValue) * 100)})`
+  // The accessible name starts with exactly what is drawn on the node (WCAG 2.5.3 Label in Name),
+  // then adds the full name and the absolute values.
+  const label = (n: GraphNode) => {
+    const selfPct = formatPct((n.selfValue / graph.totalValue) * 100)
+    const totalPct = formatPct((n.total / graph.totalValue) * 100)
+    return `${clip(n.name)} self ${selfPct} · total ${totalPct}, full name ${n.name}, self ${formatValue(n.selfValue, unit)}, total ${formatValue(n.total, unit)}`
+  }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     const dir = ARROW_DIRS[e.key]
@@ -224,9 +229,9 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
                   onFocus={() => selected !== n.funcId && setSelected(n.funcId)}
                 >
                   <rect width={s.w} height={s.h} rx={4} fill={`hsl(24 78% ${Math.round(92 - 40 * h)}%)`} />
-                  <text x={6} y={15} className="graph-name">{clip(n.name)}</text>
-                  <text x={6} y={s.h - 9} className="graph-nums">
-                    self {formatPct((n.selfValue / graph.totalValue) * 100)} · total {formatPct((n.total / graph.totalValue) * 100)}
+                  <text x={6} y={15} className="graph-name" aria-hidden="true">{clip(n.name)}</text>
+                  <text x={6} y={s.h - 9} className="graph-nums" aria-hidden="true">
+                    {' '}self {formatPct((n.selfValue / graph.totalValue) * 100)} · total {formatPct((n.total / graph.totalValue) * 100)}
                   </text>
                 </g>
               )

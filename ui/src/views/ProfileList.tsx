@@ -109,7 +109,7 @@ export function ProfileList({
             <thead>
               <tr>
                 <th>Name</th><th>Kind</th><th>Fidelity</th><th>Format</th>
-                <th className="num">Samples</th><th className="num">Total</th><th>Imported</th><th aria-label="Actions" />
+                <th className="num">Samples</th><th className="num">Total</th><th>Imported</th><th><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>

@@ -39,3 +39,23 @@ describe('theme tokens meet WCAG AA text contrast (4.5:1)', () => {
     }
   }
 })
+
+describe('diff delta text colours meet AA in every theme and palette', () => {
+  const rule = (dir: 'up' | 'down') => new RegExp(String.raw`td\.${dir}\s*\{\s*color:\s*var\((--[\w-]+)\)`).exec(themeCss)![1]
+  const base = vars(':root')
+  const sets: [string, Record<string, string>][] = [
+    ['light', base],
+    ['dark', { ...base, ...vars(":root[data-theme='dark']") }],
+    ['light cb', { ...base, ...vars(":root[data-palette='cb']") }],
+    ['dark cb', { ...base, ...vars(":root[data-theme='dark']"), ...vars(":root[data-palette='cb']"), ...vars(":root[data-theme='dark'][data-palette='cb']") }],
+  ]
+  for (const dir of ['up', 'down'] as const) {
+    for (const [name, theme] of sets) {
+      it(`${dir} text on ${name} backgrounds`, () => {
+        const fg = theme[rule(dir)]
+        expect(contrastRatio(fg, theme['--bg']), `${rule(dir)} on --bg`).toBeGreaterThanOrEqual(4.5)
+        expect(contrastRatio(fg, theme['--surface']), `${rule(dir)} on --surface`).toBeGreaterThanOrEqual(4.5)
+      })
+    }
+  }
+})
