@@ -4,6 +4,7 @@ import { DiffView } from './views/DiffView'
 import { History } from './views/History'
 import { Home } from './views/Home'
 import { ProfileView } from './views/ProfileView'
+import { ThemeSwitch } from './views/ThemeSwitch'
 
 export default function App() {
   const [state, setState] = useState<ViewState>(() => readViewState(window.location.search))
@@ -40,6 +41,7 @@ export default function App() {
           </button>
         </h1>
         <span className="muted">local profiling workbench</span>
+        <span style={{ marginLeft: 'auto' }}><ThemeSwitch /></span>
       </header>
       <main>
         {state.profile && state.view === 'diff' ? (

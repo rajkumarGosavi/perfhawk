@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { FlameNode } from '../api'
 import { formatPct, formatValue } from '../format'
+import { subscribeTheme } from '../theme'
 import { layoutFlame, layoutHeight, maxCanvasRows, type Rect } from './layout'
 
 export const ROW_HEIGHT = 18
@@ -87,10 +88,7 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
   }, [])
 
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const f = () => setTheme((t) => t + 1)
-    mq.addEventListener('change', f)
-    return () => mq.removeEventListener('change', f)
+    return subscribeTheme(() => setTheme((t) => t + 1))
   }, [])
 
   useEffect(() => {
