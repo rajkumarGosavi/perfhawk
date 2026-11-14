@@ -55,3 +55,31 @@ describe('Panel', () => {
     opener.remove()
   })
 })
+
+import { ExportMenu } from '../views/ExportMenu'
+
+describe('ExportMenu', () => {
+  it('opens with ArrowDown, runs the chosen item and closes', async () => {
+    const a = vi.fn()
+    const b = vi.fn()
+    await mount(<ExportMenu items={[{ label: 'Download SVG', run: a }, { label: 'Copy link', run: b }]} />)
+    const trigger = [...document.querySelectorAll('button')].find((x) => x.textContent === 'Export')!
+    trigger.focus()
+    await key(trigger, 'ArrowDown')
+    const items = [...document.querySelectorAll('[role="menuitem"]')]
+    expect(items.map((i) => i.textContent)).toEqual(['Download SVG', 'Copy link'])
+    await act(async () => { (items[1] as HTMLElement).click() })
+    expect(b).toHaveBeenCalledTimes(1)
+    expect(a).not.toHaveBeenCalled()
+    expect(document.querySelector('[role="menu"]')).toBeNull()
+  })
+  it('Escape closes the menu', async () => {
+    await mount(<ExportMenu items={[{ label: 'Copy link', run: () => {} }]} />)
+    const trigger = [...document.querySelectorAll('button')].find((x) => x.textContent === 'Export')!
+    trigger.focus()
+    await key(trigger, 'ArrowDown')
+    expect(document.querySelector('[role="menu"]')).not.toBeNull()
+    await key(document.querySelector('[role="menu"]')!, 'Escape')
+    expect(document.querySelector('[role="menu"]')).toBeNull()
+  })
+})
