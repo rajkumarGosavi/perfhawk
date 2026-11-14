@@ -1,7 +1,7 @@
 // dotnet-demo: a small "order service" simulation with deliberate hot spots,
 // meant to be profiled with dotnet-trace and opened in perfhawk.
 //
-//   dotnet run -c Release -- [cpu|alloc|lock|io|all] [seconds]
+//   dotnet run -c Release -- [cpu|alloc|lock|io|gc|all] [seconds]
 //
 // See README.md (or ./profile.ps1 / ./profile.sh) for the capture commands.
 using System.Diagnostics;
@@ -20,7 +20,7 @@ public static class Program
     {
         var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "all";
         var seconds = args.Length > 1 && int.TryParse(args[1], out var s) ? s : 10;
-        var valid = new[] { "cpu", "alloc", "lock", "io", "all" };
+        var valid = new[] { "cpu", "alloc", "lock", "io", "gc", "all" };
         if (!valid.Contains(mode))
         {
             Console.Error.WriteLine($"usage: dotnet-demo [{string.Join('|', valid)}] [seconds]");
@@ -49,8 +49,16 @@ public static class Program
         if (mode is "io" or "all")
             tasks.Add(Task.Factory.StartNew(() => svc.WriteAuditLog(cts.Token), TaskCreationOptions.LongRunning));
 
+        // The gc workload also makes a few explicit GC.Collect() calls so perfhawk's "induced" finding
+        // has something to show; `all` leaves them out.
+        if (mode is "gc" or "all")
+            tasks.Add(Task.Factory.StartNew(() => svc.ChurnGc(cts.Token, seconds, induce: mode == "gc"), TaskCreationOptions.LongRunning));
+
         Task.WaitAll(tasks.ToArray());
         Console.WriteLine($"done: {svc.Summary()}");
+        // Independent reference for `perfhawk gc`: gen1 counts include gen2 GCs and gen0 counts include both.
+        Console.Error.WriteLine(
+            $"[dotnet-demo] GC.CollectionCount gen0={GC.CollectionCount(0)} gen1={GC.CollectionCount(1)} gen2={GC.CollectionCount(2)}");
         return 0;
     }
 }
@@ -123,6 +131,43 @@ public sealed class OrderService
                 report += $"line {i}: {rng.Next()} {Guid.NewGuid()}\n";
             _ = Encoding.UTF8.GetByteCount(report);
         }
+    }
+
+    // GC pressure: steady gen0 churn, a retained list that keeps growing (survivors get promoted and the
+    // heap after full GCs rises), a large-object allocation every ~500 ms (LOH), and, when asked, three
+    // explicit collections at 25%, 50% and 75% of the run.
+    public void ChurnGc(CancellationToken ct, int seconds, bool induce)
+    {
+        var retained = new List<byte[]>();
+        var clock = Stopwatch.StartNew();
+        var nextLarge = TimeSpan.Zero;
+        var nextRetain = TimeSpan.Zero;
+        var induceAt = new[] { 0.25, 0.5, 0.75 }.Select(f => TimeSpan.FromSeconds(seconds * f)).ToList();
+        object? sink = null;
+        while (!ct.IsCancellationRequested)
+        {
+            // Short-lived garbage: a burst of small arrays nothing keeps.
+            for (var i = 0; i < 2000; i++) sink = new byte[256];
+
+            if (clock.Elapsed >= nextRetain)
+            {
+                retained.Add(new byte[256 * 1024]); // survives every GC, so it ends up in gen2
+                nextRetain = clock.Elapsed + TimeSpan.FromMilliseconds(50);
+            }
+            if (clock.Elapsed >= nextLarge)
+            {
+                sink = new byte[200_000]; // over the 85,000-byte threshold: allocated on the large object heap
+                nextLarge = clock.Elapsed + TimeSpan.FromMilliseconds(500);
+            }
+            if (induce && induceAt.Count > 0 && clock.Elapsed >= induceAt[0])
+            {
+                induceAt.RemoveAt(0);
+                GC.Collect();
+            }
+            Thread.Sleep(1);
+        }
+        GC.KeepAlive(sink);
+        GC.KeepAlive(retained);
     }
 
     // Lock contention: everyone serializes on one lock and holds it while "calling the DB".

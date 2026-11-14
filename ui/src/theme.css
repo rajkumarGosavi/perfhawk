@@ -280,3 +280,49 @@ main:focus { outline: none; }
 .skeleton { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) 0; }
 .skeleton-line { display: block; height: 14px; border-radius: var(--radius-sm); background: linear-gradient(90deg, var(--border), color-mix(in srgb, var(--border) 50%, var(--surface)), var(--border)); background-size: 200% 100%; animation: skeleton-shimmer 1.4s ease-in-out infinite; }
 @keyframes skeleton-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* GC analysis. The global `td { white-space: nowrap }` must not reach into this section. */
+.session-detail { white-space: normal; max-width: 0; }
+.gc-view { margin: 0.5rem 0; padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); white-space: normal; }
+.gc-view h3 { margin: 0 0 0.5rem; }
+.gc-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 0.75rem; flex-wrap: wrap; }
+.gc-tab { background: none; border: 1px solid transparent; border-bottom: none; padding: 6px 12px; border-radius: var(--radius-sm) var(--radius-sm) 0 0; color: var(--muted); cursor: pointer; min-height: var(--control-h); }
+.gc-tab:hover { color: var(--fg); }
+.gc-tab-on { color: var(--fg); background: var(--bg); border-color: var(--border); font-weight: 600; margin-bottom: -1px; }
+.gc-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.gc-panel[hidden] { display: none; }
+.gc-range { margin: 0 0 0.5rem; padding: 4px 8px; background: var(--bg); border-radius: var(--radius-sm); }
+.gc-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin: 0 0 0.75rem; }
+.gc-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--bg); min-width: 0; }
+.gc-card-label { color: var(--muted); font-size: var(--text-sm); }
+.gc-card strong { display: block; font-size: var(--text-lg); line-height: 1.3; }
+.gc-findings { list-style: none; margin: 0 0 0.75rem; padding: 0; display: grid; gap: 6px; }
+.gc-finding { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--radius-sm); background: var(--bg); }
+.gc-finding-warn, .gc-finding-high { border-left-color: var(--danger-fg); }
+.gc-finding-info { border-left-color: var(--accent); }
+.gc-sev { flex: none; text-transform: uppercase; font-size: var(--text-xs); letter-spacing: 0.04em; font-weight: 700; padding: 1px 6px; border: 1px solid currentColor; border-radius: var(--radius-sm); }
+.gc-finding-warn .gc-sev, .gc-finding-high .gc-sev { color: var(--danger-fg); }
+.gc-finding-info .gc-sev { color: var(--accent); }
+.gc-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
+.gc-charts > p { grid-column: 1 / -1; }
+.gc-chart { margin: 0 0 0.75rem; min-width: 0; }
+.gc-chart figcaption { margin-bottom: 4px; font-weight: 600; }
+.gc-chart svg { display: block; width: 100%; height: auto; color: var(--accent); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); }
+.gc-chart svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gc-chart details { margin-top: 4px; }
+.gc-band { fill: var(--accent); opacity: 0.18; }
+.gc-label { font-size: 10px; fill: var(--fg); stroke: none; }
+.gc-cursor { opacity: 0.6; }
+.gc-legend { margin: 4px 0 0; }
+.gc-note { margin: 0.5rem 0 0; font-size: var(--text-sm); }
+.gc-caption { margin: 0 0 4px; }
+.gc-table-wrap { max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.gc-table-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gc-table { border-collapse: collapse; width: 100%; font-size: var(--text-sm); }
+.gc-table th, .gc-table td { text-align: left; padding: 4px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.gc-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.gc-view details table { display: block; max-height: 220px; overflow: auto; }
+
+/* Long target commands must not widen the sessions table past the page. */
+td.target { max-width: 28ch; overflow: hidden; text-overflow: ellipsis; }
+.table-wrap { overflow-x: auto; max-width: 100%; }

@@ -12,7 +12,7 @@ public sealed record ArtifactInfo(string Kind, string Path, int Samples);
 /// <summary>Converts a <c>.nettrace</c> file into one pprof file per requested kind.</summary>
 public static class TraceConverter
 {
-    public static readonly string[] AllKinds = { "cpu", "wall", "memory", "lock", "threads" };
+    public static readonly string[] AllKinds = { "cpu", "wall", "memory", "lock", "threads", "gc" };
 
     private const long SampleIntervalNs = 1_000_000; // SampleProfiler default: 1 ms
 
@@ -83,6 +83,21 @@ public static class TraceConverter
             if (kinds.Contains("threads")) lastSamplePerThread[ev.ThreadID] = frames;
         };
 
+        GcCollector? gcc = kinds.Contains("gc") ? new GcCollector() : null;
+        if (gcc != null)
+        {
+            clr.GCStart += ev => gcc.OnGcStart(ev.Count, ev.Depth, ev.Reason.ToString(), ev.Type.ToString(), ev.TimeStampRelativeMSec);
+            clr.GCStop += ev => gcc.OnGcEnd(ev.Count, ev.Depth, ev.TimeStampRelativeMSec);
+            clr.GCHeapStats += ev => gcc.OnHeapStats(
+                ev.TimeStampRelativeMSec,
+                (ulong)ev.GenerationSize0, (ulong)ev.GenerationSize1, (ulong)ev.GenerationSize2, (ulong)ev.GenerationSize3,
+                (ulong)ev.GenerationSize4,
+                (ulong)(ev.TotalPromotedSize0 + ev.TotalPromotedSize1 + ev.TotalPromotedSize2 + ev.TotalPromotedSize3));
+            clr.GCSuspendEEStart += ev => gcc.OnSuspendStart(ev.TimeStampRelativeMSec, ev.Reason.ToString().StartsWith("SuspendForGC", StringComparison.Ordinal));
+            clr.GCRestartEEStop += ev => gcc.OnRestartStop(ev.TimeStampRelativeMSec);
+            clr.GCAllocationTick += ev => gcc.OnAllocTick(ev.TimeStampRelativeMSec, ev.AllocationAmount64);
+        }
+
         if (kinds.Contains("memory"))
             clr.GCAllocationTick += ev =>
                 mem.AddSample(FramesOf(ev), new[] { ev.AllocationAmount64, 1L });
@@ -123,6 +138,12 @@ public static class TraceConverter
         Write("memory", mem);
         Write("lock", lck);
         Write("threads", thr);
+        if (gcc != null)
+        {
+            var gcPath = Path.Combine(outDir, "gc.json");
+            File.WriteAllBytes(gcPath, gcc.BuildJson(startNs, durNs));
+            result.Add(new ArtifactInfo("gc", gcPath, gcc.EventCount));
+        }
         return result;
     }
 }

@@ -19,6 +19,9 @@ pub fn diagnose_session(store: &Store, session: &SessionRecord) -> Result<Diagno
         (None, Some(url)) => Some(format!("--url {url}")),
         _ => None,
     };
+    let gc = store
+        .load_gc(&session.id)?
+        .map(|d| perfhawk_analysis::gc::summarize(&d, &perfhawk_analysis::gc::GcConfig::default()));
     let input = DoctorInput {
         window_ns,
         profiles: loaded
@@ -31,6 +34,7 @@ pub fn diagnose_session(store: &Store, session: &SessionRecord) -> Result<Diagno
             })
             .collect(),
         record_target,
+        gc: gc.as_ref(),
     };
     Ok(diagnose(&input, &DoctorConfig::default()))
 }

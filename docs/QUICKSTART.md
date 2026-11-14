@@ -61,6 +61,17 @@ perfhawk ui
 
 You get CPU, wall-clock, allocations, lock contention and threads in one session. No `dotnet-trace`, no code change: the .NET helper is bundled with Perfhawk.
 
+### See what the garbage collector is doing
+
+The same demo has a GC workload. Recording it captures GC data automatically:
+
+```powershell
+perfhawk record --duration 15s -- dotnet bin\Release\net8.0\dotnet-demo.dll gc 20
+perfhawk gc last
+```
+
+You get collections per generation (gen0, gen1, gen2), pause times, heap size and allocation rate, plus findings: this demo shows a heap that keeps growing after full GCs (a possible leak) and three explicit `GC.Collect()` calls. In the UI, expand the session to see the **Garbage collection** section. See the [user guide](USER_GUIDE.md#perfhawk-gc-ref---json) for what each number means.
+
 To attach to a program that is already running:
 
 ```powershell

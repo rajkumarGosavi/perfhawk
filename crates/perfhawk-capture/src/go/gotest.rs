@@ -120,5 +120,6 @@ pub(crate) fn capture_go_test(
         artifacts,
         end,
         warnings,
+        gc: None,
     })
 }

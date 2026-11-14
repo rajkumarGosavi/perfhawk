@@ -1,6 +1,7 @@
 pub mod check;
 pub mod diff;
 pub mod doctor;
+pub mod gc;
 pub mod import;
 pub mod ls;
 pub mod record;

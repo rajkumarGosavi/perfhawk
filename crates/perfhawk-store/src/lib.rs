@@ -29,6 +29,8 @@ pub enum StoreError {
     Corrupt(String),
     #[error("invalid timeline: {0}")]
     InvalidTimeline(String),
+    #[error("invalid GC data: {0}")]
+    InvalidGc(String),
 }
 
 /// UTC `YYYY-MM-DD HH:MM` from unix milliseconds.
@@ -129,6 +131,8 @@ pub struct SessionRecord {
     pub warnings: Vec<String>,
     pub tags: Vec<String>,
     pub profile_ids: Vec<String>,
+    /// Whether the session has a GC data sidecar (computed, not stored in the database).
+    pub has_gc: bool,
 }
 
 pub struct Store {
@@ -267,6 +271,7 @@ fn row_to_session(row: &Row) -> rusqlite::Result<SessionRecord> {
         warnings: json_col(row, 8)?,
         tags: json_col(row, 9)?,
         profile_ids: Vec::new(),
+        has_gc: false,
     })
 }
 
@@ -373,6 +378,62 @@ impl Store {
             .join("blobs")
             .join(&id[..2])
             .join(format!("{id}.timeline.zst"))
+    }
+
+    fn gc_path(&self, id: &str) -> PathBuf {
+        self.root
+            .join("blobs")
+            .join(&id[..2])
+            .join(format!("{id}.gc.zst"))
+    }
+
+    /// Writes a session's GC data as a zstd-compressed JSON sidecar (atomic rename).
+    pub fn save_gc(&self, session_id: &str, g: &perfhawk_model::GcData) -> Result<(), StoreError> {
+        if session_id.len() < 2 || !session_id.is_ascii() {
+            return Err(StoreError::NotFound(session_id.to_string()));
+        }
+        g.validate()
+            .map_err(|e| StoreError::InvalidGc(e.to_string()))?;
+        let packed = zstd::encode_all(&g.to_json()[..], 3)?;
+        let path = self.gc_path(session_id);
+        let dir = path.parent().expect("GC path has parent");
+        std::fs::create_dir_all(dir)?;
+        let tmp = dir.join(format!("{session_id}.gc.tmp-{}", std::process::id()));
+        {
+            use std::io::Write;
+            let mut f = std::fs::File::create(&tmp)?;
+            f.write_all(&packed)?;
+            f.sync_all()?;
+        }
+        if let Err(e) = std::fs::rename(&tmp, &path) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e.into());
+        }
+        Ok(())
+    }
+
+    /// True when a GC sidecar exists (it is not decoded or validated).
+    pub fn has_gc(&self, session_id: &str) -> bool {
+        session_id.len() >= 2 && session_id.is_ascii() && self.gc_path(session_id).exists()
+    }
+
+    /// `Ok(None)` when there is no sidecar or it is unreadable or invalid (a warning is logged).
+    pub fn load_gc(&self, session_id: &str) -> Result<Option<perfhawk_model::GcData>, StoreError> {
+        if session_id.len() < 2 || !session_id.is_ascii() {
+            return Ok(None);
+        }
+        let packed = match std::fs::read(self.gc_path(session_id)) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+        let decoded = zstd::decode_all(&packed[..])
+            .ok()
+            .and_then(|raw| perfhawk_model::GcData::from_json(&raw).ok());
+        if decoded.is_none() {
+            eprintln!("perfhawk-store: ignoring unreadable GC data for {session_id}");
+        }
+        Ok(decoded)
     }
 
     /// Writes the timeline sidecar next to the profile blob (atomic rename).
@@ -672,6 +733,7 @@ impl Store {
             warnings: Vec::new(),
             tags: tags.to_vec(),
             profile_ids: Vec::new(),
+            has_gc: false,
         };
         self.conn().execute(
             &format!(
@@ -712,6 +774,7 @@ impl Store {
     }
 
     fn fill_profile_ids(&self, mut s: SessionRecord) -> Result<SessionRecord, StoreError> {
+        s.has_gc = self.has_gc(&s.id);
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id FROM profiles WHERE session_id = ?1 ORDER BY imported_at_unix_ms, rowid",
@@ -799,6 +862,9 @@ impl Store {
         }
         self.conn()
             .execute("DELETE FROM sessions WHERE id = ?1", params![s.id])?;
+        if s.id.len() >= 2 && s.id.is_ascii() {
+            let _ = std::fs::remove_file(self.gc_path(&s.id));
+        }
         Ok(s.profile_ids.len())
     }
 

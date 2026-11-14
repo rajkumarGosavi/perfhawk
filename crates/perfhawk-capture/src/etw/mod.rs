@@ -281,6 +281,7 @@ impl SystemProvider for EtwProvider {
             artifacts,
             end,
             warnings,
+            gc: None,
         })
     }
 }

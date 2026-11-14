@@ -99,6 +99,7 @@ fn run(
                 kinds,
                 duration: Duration::from_secs(secs),
                 timeline: false,
+                gc: false,
             },
             name: Some(name.into()),
             tags: vec![],

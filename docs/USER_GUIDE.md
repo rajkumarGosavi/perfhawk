@@ -175,7 +175,7 @@ browser unless you pass `--open`.
 
 ## 4a. Recording
 
-### `perfhawk record [TARGET] [--kinds K,...] [--duration 30s] [--name N] [--tag T]... [--timeline|--no-timeline] [--open] [--port P]`
+### `perfhawk record [TARGET] [--kinds K,...] [--duration 30s] [--name N] [--tag T]... [--timeline|--no-timeline] [--no-gc] [--open] [--port P]`
 
 Captures profiles from a live process and stores them as one session. Choose
 **exactly one** target:
@@ -295,6 +295,102 @@ perfhawk record --pid 4242 --kinds block_io,off_cpu,sched_delay --duration 30s
 - The trace uses its own session, so it can run beside Windows Performance Recorder or PerfView. Under heavy load Windows can drop events; the profile then carries a warning with the counts.
 - With these kinds in the session, `perfhawk doctor` states an I/O verdict with the file and stack as evidence.
 
+### `perfhawk gc [REF] [--json]`
+
+Shows what the garbage collector did during a session: how many collections ran
+at each generation, how long they paused your program, how big the heap was and
+how fast the program allocated. `REF` is a session reference (default `last`).
+GC data comes from `perfhawk record` on a .NET process (captured by default;
+`--no-gc` turns it off) or from `perfhawk import --gc`.
+
+```powershell
+perfhawk record --duration 15s -- dotnet examples\dotnet-demo\bin\Release\net8.0\dotnet-demo.dll gc 20
+perfhawk gc last
+```
+
+The report has these sections:
+
+| Section | What it tells you |
+|---|---|
+| **Collections** | Count per generation (gen0, gen1, gen2) with total, p50, p95, p99 and max pause. A "gen1" row counts collections that were exactly gen1; the runtime's own `GC.CollectionCount(1)` also counts gen2 ones. |
+| **Pause** | Total pause time and its share of the capture. |
+| **Heap** | Largest heap seen, smallest heap after a GC, and how the heap after full (gen2) GCs changed. |
+| **Allocation** | Total bytes allocated, mean and peak rate. The rate comes from allocation events about 100 KB apart, so it is approximate. |
+| **Reasons** | Why collections happened: `allocation`, `induced` (an explicit `GC.Collect`), `large-object`, `low-memory`, `other`. |
+| **Findings** | Plain-language problems with the evidence behind them (below). |
+| **Longest pauses** | The ten longest pauses with their time and generation. |
+
+**Pause is not GC duration.** A pause is the time your program's threads were
+stopped. Background GCs do most of their work while the program keeps running,
+so a long background GC can have a very short pause. Perfhawk reports pauses,
+because they are what your users feel.
+
+Findings (each shows how many collections it rests on):
+
+| Finding | Fires when |
+|---|---|
+| `gc_long_pause` | the longest pause is 50 ms or more |
+| `gc_pause_share` | pauses add up to 5% or more of the capture |
+| `gc_gen2_heavy` | 30% or more of at least 10 collections were gen2 |
+| `gc_heap_growth` | the heap left after gen2 GCs grew 20% or more, over at least 4 gen2 GCs. This is a *possible* leak, not proof: a cache filling up looks the same. |
+| `gc_induced` | code called `GC.Collect` or an equivalent |
+| `gc_loh_driven` | 20% or more of at least 10 collections were caused by large-object allocation |
+
+`--json` prints the same data the UI uses (see `GET /api/sessions/<ref>/gc`).
+`perfhawk doctor` also uses GC data when a session has it: its "GC pressure"
+finding then reports the measured pause share instead of a stack-sample estimate.
+
+### `perfhawk import --gc <FILE>... [--session REF [--replace]] [--name N] [--tag T]...`
+
+Imports GC data as a session (or attaches it to an existing one). Each file is
+either a Perfhawk `gc.json` (below) or a `.nettrace` file from `dotnet-trace
+collect`; a `.nettrace` needs the .NET helper, like `perfhawk record` does.
+
+```powershell
+perfhawk import --gc trace.nettrace
+perfhawk import --gc gc.json --session last          # attach to a session without GC data
+perfhawk import --gc gc.json --session last --replace # overwrite GC data it already has
+```
+
+Importing creates a new session tagged `imported`; the data notes record the
+source file name. Invalid files are rejected with the reason (for example
+"GC events must be ordered by start time"). `--session` needs a single file, and
+refuses a session that already has GC data unless you add `--replace`.
+
+#### The `gc.json` format
+
+Any tool or language can write this file; Perfhawk stores and analyses it the
+same way as recorded data. All times are nanoseconds since the capture started.
+
+```json
+{
+  "schema": 1,
+  "runtime": "dotnet",
+  "start_unix_ns": 1700000000000000000,
+  "duration_ns": 2000000000,
+  "fidelity": "native",
+  "events": [
+    {"id": 1, "start_ns": 100000000, "generation": 0, "kind": "blocking",
+     "reason": "allocation", "reason_raw": "AllocSmall", "induced": false,
+     "pause_ns": 2000000, "duration_ns": 2500000,
+     "heap_after_bytes": 4000000}
+  ],
+  "heap": [{"t_ns": 102500000, "total_bytes": 4000000}],
+  "alloc": {"bucket_ns": 1000000000, "bytes": [1000000, 2000000]},
+  "notes": []
+}
+```
+
+Required per event: `id`, `start_ns`, `kind` (`blocking`, `background`,
+`concurrent` or `other`), `reason` (`allocation`, `induced`, `large-object`,
+`low-memory` or `other`), `induced`, `pause_ns` (time threads were stopped) and
+`duration_ns` (whole collection, never less than `pause_ns`). Optional:
+`generation` (leave it out for runtimes without generations), `reason_raw`,
+`heap_before_bytes`, `heap_after_bytes`, `gen_after` (`gen0`, `gen1`, `gen2`,
+`loh`, optional `poh`) and `promoted_bytes`. Events and heap points must be in
+time order. `fidelity` is `native`, `sampled_external`, `derived`,
+`approximate` or `unknown`.
+
 ### `perfhawk targets [--json]`
 
 Lists what can be attached to: Go processes running the agent and .NET 8+
@@ -302,8 +398,8 @@ processes, with runtime version when known.
 
 ### `perfhawk sessions [--json]`
 
-Lists sessions: id, name, status, start time (UTC), duration, profile count and
-target. Refer to a session by `last`, its id, a unique id prefix, or its name.
+Lists sessions: id, name, status, start time (UTC), duration, profile count,
+whether the session has GC data (`GC` column) and target. Refer to a session by `last`, its id, a unique id prefix, or its name.
 
 ### `perfhawk diff <BASE> <HEAD> [--st NAME] [--normalize none|total] [--top N] [--focus RE] [--exclude RE] [--hide RE]`
 
@@ -467,6 +563,18 @@ data, all on the same time axis. Click (or focus and press Enter) to select the
 window around a spike, then **Open window in <kind>** to see that profile's flame
 limited to the window. Profiles are aligned by their start times, which can differ
 by a few hundred milliseconds between kinds.
+
+### Garbage collection
+A session with GC data shows a **Garbage collection** section under Doctor when you
+expand it: cards for the number of collections (with gen0, gen1 and gen2 counts), the
+longest pause, the share of time paused, peak heap and allocation rate; the findings;
+a **pause timeline** (one mark per GC: height is the pause, shape is the generation:
+circle gen0, square gen1, triangle gen2); heap and allocation-rate charts; and a table
+of the collections with the longest pauses. Drag across the pause timeline to look at
+one stretch (the charts and table follow it), or focus it and use Left and Right to
+move between collections, Enter to select the stretch around one and Escape to clear.
+Each chart has a **Data table** you can open for the exact numbers. See
+[`perfhawk gc`](#perfhawk-gc-ref---json) for what each number means.
 
 ### Call graph
 The Graph view (key `8`) draws the profile as a graph of functions: each box is a

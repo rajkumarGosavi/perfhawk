@@ -50,12 +50,27 @@ fn is_dotnet_program(program: &str) -> bool {
     p.with_extension("runtimeconfig.json").is_file()
 }
 
-fn kinds_arg(kinds: &[ProfileKind]) -> String {
-    kinds
-        .iter()
-        .map(|k| k.as_str())
-        .collect::<Vec<_>>()
-        .join(",")
+/// The helper's `--kinds` value: profile kinds, plus `gc` when GC data is wanted.
+fn kinds_arg(kinds: &[ProfileKind], gc: bool) -> String {
+    let mut v: Vec<&str> = kinds.iter().map(|k| k.as_str()).collect();
+    if gc {
+        v.push("gc");
+    }
+    v.join(",")
+}
+
+/// Parses a helper-written `gc.json`, turning a bad file into a warning.
+fn read_gc(path: &Path, warnings: &mut Vec<String>) -> Option<perfhawk_model::GcData> {
+    let parsed = std::fs::read(path)
+        .map_err(|e| e.to_string())
+        .and_then(|b| perfhawk_model::GcData::from_json(&b).map_err(|e| e.to_string()));
+    match parsed {
+        Ok(g) => Some(g),
+        Err(e) => {
+            warnings.push(format!("GC data from the helper was unusable: {e}"));
+            None
+        }
+    }
 }
 
 /// Width of the time buckets the helper labels samples with.
@@ -103,7 +118,51 @@ pub fn convert_nettrace(path: &Path) -> Result<Vec<Artifact>, CaptureError> {
     convert_nettrace_with(&locate_helper()?, path)
 }
 
-pub fn convert_nettrace_with(h: &HelperPath, path: &Path) -> Result<Vec<Artifact>, CaptureError> {
+/// Extracts the GC data from a `.nettrace` file using the helper.
+pub fn convert_nettrace_gc(path: &Path) -> Result<perfhawk_model::GcData, CaptureError> {
+    convert_nettrace_gc_with(&locate_helper()?, path)
+}
+
+pub fn convert_nettrace_gc_with(
+    h: &HelperPath,
+    path: &Path,
+) -> Result<perfhawk_model::GcData, CaptureError> {
+    let dir = convert_dir()?;
+    let args = vec![
+        "convert".to_string(),
+        "--in".into(),
+        path.to_string_lossy().into_owned(),
+        "--out".into(),
+        dir.0.to_string_lossy().into_owned(),
+        "--kinds".into(),
+        "gc".into(),
+    ];
+    let mut gc = None;
+    let mut warnings = Vec::new();
+    let mut error = None;
+    run_helper(h, &args, &CancelToken::new(), &mut |ev| match ev {
+        HelperEvent::Gc { path, .. } => gc = read_gc(&path, &mut warnings),
+        HelperEvent::Error { code, message } => error = Some((code, message)),
+        _ => {}
+    })?;
+    if let Some((code, message)) = error {
+        return Err(CaptureError::Target(explain_error(&code, &message, None)));
+    }
+    match gc {
+        Some(g) if !g.events.is_empty() => Ok(g),
+        Some(_) => Err(CaptureError::Target(format!(
+            "no GC events in {}; the trace must include the Microsoft-Windows-DotNETRuntime provider with the GC keyword (0x1)",
+            path.display()
+        ))),
+        None => {
+            Err(CaptureError::Target(warnings.pop().unwrap_or_else(|| {
+                format!("no GC data in {}", path.display())
+            })))
+        }
+    }
+}
+
+fn convert_dir() -> Result<TempDir, CaptureError> {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_nanos())
@@ -112,6 +171,11 @@ pub fn convert_nettrace_with(h: &HelperPath, path: &Path) -> Result<Vec<Artifact
         std::env::temp_dir().join(format!("perfhawk-nettrace-{}-{nanos}", std::process::id())),
     );
     std::fs::create_dir_all(&dir.0)?;
+    Ok(dir)
+}
+
+pub fn convert_nettrace_with(h: &HelperPath, path: &Path) -> Result<Vec<Artifact>, CaptureError> {
+    let dir = convert_dir()?;
     let args = vec![
         "convert".to_string(),
         "--in".into(),
@@ -191,6 +255,10 @@ impl Provider for DotnetProvider {
         }
     }
 
+    fn supports_gc(&self) -> bool {
+        true
+    }
+
     fn capabilities(&self, _rt: &RuntimeInfo) -> Vec<Capability> {
         use ProfileKind::*;
         let cap = |kind, fidelity, available, note: Option<&str>| Capability {
@@ -265,7 +333,7 @@ impl Provider for DotnetProvider {
                     "--duration-ms".into(),
                     duration_ms.clone(),
                     "--kinds".into(),
-                    kinds_arg(&plan.kinds),
+                    kinds_arg(&plan.kinds, plan.gc),
                     "--out".into(),
                     dir.0.to_string_lossy().into_owned(),
                 ]);
@@ -284,7 +352,7 @@ impl Provider for DotnetProvider {
                 "--duration-ms".into(),
                 duration_ms,
                 "--kinds".into(),
-                kinds_arg(&plan.kinds),
+                kinds_arg(&plan.kinds, plan.gc),
                 "--out".into(),
                 dir.0.to_string_lossy().into_owned(),
             ]);
@@ -293,6 +361,7 @@ impl Provider for DotnetProvider {
 
         let mut artifacts: Vec<Artifact> = Vec::new();
         let mut warnings: Vec<String> = Vec::new();
+        let mut gc: Option<perfhawk_model::GcData> = None;
         let mut end = None;
         let mut error: Option<(String, String)> = None;
         let mut read_err: Option<std::io::Error> = None;
@@ -317,6 +386,7 @@ impl Provider for DotnetProvider {
                 }),
                 Err(e) => read_err = Some(e),
             },
+            HelperEvent::Gc { path, .. } => gc = read_gc(&path, &mut warnings),
             HelperEvent::Error { code, message } => error = Some((code, message)),
             HelperEvent::Done { end: e } => end = Some(e),
             HelperEvent::Hello { .. } | HelperEvent::Process { .. } => {}
@@ -330,6 +400,7 @@ impl Provider for DotnetProvider {
         }
         Ok(CaptureOutcome {
             artifacts,
+            gc,
             end: end.unwrap_or(CaptureEnd::Complete),
             warnings,
         })
