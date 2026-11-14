@@ -4,6 +4,8 @@
 mod cancel;
 pub mod dotnet;
 mod duration;
+#[cfg(windows)]
+pub mod etw;
 mod events;
 pub mod go;
 mod provider;
