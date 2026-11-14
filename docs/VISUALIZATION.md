@@ -112,6 +112,8 @@ D1 **Query tab** (filter DSL from PLAN §205, then SQL over timelines via embedd
 
 **Not planned yet (Tier D, later):** D1 query tab (filter DSL, then SQL over timelines) waits for the Phase 2 event timeline; D2 source/disasm annotate needs DWARF/PDB/source-map work in the importers; D3 treemap/sunburst is skipped unless users ask. C2 (per-thread timeline tracks) is deferred out of V5 until the Phase 2 `Timeline` kind carries thread and state events. Open questions closed by the plans: §9 Q1 (in-house graph layout, V4) and Q2 (20 ms buckets at capture time, V5).
 
+**UI revamp (2026-11-14, Phases 0-5):** the views above now sit in a workbench shell: a left rail (keys `1`-`8`), a Ctrl K command palette (supersedes the A8 palette deferral), a timeline strip with range selection, a filter chip bar, and a flame workbench (flame or icicle, Inspector, Top / Call tree / Findings tabs; the separate Both, Icicle and Sandwich tabs are retired but their URLs still resolve). Compact density, bundled fonts, empty/loading states and overlay motion (off under reduced motion) came in the polish phase. Flame layout is guarded by a 200k-node budget test.
+
 **V1 rulings (deviations from the items above):**
 
 - A6 left-heavy toggle dropped: the server already orders flame children by total, so the flame is left-heavy. Only the flame + top *Both* layout shipped.

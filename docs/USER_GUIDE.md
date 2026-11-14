@@ -471,7 +471,8 @@ deepest rows are clipped with a notice; use Focus or zoom to see them.
 - **Search**: highlights matching frames in the graph without filtering anything.
 - **Views**: the left rail lists Summary (`1`), Flame graph (`2`), Call tree (`3`), Timeline (`4`, recordings with time data), Call graph (`5`), Garbage collection (`6`, sessions with GC data), Diff (`7`, when another profile of the same kind exists; it compares with the newest) and History (`8`). The Top functions and Groups tables are tabs and palette commands rather than rail items (`view=top` and `view=groups` links still work). The Flame graph page is a workbench: the flame graph, an **Inspector** for the clicked frame (self and total, Focus subtree / Merge / Drop / Hide / Sandwich, direct callers and callees) and **Top functions / Call tree / Findings** tabs below. A **Flame / Icicle** switch in the toolbar flips the graph. Sandwich is opened from a function; older links with `view=icicle`, `both` or `sandwich` still work (`both` now opens the workbench). `bt=tree` or `bt=findings` selects the lower tab.
 - **Command palette (Ctrl K)**: jump to a view, focus search, open help, switch the theme or the density (Comfortable or Compact) by typing.
-- **Hot path (h)**: highlights the hottest call path in Flame, Icicle, Call tree and Both.
+- **Empty and loading states**: views with nothing to show say why and what to try (widen the range, remove a filter, record a profile); loading shows a grey skeleton. Overlays fade in briefly; with the OS "reduce motion" setting on, nothing animates.
+- **Hot path (h)**: highlights the hottest call path in the flame graph, the call tree and the workbench.
 - **?**: lists the keyboard shortcuts.
 
 ### Flame and Icicle

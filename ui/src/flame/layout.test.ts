@@ -49,3 +49,15 @@ describe('maxCanvasRows', () => {
     expect(maxCanvasRows(100000)).toBe(1)
   })
 })
+
+describe('layoutFlame performance', () => {
+  // Budget guard, not a benchmark: ~200k nodes must lay out well inside one frame budget multiple on CI.
+  it('lays out a 200k-node tree in under 500ms', () => {
+    const wide = n('root', 1e9, Array.from({ length: 400 }, (_, i) => n(`w${i}`, 2.5e6, Array.from({ length: 500 }, (_, j) => n(`c${j}`, 5e3)))))
+    const t = performance.now()
+    const r = layoutFlame(wide, 200000, 18, false)
+    const ms = performance.now() - t
+    expect(r.length).toBeGreaterThan(150000)
+    expect(ms).toBeLessThan(500)
+  })
+})

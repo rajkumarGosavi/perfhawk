@@ -4,6 +4,7 @@ import { hotPathKeys, moveSelection, parentKey, toggled, visibleRows } from '../
 import { hotPath } from '../analysis/hotPath'
 import type { Transform } from '../analysis/transforms'
 import { formatPct, formatValue } from '../format'
+import { EmptyState } from '../ui/EmptyState'
 
 type Props = {
   root: FlameNode
@@ -91,7 +92,7 @@ export function CallTree({ root, unit, hot, onSelectFunc, onTransform, extra }: 
     }
   }
 
-  if (root.total <= 0) return <p className="muted">No samples in this view.</p>
+  if (root.total <= 0) return <EmptyState title="No samples in this view." >Widen the time range or remove a filter.</EmptyState>
 
   return (
     <div

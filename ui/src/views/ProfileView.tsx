@@ -39,6 +39,7 @@ import { FilterBar } from './FilterBar'
 import type { FilterKind } from './filterModel'
 import { TimelineStrip } from './TimelineStrip'
 import { Workbench } from './Workbench'
+import { EmptyState } from '../ui/EmptyState'
 
 type Data =
   | { kind: 'flame'; tree: FlameNode }
@@ -378,7 +379,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         <Groups rows={data.rows} unit={unit} by={groupBy} onBy={(by) => pushView({ groupBy: by })} />
       )}
       {view === 'gc' && record?.session_id && <GcView sessionId={record.session_id} />}
-      {view === 'gc' && !hasGc && <p className="muted">No garbage-collection data for this profile's session. .NET recordings with GC events include it.</p>}
+      {view === 'gc' && !hasGc && <EmptyState title="No garbage-collection data for this profile's session.">.NET recordings with GC events include it.</EmptyState>}
       {view === 'time' && record && !record.has_timeline && (
         <p className="muted">This profile has no time data. Go CPU and .NET CPU/wall captures include it by default; imported files do not.</p>
       )}

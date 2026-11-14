@@ -12,6 +12,7 @@ import { Doctor } from './Doctor'
 import { GcView } from './GcView'
 import { SessionTimeline } from './SessionTimeline'
 import { Skeleton } from './Skeleton'
+import { EmptyState } from '../ui/EmptyState'
 
 function target(s: SessionRecord): string {
   const t = s.target
@@ -93,9 +94,7 @@ export function SessionList({
       {sessions === null ? (
         !error && <Skeleton />
       ) : sessions.length === 0 ? (
-        <p className="muted">
-          No sessions yet. A session is one recording run: start one from the Record tab, or from a terminal with <code>perfhawk record --pid &lt;pid&gt; --open</code>.
-        </p>
+        <EmptyState title="No sessions yet.">A session is one recording run: start one from the Record tab, or from a terminal with <code>perfhawk record --pid &lt;pid&gt; --open</code>.</EmptyState>
       ) : (
         <div className="table-wrap">
           <table>

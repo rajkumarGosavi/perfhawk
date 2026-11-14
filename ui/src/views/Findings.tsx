@@ -6,6 +6,7 @@ import { actionToPatch, loadDisabled, saveDisabled, visibleFindings } from '../a
 import { formatPct } from '../format'
 import type { ViewState } from '../url'
 import { Button } from '../ui/Button'
+import { EmptyState } from '../ui/EmptyState'
 
 type Props = {
   profileRef: string
@@ -45,7 +46,7 @@ export function Findings({ profileRef, query, navigate }: Props) {
       <h3>Findings</h3>
       <ErrorNotice error={error} onRetry={reloadPage} />
       {shown.length === 0 ? (
-        <p className="muted">No findings for this view.</p>
+        <EmptyState title="No findings for this view." />
       ) : (
         <ul>
           {shown.map((f) => (
