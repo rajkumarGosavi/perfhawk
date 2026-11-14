@@ -1,0 +1,151 @@
+import { useEffect, useMemo, useState } from 'react'
+import { getGc, type GcEvent, type GcReport } from '../api'
+import { formatValue } from '../format'
+import {
+  filterPauses, formatPause, generationLabel, generationShape, rowsInRange, type GcRange,
+} from '../analysis/gc'
+import { AllocChart, HeapChart, PauseTimeline } from './GcCharts'
+
+const SHAPE_GLYPH = { circle: '●', square: '■', triangle: '▲', diamond: '◆' } as const
+
+type SortKey = 'time' | 'pause' | 'duration' | 'heap'
+
+function sorted(events: GcEvent[], key: SortKey, desc: boolean): GcEvent[] {
+  const val = (e: GcEvent) =>
+    key === 'time' ? e.start_ns : key === 'pause' ? e.pause_ns : key === 'duration' ? e.duration_ns : e.heap_after_bytes ?? -1
+  const out = [...events].sort((a, b) => val(a) - val(b))
+  return desc ? out.reverse() : out
+}
+
+function Card({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="gc-card">
+      <div className="muted">{label}</div>
+      <strong>{value}</strong>
+      {sub && <div className="muted">{sub}</div>}
+    </div>
+  )
+}
+
+function EventTable({ events, total }: { events: GcEvent[]; total: number }) {
+  const [key, setKey] = useState<SortKey>('time')
+  const [desc, setDesc] = useState(false)
+  const rows = useMemo(() => sorted(events, key, desc), [events, key, desc])
+  const head = (k: SortKey, label: string) => (
+    <th scope="col" aria-sort={key === k ? (desc ? 'descending' : 'ascending') : 'none'}>
+      <button className="link" onClick={() => { if (key === k) setDesc(!desc); else { setKey(k); setDesc(k !== 'time') } }}>
+        {label}{key === k ? (desc ? ' ▼' : ' ▲') : ''}
+      </button>
+    </th>
+  )
+  return (
+    <div>
+      <table className="gc-table">
+        <caption className="muted">
+          {rows.length === 0
+            ? 'No GCs in the selected window.'
+            : total > events.length
+              ? `The ${events.length} GCs with the longest pauses (of ${total.toLocaleString('en-US')}).`
+              : `${rows.length} GCs.`}
+        </caption>
+        <thead>
+          <tr>
+            {head('time', 'Time')}
+            <th scope="col">Gen</th>
+            <th scope="col">Kind</th>
+            <th scope="col">Reason</th>
+            {head('pause', 'Pause')}
+            {head('duration', 'Duration')}
+            {head('heap', 'Heap before → after')}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((e) => (
+            <tr key={e.id}>
+              <td>{(e.start_ns / 1e9).toFixed(3)} s</td>
+              <td>
+                <span aria-hidden="true">{SHAPE_GLYPH[generationShape(e.generation)]} </span>
+                {generationLabel(e.generation)}
+              </td>
+              <td>{e.kind}</td>
+              <td>{e.reason}{e.induced ? ' (explicit)' : ''}</td>
+              <td>{formatPause(e.pause_ns)}</td>
+              <td>{formatPause(e.duration_ns)}</td>
+              <td>
+                {e.heap_before_bytes === undefined ? '–' : formatValue(e.heap_before_bytes, 'bytes')}
+                {' → '}
+                {e.heap_after_bytes === undefined ? '–' : formatValue(e.heap_after_bytes, 'bytes')}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function Report({ r }: { r: GcReport }) {
+  const [range, setRange] = useState<GcRange | null>(null)
+  const s = r.summary
+  const gens = s.byGeneration.map((g) => `${generationLabel(g.generation)} ${g.count.toLocaleString('en-US')}`).join(', ')
+  if (s.totalGcs === 0) {
+    return <p className="muted">No collections happened during this capture.</p>
+  }
+  const events = rowsInRange(r.events, range)
+  return (
+    <>
+      <div className="gc-cards">
+        <Card label="Collections" value={s.totalGcs.toLocaleString('en-US')} sub={gens} />
+        <Card label="Longest pause" value={formatPause(s.pause.maxNs)} sub={`p99 ${formatPause(s.pause.p99Ns)}`} />
+        <Card label="Paused" value={`${s.pauseSharePct.toFixed(1)}% of time`} sub={`${formatPause(s.pause.totalNs)} in total`} />
+        <Card label="Peak heap" value={s.peakHeapBytes === null ? 'unknown' : formatValue(s.peakHeapBytes, 'bytes')} />
+        <Card label="Allocation" value={`${formatValue(s.allocMeanBytesPerS, 'bytes')}/s`} sub={`peak ${formatValue(s.allocPeakBytesPerS, 'bytes')}/s`} />
+      </div>
+      <p className="muted">
+        A pause is the time application threads were stopped; it is not the GC's own running time
+        (background GCs run alongside the program).
+      </p>
+      {r.findings.length > 0 && (
+        <ul className="gc-findings" aria-label="GC findings">
+          {r.findings.map((f) => (
+            <li key={f.rule}>
+              <strong><span className="muted">[{f.severity}]</span> {f.title}</strong>
+              <div className="muted">{f.detail}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {range && (
+        <p role="status">
+          Showing {(range[0] / 1e9).toFixed(2)} s to {(range[1] / 1e9).toFixed(2)} s{' '}
+          <button onClick={() => setRange(null)}>Clear range</button>
+        </p>
+      )}
+      <PauseTimeline pauses={filterPauses(r.series.pauses, null)} durationNs={r.durationNs} range={range} onRange={setRange} />
+      <HeapChart points={r.series.heap} durationNs={r.durationNs} range={range} />
+      <AllocChart points={r.series.allocRate} durationNs={r.durationNs} range={range} />
+      <EventTable events={events} total={s.totalGcs} />
+      {r.notes.map((n) => <div key={n} className="muted">{n}</div>)}
+    </>
+  )
+}
+
+/** The GC tab of a session: counts per generation, pauses, heap and allocation rate. */
+export function GcView({ sessionId }: { sessionId: string }) {
+  const [report, setReport] = useState<GcReport | null>(null)
+  useEffect(() => {
+    let live = true
+    getGc(sessionId).then(
+      (r) => { if (live) setReport(r.available ? r : null) },
+      () => { if (live) setReport(null) },
+    )
+    return () => { live = false }
+  }, [sessionId])
+  if (!report) return null
+  return (
+    <section className="gc-view" aria-label="Garbage collection">
+      <h3>Garbage collection <span className="muted">({report.runtime})</span></h3>
+      <Report r={report} />
+    </section>
+  )
+}

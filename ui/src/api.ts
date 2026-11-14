@@ -37,6 +37,8 @@ export type SessionRecord = {
   warnings: string[]
   tags: string[]
   profile_ids: string[]
+  /** Whether the session has GC data (additive; absent on older servers). */
+  has_gc?: boolean
 }
 export type FlameNode = {
   funcId: number | null

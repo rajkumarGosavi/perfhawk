@@ -9,6 +9,7 @@ import { formatValue } from '../format'
 import type { Range } from '../time/range'
 import { FidelityBadge } from './FidelityBadge'
 import { Doctor } from './Doctor'
+import { GcView } from './GcView'
 import { SessionTimeline } from './SessionTimeline'
 import { Skeleton } from './Skeleton'
 
@@ -167,6 +168,7 @@ export function SessionList({
                           </ul>
                         )}
                         <Doctor sessionId={s.id} onOpenProfile={onOpenProfile} />
+                        {s.has_gc && <GcView sessionId={s.id} />}
                         {onOpenWindow && <SessionTimeline sessionId={s.id} onOpenWindow={onOpenWindow} />}
                         {s.warnings.map((w, i) => (
                           <div key={i} className="muted">⚠ {w}</div>
