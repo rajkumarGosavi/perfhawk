@@ -214,6 +214,9 @@ button.danger { background: var(--danger-bg); color: var(--danger-fg); border-co
 .gc-chart svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gc-chart details { margin-top: 4px; }
 .gc-band { fill: var(--accent); opacity: 0.18; }
+.gc-grid { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.gc-axis { stroke: var(--muted); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.gc-tick { font-size: 11px; fill: var(--muted); stroke: none; }
 .gc-label { font-size: 10px; fill: var(--fg); stroke: none; }
 .gc-cursor { opacity: 0.6; }
 .gc-legend { margin: 4px 0 0; }
