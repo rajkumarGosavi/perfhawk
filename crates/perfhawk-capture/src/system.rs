@@ -12,7 +12,8 @@ pub const SYSTEM_KINDS: [ProfileKind; 3] = [
     ProfileKind::SchedDelay,
 ];
 
-pub const NO_SYSTEM_PROVIDER_NOTE: &str = "needs an OS-level provider (ETW on Windows, eBPF on Linux); none is available in this build";
+pub const NO_SYSTEM_PROVIDER_NOTE: &str =
+    "needs an OS-level provider (ETW on Windows, eBPF on Linux); none is available in this build";
 
 pub fn is_system_kind(k: ProfileKind) -> bool {
     SYSTEM_KINDS.contains(&k)

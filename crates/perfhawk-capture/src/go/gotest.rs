@@ -42,8 +42,9 @@ pub(crate) fn capture_go_test(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_nanos())
         .unwrap_or(0);
-    let dir =
-        TempDir(std::env::temp_dir().join(format!("perfhawk-gotest-{}-{nanos}", std::process::id())));
+    let dir = TempDir(
+        std::env::temp_dir().join(format!("perfhawk-gotest-{}-{nanos}", std::process::id())),
+    );
     std::fs::create_dir_all(&dir.0)?;
     let out_dir = &dir.0;
 

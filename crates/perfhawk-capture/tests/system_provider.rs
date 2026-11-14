@@ -91,10 +91,7 @@ fn cpu_artifact() -> Artifact {
 }
 
 fn io_artifact() -> Artifact {
-    let types = [
-        ("io_time", Unit::Nanoseconds),
-        ("io_bytes", Unit::Bytes),
-    ];
+    let types = [("io_time", Unit::Nanoseconds), ("io_bytes", Unit::Bytes)];
     event_artifact(
         &EventSpec {
             kind: ProfileKind::BlockIo,
@@ -211,7 +208,9 @@ fn language_and_system_merge_into_one_session() {
 fn system_failure_makes_partial_with_warning() {
     let r = rig(
         Box::new(|| Ok(outcome(vec![cpu_artifact()]))),
-        Some(Box::new(|_| Err(CaptureError::Helper("access denied".into())))),
+        Some(Box::new(|_| {
+            Err(CaptureError::Helper("access denied".into()))
+        })),
     );
     let s = go(&r, vec![ProfileKind::Cpu, ProfileKind::BlockIo]).unwrap();
     assert_eq!(s.status, SessionStatus::Partial);

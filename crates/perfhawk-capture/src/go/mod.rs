@@ -238,7 +238,9 @@ fn launch_and_capture(
     progress: &dyn Fn(&str),
 ) -> Result<CaptureOutcome, CaptureError> {
     let mut cmd = Command::new(program);
-    cmd.args(args).env("PERFHAWK_AGENT", "1").stdin(Stdio::null());
+    cmd.args(args)
+        .env("PERFHAWK_AGENT", "1")
+        .stdin(Stdio::null());
     if let Some(c) = cwd {
         cmd.current_dir(c);
     }
