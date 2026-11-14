@@ -4,6 +4,12 @@ use std::path::PathBuf;
 
 /// CoreLib of the highest installed 8.x runtime (falls back to any version).
 pub fn find_corelib() -> Option<PathBuf> {
+    find_corelib_for("8.")
+}
+
+/// CoreLib of the highest installed runtime whose version starts with
+/// `prefix` (falls back to any version).
+pub fn find_corelib_for(prefix: &str) -> Option<PathBuf> {
     let roots = [
         std::env::var_os("DOTNET_ROOT").map(PathBuf::from),
         Some(PathBuf::from(r"C:\Program Files\dotnet")),
@@ -19,7 +25,7 @@ pub fn find_corelib() -> Option<PathBuf> {
         dirs.sort();
         dirs.sort_by_key(|d| {
             !d.file_name()
-                .is_some_and(|n| n.to_string_lossy().starts_with("8."))
+                .is_some_and(|n| n.to_string_lossy().starts_with(prefix))
         });
         for d in dirs {
             let p = d.join("System.Private.CoreLib.dll");

@@ -1,7 +1,7 @@
 //! ReadyToRun reader tests. Real-image tests use the installed .NET runtime's
 //! System.Private.CoreLib.dll and skip (with a message) when none is found.
 mod common;
-use common::find_corelib;
+use common::{find_corelib, find_corelib_for};
 use perfhawk_capture::symbolize::r2r;
 
 #[test]
@@ -180,4 +180,36 @@ fn non_r2r_and_missing_files_have_no_symbols() {
     let mini = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/MiniLib.dll");
     assert!(r2r::r2r_symbols(std::path::Path::new(mini)).is_none());
     assert!(r2r::r2r_symbols(std::path::Path::new("definitely/not/here.dll")).is_none());
+}
+
+#[test]
+fn corelib_cold_halves_are_named_when_the_image_splits_methods() {
+    // .NET 8 images carry no hot/cold map; newer runtimes do.
+    let Some(p) = find_corelib_for("10.") else {
+        eprintln!("skipped: no .NET runtime installed");
+        return;
+    };
+    let data = std::fs::read(&p).unwrap();
+    let img = r2r::open(&data).expect("ReadyToRun image");
+    let Some(map) = &img.hot_cold_map else {
+        eprintln!("skipped: {} has no hot/cold map", p.display());
+        return;
+    };
+    let pairs = map.len() / 8;
+    let syms = r2r::r2r_symbols(&p).unwrap();
+    let rf = &data[img.runtime_functions.clone()];
+    // Every cold half that has a runtime function entry resolves to a name.
+    let mut named = 0;
+    for pair in data[map.clone()].as_chunks::<8>().0 {
+        let cold = u32::from_le_bytes(pair[0..4].try_into().unwrap()) as usize;
+        let begin = u32::from_le_bytes(rf[cold * 12..cold * 12 + 4].try_into().unwrap());
+        if syms.iter().any(|s| s.start == u64::from(begin)) {
+            named += 1;
+        }
+    }
+    eprintln!("{named} of {pairs} cold halves named");
+    assert!(
+        named * 10 >= pairs * 9,
+        "{named} of {pairs} cold halves named"
+    );
 }

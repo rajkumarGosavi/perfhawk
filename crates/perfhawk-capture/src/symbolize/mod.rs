@@ -3,6 +3,8 @@
 
 mod dotnet;
 mod go;
+mod pdb;
+mod pe;
 pub mod r2r;
 
 pub use dotnet::{
@@ -10,6 +12,8 @@ pub use dotnet::{
     GUID_DOTNET_RUNDOWN, GUID_DOTNET_RUNTIME,
 };
 pub use go::{go_symbols, GoSym};
+pub use pdb::{pdb_symbols, SymbolOptions, DEFAULT_SERVER};
+pub use pe::pe_export_symbols;
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -52,6 +56,7 @@ struct Image {
 pub struct Symbolizer {
     images: Vec<Image>,
     methods: BTreeMap<u64, (u64, String)>,
+    options: SymbolOptions,
     unresolved: AtomicU64,
 }
 
@@ -60,9 +65,18 @@ impl Symbolizer {
         Self::default()
     }
 
+    /// A symbolizer that may also read PDBs from a cache and a symbol server.
+    pub fn with_options(options: SymbolOptions) -> Self {
+        Self {
+            options,
+            ..Self::default()
+        }
+    }
+
     /// Register a loaded image. Symbols are read from `path` when the file has
-    /// them (Go and other unstripped binaries, or ReadyToRun .NET images whose
-    /// on-disk size matches `size`); otherwise addresses in it resolve to
+    /// them (Go and other unstripped binaries, ReadyToRun .NET images whose
+    /// on-disk size matches `size`, or the export table of a native PE);
+    /// otherwise addresses in it resolve to
     /// `module+offset`.
     pub fn add_image(&mut self, base: u64, size: u64, path: &Path) {
         let mut syms = go_symbols(path).unwrap_or_default();
@@ -77,6 +91,14 @@ impl Symbolizer {
                     name: s.name,
                 })
                 .collect();
+        }
+        if syms.is_empty() {
+            // Native DLLs (ntdll, coreclr, ...): PDB names when a PDB is
+            // available, otherwise exported function names.
+            syms = pdb_symbols(path, &self.options).unwrap_or_default();
+        }
+        if syms.is_empty() {
+            syms = pe_export_symbols(path).unwrap_or_default();
         }
         syms.sort_by_key(|s| s.start);
         let module = path

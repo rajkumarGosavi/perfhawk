@@ -15,13 +15,11 @@ pub enum RawKind {
     FileWrite,
     DiskRead,
     DiskWrite,
-    /// A context switch. `pid`/`tid` and `stack` describe the thread being
-    /// switched IN (`new_tid`): Windows records the stack it blocked on. `old_tid`
-    /// is the thread switched out. `pid` is 0 when the thread's process is unknown.
+    /// A target thread was switched in (`new_tid`, `old_tid` is the thread it
+    /// replaced); `stack` is where it had been blocked. One event covers the
+    /// whole wait: `left_qpc` and `wait_reason` say when and why it left the CPU,
+    /// `ready_qpc` when it became runnable (0 when unknown).
     CSwitch,
-    /// A thread became runnable: `tid`/`new_tid` is that thread, `pid` its
-    /// process. No stack (the waker's stack is not used).
-    ReadyThread,
     ImageLoad,
     ProcessStart,
     ProcessEnd,
@@ -58,6 +56,10 @@ pub struct RawEvent {
     pub new_tid: u32,
     pub old_tid: u32,
     pub wait_reason: u8,
+    /// QPC time the thread was switched out (0 when unknown); `CSwitch` only.
+    pub left_qpc: i64,
+    /// QPC time the thread became runnable (0 when unknown); `CSwitch` only.
+    pub ready_qpc: i64,
     pub image: Option<ImageInfo>,
     pub method: Option<MethodInfo>,
 }
@@ -76,6 +78,8 @@ impl RawEvent {
             new_tid: 0,
             old_tid: 0,
             wait_reason: 0,
+            left_qpc: 0,
+            ready_qpc: 0,
             image: None,
             method: None,
         }
@@ -158,9 +162,6 @@ pub fn aggregate(input: &AggregateInput) -> Aggregated {
     }
 
     let mut out = Aggregated::default();
-    // When each thread last left the CPU / was made runnable.
-    let mut last_out: HashMap<u32, (i64, u8)> = HashMap::new();
-    let mut ready: HashMap<u32, i64> = HashMap::new();
 
     let span_row = |start_qpc: i64, end_qpc: i64, stack: Vec<String>, dest: &mut Vec<EventRow>| {
         let ns = c.qpc_to_ns(end_qpc - start_qpc);
@@ -202,33 +203,26 @@ pub fn aggregate(input: &AggregateInput) -> Aggregated {
                     });
                 }
             }
-            RawKind::CSwitch => {
-                // Remember when the outgoing thread left the CPU (any process:
-                // its pid is not on the event).
-                last_out.insert(e.old_tid, (e.qpc, e.wait_reason));
-                if e.pid == input.target_pid {
-                    // The stack is where the incoming thread had been blocked.
-                    let stack = (input.symbolize)(e);
-                    // A thread first seen switching in has been waiting at least
-                    // since the window opened.
-                    let (left, reason) = match last_out.remove(&e.new_tid) {
-                        Some((t, r)) => (t.max(c.qpc_start), wait_reason_name(r)),
-                        None => (c.qpc_start, "unknown".to_string()),
-                    };
-                    let mut wait_stack = stack.clone();
-                    wait_stack.push(format!("[wait: {reason}]"));
-                    span_row(left, e.qpc, wait_stack, &mut out.off_cpu);
-                    if let Some(r) = ready.remove(&e.new_tid) {
-                        let mut s = stack;
-                        if s.is_empty() {
-                            s.push("[scheduler queue]".to_string());
-                        }
-                        span_row(r, e.qpc, s, &mut out.sched_delay);
+            RawKind::CSwitch if e.pid == input.target_pid => {
+                // The stack is where the incoming thread had been blocked.
+                let stack = (input.symbolize)(e);
+                // A thread whose switch-out is unknown or before the window
+                // has been waiting at least since the window opened.
+                let (left, reason) = if in_window(e.left_qpc) {
+                    (e.left_qpc, wait_reason_name(e.wait_reason))
+                } else {
+                    (c.qpc_start, "unknown".to_string())
+                };
+                let mut wait_stack = stack.clone();
+                wait_stack.push(format!("[wait: {reason}]"));
+                span_row(left, e.qpc, wait_stack, &mut out.off_cpu);
+                if in_window(e.ready_qpc) {
+                    let mut s = stack;
+                    if s.is_empty() {
+                        s.push("[scheduler queue]".to_string());
                     }
+                    span_row(e.ready_qpc, e.qpc, s, &mut out.sched_delay);
                 }
-            }
-            RawKind::ReadyThread if e.pid == input.target_pid => {
-                ready.insert(e.new_tid, e.qpc);
             }
             _ => {}
         }
