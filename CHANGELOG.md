@@ -4,7 +4,7 @@ All notable changes are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/) (while below 1.0, minor versions may change behaviour).
 
-## [0.1.0] - unreleased
+## [0.1.0] - 2026-11-15
 
 First public release (Windows x64).
 
