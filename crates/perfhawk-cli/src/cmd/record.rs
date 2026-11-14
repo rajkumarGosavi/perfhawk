@@ -115,6 +115,9 @@ pub fn run(store: &Store, a: Args, target: Target) -> (u8, Option<String>) {
         ]);
     }
     print_table(&rows, &[3, 4]);
+    if let Ok(Some(g)) = store.load_gc(&session.id) {
+        println!("{}", super::gc::headline(&g));
+    }
     let code = match session.status {
         SessionStatus::Complete => 0,
         SessionStatus::Partial => {

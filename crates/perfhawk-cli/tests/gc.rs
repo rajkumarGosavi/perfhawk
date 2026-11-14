@@ -158,3 +158,108 @@ fn session_with_several_files_is_refused() {
         .assert()
         .code(2);
 }
+
+fn import_fixture(home: &Path) {
+    perfhawk(home)
+        .args(["import", "--gc"])
+        .arg(gc_fixture("gc.json"))
+        .assert()
+        .success();
+}
+
+#[test]
+fn gc_text_report_has_sections_in_order() {
+    let home = tempfile::tempdir().unwrap();
+    import_fixture(home.path());
+    let out = perfhawk(home.path()).args(["gc", "last"]).output().unwrap();
+    assert!(out.status.success());
+    let text = String::from_utf8(out.stdout).unwrap();
+    let mut at = 0;
+    for section in [
+        "Collections",
+        "Pause",
+        "Heap",
+        "Allocation",
+        "Reasons",
+        "Findings",
+        "Longest pauses",
+    ] {
+        let i = text[at..]
+            .find(section)
+            .unwrap_or_else(|| panic!("section '{section}' missing or out of order in:\n{text}"));
+        at += i + section.len();
+    }
+    assert!(text.contains("gen2"), "{text}");
+    assert!(text.contains("stopped"), "explains what a pause is: {text}");
+    assert!(
+        text.contains("GCs were triggered explicitly") || text.contains("triggered explicitly"),
+        "{text}"
+    );
+}
+
+#[test]
+fn gc_json_matches_report() {
+    let home = tempfile::tempdir().unwrap();
+    import_fixture(home.path());
+    let out = perfhawk(home.path())
+        .args(["gc", "last", "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["runtime"], "dotnet");
+    assert_eq!(v["summary"]["totalGcs"], 3);
+    assert_eq!(v["summary"]["byGeneration"].as_array().unwrap().len(), 3);
+    assert!(v["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|f| f["rule"] == "gc_induced"));
+    assert_eq!(v["series"]["pauses"].as_array().unwrap().len(), 3);
+}
+
+#[test]
+fn gc_without_data_exits_1_with_hint() {
+    let home = tempfile::tempdir().unwrap();
+    let id = empty_session(home.path());
+    perfhawk(home.path())
+        .args(["gc", &id])
+        .assert()
+        .code(1)
+        .stderr(
+            predicate::str::contains("has no GC data")
+                .and(predicate::str::contains("perfhawk import --gc")),
+        );
+}
+
+#[test]
+fn gc_zero_events_prints_no_collections_not_error() {
+    let home = tempfile::tempdir().unwrap();
+    let mut v: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(gc_fixture("gc.json")).unwrap()).unwrap();
+    v["events"] = serde_json::json!([]);
+    v["heap"] = serde_json::json!([]);
+    let f = home.path().join("idle.json");
+    std::fs::write(&f, v.to_string()).unwrap();
+    perfhawk(home.path())
+        .args(["import", "--gc"])
+        .arg(&f)
+        .assert()
+        .success();
+    perfhawk(home.path())
+        .args(["gc", "last"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("no collections"));
+}
+
+#[test]
+fn sessions_table_shows_gc_column() {
+    let home = tempfile::tempdir().unwrap();
+    import_fixture(home.path());
+    perfhawk(home.path())
+        .arg("sessions")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("GC").and(predicate::str::contains("yes")));
+}

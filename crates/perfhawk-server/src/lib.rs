@@ -3,6 +3,7 @@
 mod api;
 mod assets;
 pub mod doctor;
+pub mod gc;
 mod guard;
 mod jobs;
 

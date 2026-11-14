@@ -162,6 +162,13 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Show GC counts, pauses, heap and allocation for a session
+    Gc {
+        #[arg(default_value = "last")]
+        reference: String,
+        #[arg(long)]
+        json: bool,
+    },
     /// List recording sessions
     Sessions {
         #[arg(long)]
@@ -543,6 +550,7 @@ async fn main() -> ExitCode {
             ))
         }
         Command::Targets { json } => done(cmd::targets::run(json)),
+        Command::Gc { reference, json } => done(cmd::gc::run(&store, &reference, json)),
         Command::Sessions { json } => done(cmd::sessions::run(&store, json)),
         Command::Diff {
             base,

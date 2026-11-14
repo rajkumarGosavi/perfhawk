@@ -464,6 +464,64 @@ fn import_nettrace_uses_helper() {
 }
 
 #[test]
+fn record_prints_gc_headline_and_stores_gc() {
+    let home = tempfile::tempdir().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let gc_json =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../perfhawk-capture/tests/fixtures/gc.json");
+    let gc_line = format!(
+        r#"{{"for":"collect","type":"artifact","kind":"gc","fixture":"{}","samples":3}}"#,
+        gc_json.to_string_lossy().replace('\\', "/")
+    );
+    let s = script(
+        tmp.path(),
+        &standard_script("complete", &[gc_line.as_str()]),
+    );
+    fake_perfhawk(home.path(), &s)
+        .args([
+            "record",
+            "--pid",
+            "77",
+            "--kinds",
+            "cpu",
+            "--duration",
+            "1s",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "GC: 3 collections (gen0 1, gen1 1, gen2 1), max pause 4 ms",
+        ));
+    let out = perfhawk(home.path())
+        .args(["sessions", "--json"])
+        .output()
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v[0]["has_gc"], true);
+}
+
+#[test]
+fn record_no_gc_flag_is_accepted() {
+    let home = tempfile::tempdir().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let s = script(tmp.path(), &standard_script("complete", &[]));
+    fake_perfhawk(home.path(), &s)
+        .args([
+            "record",
+            "--pid",
+            "77",
+            "--kinds",
+            "cpu",
+            "--duration",
+            "1s",
+            "--no-gc",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("GC:").not());
+}
+
+#[test]
 fn import_gc_from_nettrace_uses_helper() {
     let home = tempfile::tempdir().unwrap();
     let tmp = tempfile::tempdir().unwrap();
