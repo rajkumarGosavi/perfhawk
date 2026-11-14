@@ -8,6 +8,7 @@ mod events;
 pub mod go;
 mod provider;
 mod session;
+pub mod symbolize;
 pub mod sysevents;
 mod system;
 mod timeline;
