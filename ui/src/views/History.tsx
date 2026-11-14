@@ -116,6 +116,7 @@ export function History({ state, navigate }: { state: ViewState; navigate: Nav }
     <section aria-label="History">
       <div className="toolbar">
         <button onClick={() => navigate({}, 'push', true)}>&larr; Home</button>
+        <h2 className="view-title">History</h2>
         <strong>History</strong>
         <label className="field">
           Series

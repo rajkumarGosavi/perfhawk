@@ -149,7 +149,7 @@ td.down { color: var(--diff-down-3); }
 .summary-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
 @media (min-width: 900px) { .summary-grid { grid-template-columns: 1fr 1fr; } }
 .card { border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 10px 12px; }
-.card h2 { font-size: 14px; margin: 0 0 6px; }
+.card h2, .card h3 { font-size: 14px; margin: 0 0 6px; }
 .card table { width: 100%; border-collapse: collapse; }
 .card td, .card th { padding: 2px 6px; text-align: left; }
 .card td.num, .card th.num { text-align: right; }
@@ -252,3 +252,8 @@ td.down { color: var(--diff-down-3); }
 .confirm-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }
 button.danger { background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-fg); }
 .export-list button[role='menuitem']:focus-visible { outline-offset: -2px; }
+
+.view-title { font-size: var(--text-md); margin: 0; }
+.skip-link { position: absolute; left: var(--space-2); top: -100px; z-index: 40; padding: var(--space-2) var(--space-3); background: var(--accent); color: var(--accent-fg); border-radius: var(--radius-sm); }
+.skip-link:focus { top: var(--space-2); }
+main:focus { outline: none; }

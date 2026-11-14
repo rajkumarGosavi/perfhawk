@@ -41,7 +41,7 @@ export function Findings({ profileRef, query, navigate }: Props) {
 
   return (
     <section className="card findings" aria-label="Findings">
-      <h2>Findings</h2>
+      <h3>Findings</h3>
       <ErrorNotice error={error} onRetry={reloadPage} />
       {shown.length === 0 ? (
         <p className="muted">No findings for this view.</p>

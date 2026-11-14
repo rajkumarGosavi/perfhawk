@@ -209,7 +209,7 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
       </div>
       {sel && nb && (
         <div className="graph-side card" aria-label="Selected function">
-          <h2 className="mono">{sel.name}</h2>
+          <h3 className="mono">{sel.name}</h3>
           <p className="muted">self {formatValue(sel.selfValue, unit)} · total {formatValue(sel.total, unit)}</p>
           <div>
             <strong>Callers</strong>

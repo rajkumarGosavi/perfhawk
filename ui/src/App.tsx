@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnnouncerProvider } from './a11y/Announcer'
+import { useDocumentTitle } from './a11y/announce'
+import { viewTitle } from './a11y/title'
 import { keyAction } from './analysis/keys'
 import { topicForView } from './help/content'
 import { HelpContext } from './help/HelpContext'
@@ -10,10 +13,19 @@ import { Home } from './views/Home'
 import { ProfileView } from './views/ProfileView'
 import { ThemeSwitch } from './views/ThemeSwitch'
 
+/** Titles the Home and History pages; profile and diff views title themselves once their data loads. */
+function PageTitle({ state }: { state: ViewState }) {
+  useDocumentTitle(viewTitle(state))
+  return null
+}
+
 export default function App() {
   const [state, setState] = useState<ViewState>(() => readViewState(window.location.search))
 
   const ref = useRef(state)
+  const mainRef = useRef<HTMLElement>(null)
+  const placeKey = state.profile ?? (state.view === 'history' ? 'history' : 'home')
+  const firstPlace = useRef(true)
   const [helpTopic, setHelpTopic] = useState<string | null>(null)
   const stateView = state.profile || state.view === 'history' ? state.view : 'summary'
   const help = useMemo(() => ({ open: (topic?: string) => setHelpTopic(topic ?? topicForView(stateView)) }), [stateView])
@@ -35,6 +47,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [stateView])
 
+  // Moving to another page (not just another tab of the same profile) moves focus to the content.
+  useEffect(() => {
+    if (firstPlace.current) { firstPlace.current = false; return }
+    mainRef.current?.focus()
+  }, [placeKey])
+
   // push = new history entry (view/profile changes); replace = filter typing.
   // The patch is merged into the *latest* state, so deferred callers (debounce
   // timers) cannot clobber newer edits. `reset` replaces the state wholesale.
@@ -48,7 +66,15 @@ export default function App() {
   }, [])
 
   return (
+    <AnnouncerProvider>
     <HelpContext.Provider value={help}>
+      <a
+        className="skip-link"
+        href="#main"
+        onClick={(e) => { e.preventDefault(); mainRef.current?.focus() }}
+      >
+        Skip to main content
+      </a>
       <header className="app-header">
         <h1>
           <button className="linklike" onClick={() => navigate({}, 'push', true)}>
@@ -61,7 +87,8 @@ export default function App() {
           <ThemeSwitch />
         </span>
       </header>
-      <main>
+      <main id="main" ref={mainRef} tabIndex={-1}>
+        {!state.profile && <PageTitle state={state} />}
         {state.profile && state.view === 'diff' ? (
           <DiffView key={`${state.profile}|${state.base ?? ''}`} state={state} navigate={navigate} />
         ) : !state.profile && state.view === 'history' ? (
@@ -79,5 +106,6 @@ export default function App() {
       </main>
       {helpTopic !== null && <HelpPanel topic={helpTopic} onClose={() => setHelpTopic(null)} />}
     </HelpContext.Provider>
+    </AnnouncerProvider>
   )
 }

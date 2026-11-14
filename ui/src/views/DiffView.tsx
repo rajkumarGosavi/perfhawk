@@ -12,6 +12,8 @@ import { flameToSvg } from '../export/svg'
 import { ExportMenu, type ExportItem } from './ExportMenu'
 import { formatPct, formatValue } from '../format'
 import type { ViewState } from '../url'
+import { useDocumentTitle } from '../a11y/announce'
+import { viewTitle } from '../a11y/title'
 import { formatRange } from '../time/range'
 import { CallTree } from './CallTree'
 import { diffStatus, directionMark, filterDiffTree, filterRows, toSideTree } from './diffHelpers'
@@ -54,6 +56,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
   const [flame, setFlame] = useState<DiffFlame | null>(null)
   const [top, setTop] = useState<DiffTop | null>(null)
   const [error, setError] = useState<unknown>(null)
+  useDocumentTitle(viewTitle(state, head?.name))
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<'flame' | 'tree'>('flame')
   const [cb, setCb] = useState(readPalette)
@@ -167,7 +170,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
         <button onClick={() => navigate({ view: 'summary', base: undefined, normalize: undefined }, 'push')}>
           &larr; Profile
         </button>
-        <strong>Diff</strong>
+        <h2 className="view-title">Diff</h2>
         <button
           onClick={() => navigate({ profile: baseRef, base: headRef, t0: b0, t1: b1, b0: t0, b1: t1 }, 'push')}
           disabled={!baseRef}

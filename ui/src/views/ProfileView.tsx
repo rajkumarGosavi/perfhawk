@@ -6,6 +6,8 @@ import {
 import { ErrorNotice } from './ErrorNotice'
 import { reloadPage } from './reload'
 import { hotPath } from '../analysis/hotPath'
+import { useDocumentTitle } from '../a11y/announce'
+import { viewTitle } from '../a11y/title'
 import { keyAction } from '../analysis/keys'
 import { effectiveExclude } from '../analysis/perfhawk'
 import { addTransform, decodeTx, encodeTx, type Transform } from '../analysis/transforms'
@@ -132,6 +134,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
 
   const pushView = (patch: Partial<ViewState>) => navigate(patch, 'push')
   const hot = !!state.hot
+  useDocumentTitle(viewTitle(state, record?.name))
   const onTransform = (t: Transform) => navigate({ tx: encodeTx(addTransform(decodeTx(tx), t)) }, 'push')
   const toggleHot = () => navigate({ hot: hot ? undefined : true }, 'replace')
 
@@ -211,7 +214,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
     <section aria-label="Profile">
       <div className="toolbar">
         <button onClick={() => navigate({}, 'push', true)}>&larr; Profiles</button>
-        <strong className="mono">{record?.name ?? ref}</strong>
+        <h2 className="view-title mono">{record?.name ?? ref}</h2>
         {record && <><FidelityBadge fidelity={record.fidelity} /><Term k="fidelity" icon /></>}
         <div className="tabs" role="group" aria-label="View">
           {VIEW_LABELS.filter(([v]) => v !== 'time' || hasTime).map(([v, label]) => (

@@ -65,6 +65,7 @@ export function Home({
 
   return (
     <>
+      <h2 className="sr-only">Sessions and profiles</h2>
       <div className="toolbar">
         <div className="tabs" role="group" aria-label="Home">
           <button aria-pressed={tab === 'sessions'} onClick={() => setTab('sessions')}>Sessions</button><Term k="session" icon />
