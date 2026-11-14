@@ -1,6 +1,7 @@
 //! GC analysis over [`perfhawk_model::GcData`]: summary numbers, chart series
 //! and findings. Runtime-neutral; nothing here names a language.
 
+use crate::findings::Severity;
 use perfhawk_model::{GcData, GcEvent, HeapPoint};
 use serde::Serialize;
 
@@ -146,7 +147,7 @@ fn counted(map: std::collections::BTreeMap<String, u64>) -> Vec<NamedCount> {
         .map(|(name, count)| NamedCount { name, count })
         .collect();
     // Stable sort over the name-ordered map: ties stay alphabetical.
-    v.sort_by(|a, b| b.count.cmp(&a.count));
+    v.sort_by_key(|a| std::cmp::Reverse(a.count));
     v
 }
 
@@ -284,5 +285,177 @@ pub fn series(d: &GcData, cfg: &GcConfig) -> GcSeries {
         heap: downsample_max(&d.heap, cfg.max_points, |h| h.total_bytes as f64),
         alloc_rate: downsample_max(&rates, cfg.max_points, |r| r.bytes_per_s),
         pauses: downsample_max(&pauses, cfg.max_points, |p| p.pause_ns as f64),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GcFinding {
+    pub rule: &'static str,
+    pub severity: Severity,
+    pub title: String,
+    pub detail: String,
+    /// The number the rule compared against its threshold (ms, %, or count).
+    pub value: f64,
+    /// How many events the finding rests on.
+    pub based_on: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GcReport {
+    pub runtime: String,
+    pub notes: Vec<String>,
+    pub summary: GcSummary,
+    pub series: GcSeries,
+    pub findings: Vec<GcFinding>,
+}
+
+fn ms(ns: u64) -> f64 {
+    ns as f64 / 1e6
+}
+
+fn mean(v: &[u64]) -> f64 {
+    if v.is_empty() {
+        return 0.0;
+    }
+    v.iter().sum::<u64>() as f64 / v.len() as f64
+}
+
+fn severity_rank(s: Severity) -> u8 {
+    match s {
+        Severity::High => 2,
+        Severity::Warn => 1,
+        Severity::Info => 0,
+    }
+}
+
+pub fn gc_findings(d: &GcData, s: &GcSummary, cfg: &GcConfig) -> Vec<GcFinding> {
+    let mut out = Vec::new();
+    let total = s.total_gcs;
+
+    if total > 0 && ms(s.pause.max_ns) >= cfg.long_pause_ms {
+        out.push(GcFinding {
+            rule: "gc_long_pause",
+            severity: Severity::Warn,
+            title: format!("Long GC pause: {:.0} ms", ms(s.pause.max_ns)),
+            detail: format!(
+                "The longest pause stopped application threads for {:.1} ms (p99 {:.1} ms across {total} GCs).",
+                ms(s.pause.max_ns),
+                ms(s.pause.p99_ns)
+            ),
+            value: ms(s.pause.max_ns),
+            based_on: total,
+        });
+    }
+
+    if total > 0 && s.pause_share_pct >= cfg.pause_share_pct {
+        out.push(GcFinding {
+            rule: "gc_pause_share",
+            severity: Severity::Warn,
+            title: format!(
+                "Application threads were paused for {:.1}% of the capture",
+                s.pause_share_pct
+            ),
+            detail: format!(
+                "Total GC pause time was {:.0} ms over {total} GCs; reducing allocations usually lowers it.",
+                ms(s.pause.total_ns)
+            ),
+            value: s.pause_share_pct,
+            based_on: total,
+        });
+    }
+
+    let gen2 = s
+        .by_generation
+        .iter()
+        .find(|g| g.generation == Some(2))
+        .map_or(0, |g| g.count);
+    let gen2_share = if total > 0 {
+        gen2 as f64 / total as f64 * 100.0
+    } else {
+        0.0
+    };
+    if total as usize >= cfg.gen2_min_gcs && gen2_share >= cfg.gen2_share_pct {
+        out.push(GcFinding {
+            rule: "gc_gen2_heavy",
+            severity: Severity::Warn,
+            title: format!("{gen2_share:.0}% of GCs were generation 2"),
+            detail: format!(
+                "{gen2} of {total} collections were full (gen2) GCs, which are the most expensive; objects are surviving long enough to be promoted."
+            ),
+            value: gen2_share,
+            based_on: total,
+        });
+    }
+
+    let post = &s.post_gen2_heap_bytes;
+    if post.len() >= cfg.growth_min_gen2 {
+        let half = post.len() / 2;
+        let first = mean(&post[..half]);
+        let second = mean(&post[post.len() - half..]);
+        if first > 0.0 && second >= first * (1.0 + cfg.growth_pct / 100.0) {
+            let growth = (second / first - 1.0) * 100.0;
+            out.push(GcFinding {
+                rule: "gc_heap_growth",
+                severity: Severity::Warn,
+                title: "Heap after full GCs keeps growing (possible leak)".into(),
+                detail: format!(
+                    "Across {} generation-2 GCs the heap left after each one grew by about {growth:.0}% (second half against first). This is a suspicion, not proof: a cache filling up looks the same.",
+                    post.len()
+                ),
+                value: growth,
+                based_on: post.len() as u64,
+            });
+        }
+    }
+
+    if s.induced_count > 0 {
+        out.push(GcFinding {
+            rule: "gc_induced",
+            severity: Severity::Info,
+            title: format!("{} GC(s) were triggered explicitly", s.induced_count),
+            detail: "Code called GC.Collect or an equivalent. Explicit collections are often unnecessary and add pauses.".into(),
+            value: s.induced_count as f64,
+            based_on: total,
+        });
+    }
+
+    let loh = d.events.iter().filter(|e| e.reason == "large-object").count();
+    let loh_share = if total > 0 {
+        loh as f64 / total as f64 * 100.0
+    } else {
+        0.0
+    };
+    if total as usize >= cfg.gen2_min_gcs && loh_share >= cfg.loh_share_pct {
+        out.push(GcFinding {
+            rule: "gc_loh_driven",
+            severity: Severity::Info,
+            title: format!("{loh_share:.0}% of GCs were caused by large-object allocation"),
+            detail: format!(
+                "{loh} of {total} collections were triggered by allocating large objects; reusing or pooling large buffers avoids them."
+            ),
+            value: loh_share,
+            based_on: total,
+        });
+    }
+
+    out.sort_by(|a, b| {
+        severity_rank(b.severity)
+            .cmp(&severity_rank(a.severity))
+            .then(b.value.total_cmp(&a.value))
+    });
+    out
+}
+
+pub fn report(d: &GcData, cfg: &GcConfig) -> GcReport {
+    let summary = summarize(d, cfg);
+    let findings = gc_findings(d, &summary, cfg);
+    GcReport {
+        runtime: d.runtime.clone(),
+        notes: d.notes.clone(),
+        series: series(d, cfg),
+        summary,
+        findings,
     }
 }
