@@ -3,6 +3,7 @@
 
 mod dotnet;
 mod go;
+mod pe;
 pub mod r2r;
 
 pub use dotnet::{
@@ -10,6 +11,7 @@ pub use dotnet::{
     GUID_DOTNET_RUNDOWN, GUID_DOTNET_RUNTIME,
 };
 pub use go::{go_symbols, GoSym};
+pub use pe::pe_export_symbols;
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -61,8 +63,9 @@ impl Symbolizer {
     }
 
     /// Register a loaded image. Symbols are read from `path` when the file has
-    /// them (Go and other unstripped binaries, or ReadyToRun .NET images whose
-    /// on-disk size matches `size`); otherwise addresses in it resolve to
+    /// them (Go and other unstripped binaries, ReadyToRun .NET images whose
+    /// on-disk size matches `size`, or the export table of a native PE);
+    /// otherwise addresses in it resolve to
     /// `module+offset`.
     pub fn add_image(&mut self, base: u64, size: u64, path: &Path) {
         let mut syms = go_symbols(path).unwrap_or_default();
@@ -77,6 +80,10 @@ impl Symbolizer {
                     name: s.name,
                 })
                 .collect();
+        }
+        if syms.is_empty() {
+            // Native DLLs (ntdll, coreclr, ...): exported function names.
+            syms = pe_export_symbols(path).unwrap_or_default();
         }
         syms.sort_by_key(|s| s.start);
         let module = path
