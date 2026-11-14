@@ -186,6 +186,42 @@ fn go_record_all_kinds_via_agent() {
 
 #[test]
 #[ignore = "e2e: needs PERFHAWK_E2E=1, go"]
+fn go_record_gc_via_agent() {
+    if !enabled() {
+        return;
+    }
+    let child = spawn_go_demo(&["-mode", "gc"]);
+    let pid = child.0.id();
+    wait_for_agent(pid);
+    let (_d, store) = store();
+    let s = record(
+        &store,
+        &ProviderRegistry::with_defaults(),
+        &RecordRequest {
+            target: Target::Pid(pid),
+            plan: CapturePlan {
+                kinds: vec![ProfileKind::Cpu],
+                duration: Duration::from_secs(5),
+                timeline: false,
+                gc: true,
+            },
+            name: Some("go-gc".into()),
+            tags: vec![],
+        },
+        &CancelToken::new(),
+        &|m| eprintln!("{m}"),
+    )
+    .unwrap();
+    assert_eq!(s.status, SessionStatus::Complete, "{:?}", s.warnings);
+    let gc = store.load_gc(&s.id).unwrap().expect("stored GC data");
+    assert_eq!(gc.runtime, "go");
+    assert!(!gc.events.is_empty(), "no GC events recorded");
+    let sum = perfhawk_analysis::gc::summarize(&gc, &Default::default());
+    assert!(sum.total_gcs > 0 && sum.pause_share_pct > 0.0, "{sum:?}");
+}
+
+#[test]
+#[ignore = "e2e: needs PERFHAWK_E2E=1, go"]
 fn go_record_url_plain_pprof() {
     if !enabled() {
         return;
