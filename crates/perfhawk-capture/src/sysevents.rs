@@ -1,4 +1,4 @@
-//! OS trace events in a platform-neutral form, and the pure step that turns
+//! OS trac events in a platform-neutral form, and the pure step that turns
 //! them into Block I/O, off-CPU and scheduler-delay rows. The Windows ETW
 //! session (`etw`) only has to produce [`RawEvent`]s; everything here is
 //! testable without admin rights and reusable by a Linux provider.
@@ -7,7 +7,7 @@ use crate::events::{event_artifact, EventRow, EventSpec};
 use crate::types::Artifact;
 use perfhawk_model::file_leaf;
 use perfhawk_model::ProfileKind;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RawKind {
@@ -15,11 +15,12 @@ pub enum RawKind {
     FileWrite,
     DiskRead,
     DiskWrite,
-    /// `pid`/`tid`/`stack` describe the thread being switched out (`old_tid`);
-    /// `new_tid` is the thread switched in.
+    /// A context switch. `pid`/`tid` and `stack` describe the thread being
+    /// switched IN (`new_tid`): Windows records the stack it blocked on. `old_tid`
+    /// is the thread switched out. `pid` is 0 when the thread's process is unknown.
     CSwitch,
-    /// `pid`/`tid`/`stack` describe the thread that made another thread
-    /// runnable; `new_tid` is the thread that became runnable.
+    /// A thread became runnable: `tid`/`new_tid` is that thread, `pid` its
+    /// process. No stack (the waker's stack is not used).
     ReadyThread,
     ImageLoad,
     ProcessStart,
@@ -129,11 +130,6 @@ pub struct Aggregated {
 /// Off-CPU or scheduler spans shorter than this are noise.
 const MIN_SPAN_NS: u64 = 1_000;
 
-struct Open {
-    start_qpc: i64,
-    stack: Vec<String>,
-}
-
 pub fn aggregate(input: &AggregateInput) -> Aggregated {
     let c = &input.clock;
     let window_end = c.qpc_start + c.ns_to_qpc(input.window_ns);
@@ -148,14 +144,6 @@ pub fn aggregate(input: &AggregateInput) -> Aggregated {
     let mut events: Vec<&RawEvent> = input.events.iter().collect();
     events.sort_by_key(|e| e.qpc);
 
-    // Threads known to belong to the target: a CSwitch switch-in or a
-    // ReadyThread names a thread without saying which process it is in.
-    let target_tids: HashSet<u32> = events
-        .iter()
-        .filter(|e| e.pid == input.target_pid)
-        .map(|e| e.tid)
-        .collect();
-
     // File events by thread, to tell whether a disk event is already counted.
     let mut file_spans: HashMap<u32, Vec<(i64, i64)>> = HashMap::new();
     for e in &events {
@@ -163,21 +151,22 @@ pub fn aggregate(input: &AggregateInput) -> Aggregated {
             file_spans
                 .entry(e.tid)
                 .or_default()
-                .push((e.qpc - e.duration_qpc, e.qpc));
+                .push((e.qpc, e.qpc + e.duration_qpc));
         }
     }
 
     let mut out = Aggregated::default();
-    let mut off: HashMap<u32, Open> = HashMap::new();
-    let mut ready: HashMap<u32, Open> = HashMap::new();
+    // When each thread last left the CPU / was made runnable.
+    let mut last_out: HashMap<u32, i64> = HashMap::new();
+    let mut ready: HashMap<u32, i64> = HashMap::new();
 
-    let span_row = |open: Open, end_qpc: i64, dest: &mut Vec<EventRow>| {
-        let ns = c.qpc_to_ns(end_qpc - open.start_qpc);
+    let span_row = |start_qpc: i64, end_qpc: i64, stack: Vec<String>, dest: &mut Vec<EventRow>| {
+        let ns = c.qpc_to_ns(end_qpc - start_qpc);
         if ns >= MIN_SPAN_NS {
             dest.push(EventRow {
-                stack: open.stack,
+                stack,
                 values: vec![ns as i64],
-                bucket: bucket_of(open.start_qpc),
+                bucket: bucket_of(start_qpc),
             });
         }
     };
@@ -211,39 +200,27 @@ pub fn aggregate(input: &AggregateInput) -> Aggregated {
                 }
             }
             RawKind::CSwitch => {
+                // Remember when the outgoing thread left the CPU (any process:
+                // its pid is not on the event).
+                last_out.insert(e.old_tid, e.qpc);
                 if e.pid == input.target_pid {
-                    off.insert(
-                        e.old_tid,
-                        Open {
-                            start_qpc: e.qpc,
-                            stack: (input.symbolize)(e),
-                        },
-                    );
-                }
-                if target_tids.contains(&e.new_tid) {
-                    if let Some(o) = off.remove(&e.new_tid) {
-                        span_row(o, e.qpc, &mut out.off_cpu);
-                    }
+                    // The stack is where the incoming thread had been blocked.
+                    let stack = (input.symbolize)(e);
+                    // A thread first seen switching in has been waiting at least
+                    // since the window opened.
+                    let left = last_out.remove(&e.new_tid).unwrap_or(c.qpc_start);
+                    let left = left.max(c.qpc_start);
+                    span_row(left, e.qpc, stack.clone(), &mut out.off_cpu);
                     if let Some(r) = ready.remove(&e.new_tid) {
-                        span_row(r, e.qpc, &mut out.sched_delay);
+                        span_row(r, e.qpc, stack, &mut out.sched_delay);
                     }
                 }
             }
-            RawKind::ReadyThread if target_tids.contains(&e.new_tid) => {
-                ready.insert(
-                    e.new_tid,
-                    Open {
-                        start_qpc: e.qpc,
-                        stack: (input.symbolize)(e),
-                    },
-                );
+            RawKind::ReadyThread if e.pid == input.target_pid => {
+                ready.insert(e.new_tid, e.qpc);
             }
             _ => {}
         }
-    }
-    // Threads still off-CPU when the window closed.
-    for (_, o) in off {
-        span_row(o, window_end, &mut out.off_cpu);
     }
     out
 }

@@ -46,17 +46,17 @@ fn file_write(pid: u32, tid: u32, ms: i64, dur_ms: i64, bytes: u64, path: &str) 
     e
 }
 
-fn switch_out(tid: u32, ms: i64, stack: Vec<u64>) -> RawEvent {
-    let mut e = RawEvent::new(RawKind::CSwitch, at_ms(ms), TARGET, tid);
-    e.old_tid = tid;
-    e.new_tid = 999;
+/// `tid` of `pid` is switched in (replacing `old_tid`); `stack` is leaf-first.
+fn cswitch(pid: u32, tid: u32, old_tid: u32, ms: i64, stack: Vec<u64>) -> RawEvent {
+    let mut e = RawEvent::new(RawKind::CSwitch, at_ms(ms), pid, tid);
+    e.new_tid = tid;
+    e.old_tid = old_tid;
     e.stack = stack;
     e
 }
 
-fn switch_in(tid: u32, ms: i64) -> RawEvent {
-    let mut e = RawEvent::new(RawKind::CSwitch, at_ms(ms), 4, 999);
-    e.old_tid = 999;
+fn ready(pid: u32, tid: u32, ms: i64) -> RawEvent {
+    let mut e = RawEvent::new(RawKind::ReadyThread, at_ms(ms), pid, tid);
     e.new_tid = tid;
     e
 }
@@ -83,8 +83,12 @@ fn file_write_becomes_block_io_row_with_file_leaf() {
 
 #[test]
 fn off_cpu_span_runs_from_switch_out_to_switch_in() {
-    let a = run(&[switch_out(7, 100, vec![3, 2, 1]), switch_in(7, 101)]);
-    // 1 ms span; the switch-in alone is not a row
+    // thread 7 (target) is replaced by a thread of another process at 100 ms,
+    // and switched back in 1 ms later with the stack it blocked on
+    let a = run(&[
+        cswitch(77, 999, 7, 100, vec![]),
+        cswitch(TARGET, 7, 999, 101, vec![3, 2, 1]),
+    ]);
     assert_eq!(a.off_cpu.len(), 1);
     assert_eq!(a.off_cpu[0].values, vec![1_000_000]);
     assert_eq!(a.off_cpu[0].stack, vec!["fn1", "fn2", "fn3"]);
@@ -92,32 +96,39 @@ fn off_cpu_span_runs_from_switch_out_to_switch_in() {
 }
 
 #[test]
-fn open_off_cpu_span_is_closed_at_window_end() {
-    let a = run(&[switch_out(7, 9_000, vec![1])]);
+fn switch_in_without_prior_switch_out_starts_at_window_start() {
+    let a = run(&[cswitch(TARGET, 7, 999, 2_000, vec![1])]);
     assert_eq!(a.off_cpu.len(), 1);
-    assert_eq!(a.off_cpu[0].values, vec![1_000_000_000]); // 9 s .. 10 s
+    assert_eq!(a.off_cpu[0].values, vec![2_000_000_000]);
+    assert_eq!(a.off_cpu[0].bucket, 0);
+}
+
+#[test]
+fn context_switches_of_other_processes_are_ignored() {
+    assert!(run(&[cswitch(77, 8, 999, 500, vec![1])]).off_cpu.is_empty());
 }
 
 #[test]
 fn short_spans_are_dropped() {
-    // 0.5 us apart: 5 ticks is 500 ns at 10 MHz
-    let mut out = switch_out(7, 100, vec![1]);
-    let mut back = switch_in(7, 100);
-    out.qpc = at_ms(100);
+    // 5 ticks is 500 ns at 10 MHz
+    let out = cswitch(77, 999, 7, 100, vec![]);
+    let mut back = cswitch(TARGET, 7, 999, 100, vec![1]);
     back.qpc = at_ms(100) + 5;
     assert!(run(&[out, back]).off_cpu.is_empty());
 }
 
 #[test]
 fn ready_thread_to_switch_in_is_sched_delay() {
-    // thread 7 first goes off-CPU (so it is known to belong to the target)
-    let mut ready = RawEvent::new(RawKind::ReadyThread, at_ms(200), 55, 56);
-    ready.new_tid = 7;
-    ready.stack = vec![9];
-    let a = run(&[switch_out(7, 100, vec![1]), ready, switch_in(7, 203)]);
+    // off-CPU at 100 ms, made runnable at 200 ms, running again at 203 ms
+    let a = run(&[
+        cswitch(77, 999, 7, 100, vec![]),
+        ready(TARGET, 7, 200),
+        cswitch(TARGET, 7, 999, 203, vec![1]),
+    ]);
     assert_eq!(a.sched_delay.len(), 1);
     assert_eq!(a.sched_delay[0].values, vec![3_000_000]);
-    assert_eq!(a.sched_delay[0].stack, vec!["fn9"]);
+    assert_eq!(a.sched_delay[0].stack, vec!["fn1"]);
+    assert_eq!(a.off_cpu[0].values, vec![103_000_000]);
 }
 
 #[test]
@@ -161,7 +172,7 @@ fn disk_event_without_file_gets_disk_leaf() {
 #[test]
 fn disk_event_covered_by_a_file_event_is_not_counted_twice() {
     let w = file_write(TARGET, 7, 100, 5, 4096, "C:\\a");
-    let mut d = RawEvent::new(RawKind::DiskWrite, at_ms(98), TARGET, 7);
+    let mut d = RawEvent::new(RawKind::DiskWrite, at_ms(102), TARGET, 7);
     d.duration_qpc = ticks_ms(1);
     d.bytes = 4096;
     let a = run(&[w, d]);
