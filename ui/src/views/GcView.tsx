@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getGc, type GcEvent, type GcReport } from '../api'
 import { formatValue } from '../format'
+import { Tabs } from '../ui/Tabs'
 import {
   formatPause, generationLabel, generationShape, rowsInRange, type GcRange,
 } from '../analysis/gc'
@@ -86,48 +87,7 @@ function EventTable({ events, total }: { events: GcEvent[]; total: number }) {
   )
 }
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'heap', label: 'Heap and allocation' },
-  { id: 'events', label: 'Collections' },
-]
-
-/** Tab buttons with the roving-tabindex keyboard pattern (Left/Right/Home/End). */
-function Tabs({ tab, onTab, idPrefix }: { tab: Tab; onTab: (t: Tab) => void; idPrefix: string }) {
-  const refs = useRef<Record<string, HTMLButtonElement | null>>({})
-  const move = (to: number) => {
-    const next = TABS[(to + TABS.length) % TABS.length].id
-    onTab(next)
-    refs.current[next]?.focus()
-  }
-  return (
-    <div role="tablist" aria-label="Garbage collection views" className="gc-tabs">
-      {TABS.map((t, i) => (
-        <button
-          key={t.id}
-          ref={(el) => { refs.current[t.id] = el }}
-          role="tab"
-          id={`${idPrefix}-tab-${t.id}`}
-          aria-selected={tab === t.id}
-          aria-controls={`${idPrefix}-panel-${t.id}`}
-          tabIndex={tab === t.id ? 0 : -1}
-          className={tab === t.id ? 'gc-tab gc-tab-on' : 'gc-tab'}
-          onClick={() => onTab(t.id)}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowRight') { e.preventDefault(); move(i + 1) }
-            else if (e.key === 'ArrowLeft') { e.preventDefault(); move(i - 1) }
-            else if (e.key === 'Home') { e.preventDefault(); move(0) }
-            else if (e.key === 'End') { e.preventDefault(); move(TABS.length - 1) }
-          }}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function Report({ r, sessionId }: { r: GcReport; sessionId: string }) {
+function Report({ r }: { r: GcReport }) {
   const [range, setRange] = useState<GcRange | null>(null)
   const [tab, setTab] = useState<Tab>('overview')
   const s = r.summary
@@ -136,22 +96,14 @@ function Report({ r, sessionId }: { r: GcReport; sessionId: string }) {
     return <p className="muted">No collections happened during this capture.</p>
   }
   const events = rowsInRange(r.events, range)
-  const id = `gc-${sessionId}`
-  const panel = (t: Tab, children: React.ReactNode) => (
-    <div role="tabpanel" id={`${id}-panel-${t}`} aria-labelledby={`${id}-tab-${t}`} hidden={tab !== t} className="gc-panel">
-      {tab === t ? children : null}
-    </div>
-  )
   return (
     <>
-      <Tabs tab={tab} onTab={setTab} idPrefix={id} />
-      {range && (
+      <Tabs label="Garbage collection views" value={tab} onValueChange={(v) => setTab(v as Tab)} between={range && (
         <p role="status" className="gc-range">
           Showing {(range[0] / 1e9).toFixed(2)} s to {(range[1] / 1e9).toFixed(2)} s{' '}
           <button onClick={() => setRange(null)}>Clear range</button>
         </p>
-      )}
-      {panel('overview', (
+      )} tabs={[{ value: 'overview', label: 'Overview', panel: (
         <>
           <div className="gc-cards">
             <Card label="Collections" value={s.totalGcs.toLocaleString('en-US')} sub={gens} />
@@ -181,14 +133,12 @@ function Report({ r, sessionId }: { r: GcReport; sessionId: string }) {
             (background GCs run alongside the program).
           </p>
         </>
-      ))}
-      {panel('heap', (
+      ) }, { value: 'heap', label: 'Heap and allocation', panel: (
         <div className="gc-charts">
           <HeapChart points={r.series.heap} durationNs={r.durationNs} range={range} />
           <AllocChart points={r.series.allocRate} durationNs={r.durationNs} range={range} />
         </div>
-      ))}
-      {panel('events', <EventTable events={events} total={s.totalGcs} />)}
+      ) }, { value: 'events', label: 'Collections', panel: <EventTable events={events} total={s.totalGcs} /> }]} />
       {r.notes.map((n) => <div key={n} className="muted gc-note">{n}</div>)}
     </>
   )
@@ -209,7 +159,7 @@ export function GcView({ sessionId }: { sessionId: string }) {
   return (
     <section className="gc-view" aria-label="Garbage collection">
       <h3>Garbage collection <span className="muted">({report.runtime})</span></h3>
-      <Report r={report} sessionId={sessionId} />
+      <Report r={report} />
     </section>
   )
 }

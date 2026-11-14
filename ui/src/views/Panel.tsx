@@ -1,9 +1,9 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react'
-import { focusableWithin, nextFocusIndex } from '../a11y/focus'
+import * as Dialog from '@radix-ui/react-dialog'
+import { useEffect, useRef, type ReactNode } from 'react'
 
 /**
- * A modal dialog or side panel: focus moves in on open, Tab is trapped inside, Esc closes,
- * and focus returns to whatever opened it (or the page body if that element is gone).
+ * A modal dialog or side panel on Radix Dialog: focus moves in on open (to `[data-autofocus]` if
+ * present), Tab is trapped, Esc closes, and focus returns to whatever opened it.
  */
 export function Panel({
   title,
@@ -16,63 +16,35 @@ export function Panel({
   variant?: 'dialog' | 'side'
   children: ReactNode
 }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const titleId = useId()
-
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null
-    const root = ref.current
-    if (root) {
-      const items = focusableWithin(root)
-      const preferred = root.querySelector<HTMLElement>('[data-autofocus]')
-      ;(preferred ?? items[0] ?? root).focus()
-    }
-    return () => {
-      if (opener && opener.isConnected) opener.focus()
-      else document.body.focus()
-    }
+  // Radix only restores focus to a Dialog.Trigger; we have none, so remember the opener ourselves.
+  const opener = useRef<HTMLElement | null>(document.activeElement as HTMLElement | null)
+  useEffect(() => () => {
+    const o = opener.current
+    if (o && o.isConnected) o.focus()
+    else document.body.focus()
   }, [])
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation()
-      onClose()
-      return
-    }
-    if (e.key !== 'Tab' || !ref.current) return
-    const items = focusableWithin(ref.current)
-    if (items.length === 0) {
-      e.preventDefault()
-      ref.current.focus()
-      return
-    }
-    const cur = items.indexOf(document.activeElement as HTMLElement)
-    const atEdge = e.shiftKey ? cur <= 0 : cur < 0 || cur === items.length - 1
-    // Only take over at the edges; the browser handles the middle of the list.
-    if (atEdge) {
-      e.preventDefault()
-      items[nextFocusIndex(items.length, cur, e.shiftKey)].focus()
-    }
-  }
-
   return (
-    <div className={`panel-backdrop panel-${variant}`}>
-      <button type="button" className="panel-scrim" aria-label="Close" tabIndex={-1} onClick={onClose} />
-      <div
-        ref={ref}
-        className="panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        onKeyDown={onKeyDown}
-      >
-        <div className="panel-head">
-          <h2 id={titleId}>{title}</h2>
-          <button type="button" onClick={onClose} aria-label="Close dialog">Close (Esc)</button>
+    <Dialog.Root open onOpenChange={(o) => { if (!o) onClose() }}>
+      <Dialog.Portal>
+        <div className={`panel-backdrop panel-${variant}`}>
+          <Dialog.Overlay className="panel-scrim" />
+          <Dialog.Content
+            className="panel"
+            aria-describedby={undefined}
+            onCloseAutoFocus={(e) => e.preventDefault()}
+            onOpenAutoFocus={(e) => {
+              const pref = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[data-autofocus]')
+              if (pref) { e.preventDefault(); pref.focus() }
+            }}
+          >
+            <div className="panel-head">
+              <Dialog.Title asChild><h2>{title}</h2></Dialog.Title>
+              <button type="button" onClick={onClose} aria-label="Close dialog">Close (Esc)</button>
+            </div>
+            <div className="panel-body">{children}</div>
+          </Dialog.Content>
         </div>
-        <div className="panel-body">{children}</div>
-      </div>
-    </div>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }

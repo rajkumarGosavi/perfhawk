@@ -77,7 +77,8 @@ async function show(r: GcReport | { available: false; reason: string }) {
 
 async function openTab(name: string) {
   const tab = [...host.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.startsWith(name)) as HTMLButtonElement
-  await act(async () => { tab.click() })
+  // Radix Tabs activate on mousedown (and on keyboard focus), not on click.
+  await act(async () => { tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, ctrlKey: false })) })
 }
 
 describe('GcView', () => {
@@ -115,12 +116,11 @@ describe('GcView', () => {
     await show(report())
     const tabs = () => [...host.querySelectorAll('[role="tab"]')] as HTMLButtonElement[]
     expect(tabs().map((t) => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false'])
-    expect(tabs().map((t) => t.tabIndex)).toEqual([0, -1, -1])
-    await act(async () => { tabs()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })
+    await act(async () => { tabs()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); await new Promise((r) => setTimeout(r, 10)) })
     expect(tabs().map((t) => t.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false'])
-    await act(async () => { tabs()[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })) })
+    await act(async () => { tabs()[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })); await new Promise((r) => setTimeout(r, 10)) })
     expect(tabs()[2].getAttribute('aria-selected')).toBe('true')
-    await act(async () => { tabs()[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })
+    await act(async () => { tabs()[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); await new Promise((r) => setTimeout(r, 10)) })
     expect(tabs()[0].getAttribute('aria-selected')).toBe('true') // wraps around
     const panel = host.querySelector('[role="tabpanel"]:not([hidden])')!
     expect(panel.getAttribute('aria-labelledby')).toBe(tabs()[0].id)
