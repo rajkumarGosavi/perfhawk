@@ -36,7 +36,6 @@ const FILE_READ: &str = "0000000000000000f8b0be8d8fd2ffff40c232948fd2ffff906b283
 const FILE_WRITE: &str = "4800000000000000883b20978fd2ffff40d932948fd2ffff906b28388b88ffff8821000070ff0300000a060000000000";
 const OP_END: &str = "883b20978fd2ffff020000000000000000000000";
 const CSWITCH: &str = "bc0100009418000017080000170009026000000036e2000001000000";
-const READY: &str = "bc010000010a0000";
 const DISK_READ: &str = "0100000043000600003c000000000000003c3f391000000090399e418b88ffff10301f978fd2ffff730600000000000088210000";
 
 fn names(events: &[RawEvent], kind: RawKind) -> Vec<&RawEvent> {
@@ -170,12 +169,65 @@ fn context_switch_of_a_target_thread_decodes() {
     );
 }
 
+/// A `CSystemTrace` context switch payload: new thread, old thread, wait reason.
+fn cswitch_bytes(new: u32, old: u32, reason: u8) -> Vec<u8> {
+    let mut d = vec![0u8; 24];
+    d[0..4].copy_from_slice(&new.to_le_bytes());
+    d[4..8].copy_from_slice(&old.to_le_bytes());
+    d[12] = reason;
+    d
+}
+
 #[test]
-fn switching_out_a_target_thread_is_kept_with_pid_zero() {
+fn switching_out_a_target_thread_stores_nothing_by_itself() {
     let mut d = Decoder::new(TARGET, [6292]);
     d.feed(&rec(GUID_THREAD, 36, 0, 0, 3_000, &hex(CSWITCH)));
+    assert!(d.finish().is_empty());
+}
+
+#[test]
+fn a_wait_is_one_event_carrying_switch_out_and_ready_times() {
+    let mut d = Decoder::new(TARGET, [7]);
+    d.feed(&rec(
+        GUID_THREAD,
+        36,
+        0,
+        0,
+        1_000,
+        &cswitch_bytes(99, 7, 13),
+    ));
+    d.feed(&rec(GUID_THREAD, 50, 0, 0, 2_000, &7u32.to_le_bytes()));
+    d.feed(&rec(GUID_THREAD, 36, 0, 0, 3_000, &cswitch_bytes(7, 99, 0)));
     let ev = d.finish();
-    assert_eq!((ev.len(), ev[0].pid, ev[0].old_tid), (1, 0, 6292));
+    assert_eq!(ev.len(), 1, "one event per wait: {ev:?}");
+    let e = &ev[0];
+    assert_eq!(e.kind, RawKind::CSwitch);
+    assert_eq!(
+        (e.qpc, e.left_qpc, e.ready_qpc, e.wait_reason),
+        (3_000, 1_000, 2_000, 13)
+    );
+}
+
+#[test]
+fn a_reused_thread_id_does_not_inherit_an_old_wait() {
+    let mut d = Decoder::new(TARGET, [7]);
+    d.feed(&rec(
+        GUID_THREAD,
+        36,
+        0,
+        0,
+        1_000,
+        &cswitch_bytes(99, 7, 13),
+    ));
+    // Thread 7 ends and a new thread of the target gets the same id.
+    let mut end = Vec::new();
+    end.extend(TARGET.to_le_bytes());
+    end.extend(7u32.to_le_bytes());
+    d.feed(&rec(GUID_THREAD, 2, TARGET, 7, 1_500, &end));
+    d.feed(&rec(GUID_THREAD, 1, TARGET, 7, 2_000, &end));
+    d.feed(&rec(GUID_THREAD, 36, 0, 0, 3_000, &cswitch_bytes(7, 99, 0)));
+    let ev = d.finish();
+    assert_eq!((ev.len(), ev[0].left_qpc), (1, 0));
 }
 
 #[test]
@@ -195,18 +247,6 @@ fn thread_start_of_the_target_adds_its_tid() {
     d.feed(&rec(GUID_THREAD, 1, TARGET, 1, 100, &t));
     d.feed(&rec(GUID_THREAD, 36, 0, 0, 3_000, &hex(CSWITCH)));
     assert_eq!(names(&d.finish(), RawKind::CSwitch).len(), 1);
-}
-
-#[test]
-fn ready_thread_of_a_target_thread_decodes() {
-    let mut d = Decoder::new(TARGET, [444]);
-    d.feed(&rec(GUID_THREAD, 50, 55, 56, 4_000, &hex(READY)));
-    let ev = d.finish();
-    let r = names(&ev, RawKind::ReadyThread);
-    assert_eq!(
-        (r.len(), r[0].tid, r[0].new_tid, r[0].pid),
-        (1, 444, 444, TARGET)
-    );
 }
 
 #[test]
@@ -359,7 +399,7 @@ fn thread_end_of_another_process_keeps_the_tid() {
 fn event_limit_stops_recording_and_counts_the_overflow() {
     let mut d = Decoder::with_limit(TARGET, [444], 3);
     for i in 0..10 {
-        d.feed(&rec(GUID_THREAD, 50, TARGET, 1, i, &hex(READY)));
+        d.feed(&rec(GUID_THREAD, 36, 0, 0, i, &hex(CSWITCH)));
     }
     assert_eq!(d.dropped(), 7);
     assert_eq!(d.finish().len(), 3);

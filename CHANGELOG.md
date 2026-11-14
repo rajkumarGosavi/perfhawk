@@ -10,6 +10,7 @@ All notable changes are recorded here. The format follows
 - GC analysis for Go: `perfhawk record` on a Go process running the perfhawk agent now captures GC data (collections, pauses, live heap, allocation rate), shown by `perfhawk gc`, `perfhawk doctor` and the web UI. Go reports no GC duration, reasons or generations, so the data is marked approximate. Needs the agent module `agents/go` v0.1.1 or later; an older agent gives a warning and no GC data.
 - `examples/go-demo -mode gc` workload and `-gogc` flag.
 - Windows ETW profiles name native DLL frames (ntdll, coreclr, kernel32, ...) from PE exports, and from PDBs when one is found next to the image or in the symbol cache (`%LOCALAPPDATA%\perfhawk\symbols`, override with `PERFHAWK_SYMBOL_CACHE`). Set `PERFHAWK_SYMBOL_SERVER=1` (or a symbol server URL) to download missing PDBs into the cache; nothing is downloaded by default.
+- ETW capture stores one event per wait instead of three, so busy targets hit the event limit about three times later.
 
 ## [0.1.0] - 2026-11-15
 

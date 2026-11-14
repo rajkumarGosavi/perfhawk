@@ -55,9 +55,16 @@ fn cswitch(pid: u32, tid: u32, old_tid: u32, ms: i64, stack: Vec<u64>) -> RawEve
     e
 }
 
-fn ready(pid: u32, tid: u32, ms: i64) -> RawEvent {
-    let mut e = RawEvent::new(RawKind::ReadyThread, at_ms(ms), pid, tid);
-    e.new_tid = tid;
+/// The switched-in thread had left the CPU at `left_ms` for `reason`.
+fn waited(mut e: RawEvent, left_ms: i64, reason: u8) -> RawEvent {
+    e.left_qpc = at_ms(left_ms);
+    e.wait_reason = reason;
+    e
+}
+
+/// The switched-in thread had become runnable at `ms`.
+fn readied(mut e: RawEvent, ms: i64) -> RawEvent {
+    e.ready_qpc = at_ms(ms);
     e
 }
 
@@ -85,10 +92,7 @@ fn file_write_becomes_block_io_row_with_file_leaf() {
 fn off_cpu_span_runs_from_switch_out_to_switch_in() {
     // thread 7 (target) is replaced by a thread of another process at 100 ms,
     // and switched back in 1 ms later with the stack it blocked on
-    let a = run(&[
-        cswitch(77, 999, 7, 100, vec![]),
-        cswitch(TARGET, 7, 999, 101, vec![3, 2, 1]),
-    ]);
+    let a = run(&[waited(cswitch(TARGET, 7, 999, 101, vec![3, 2, 1]), 100, 0)]);
     assert_eq!(a.off_cpu.len(), 1);
     assert_eq!(a.off_cpu[0].values, vec![1_000_000]);
     assert_eq!(
@@ -114,20 +118,18 @@ fn context_switches_of_other_processes_are_ignored() {
 #[test]
 fn short_spans_are_dropped() {
     // 5 ticks is 500 ns at 10 MHz
-    let out = cswitch(77, 999, 7, 100, vec![]);
-    let mut back = cswitch(TARGET, 7, 999, 100, vec![1]);
+    let mut back = waited(cswitch(TARGET, 7, 999, 100, vec![1]), 100, 0);
     back.qpc = at_ms(100) + 5;
-    assert!(run(&[out, back]).off_cpu.is_empty());
+    assert!(run(&[back]).off_cpu.is_empty());
 }
 
 #[test]
 fn ready_thread_to_switch_in_is_sched_delay() {
     // off-CPU at 100 ms, made runnable at 200 ms, running again at 203 ms
-    let a = run(&[
-        cswitch(77, 999, 7, 100, vec![]),
-        ready(TARGET, 7, 200),
-        cswitch(TARGET, 7, 999, 203, vec![1]),
-    ]);
+    let a = run(&[readied(
+        waited(cswitch(TARGET, 7, 999, 203, vec![1]), 100, 0),
+        200,
+    )]);
     assert_eq!(a.sched_delay.len(), 1);
     assert_eq!(a.sched_delay[0].values, vec![3_000_000]);
     assert_eq!(a.sched_delay[0].stack, vec!["fn1"]);
@@ -351,18 +353,16 @@ fn many_disk_events_against_many_file_events_stay_fast() {
 
 #[test]
 fn off_cpu_stack_ends_in_the_wait_reason_of_the_switch_out() {
-    let mut out = cswitch(77, 999, 7, 100, vec![]);
-    out.wait_reason = 13; // WrUserRequest
-    let a = run(&[out, cswitch(TARGET, 7, 999, 150, vec![1])]);
+    // 13 is WrUserRequest
+    let a = run(&[waited(cswitch(TARGET, 7, 999, 150, vec![1]), 100, 13)]);
     assert_eq!(a.off_cpu[0].stack, vec!["fn1", "[wait: WrUserRequest]"]);
 }
 
 #[test]
 fn off_cpu_without_user_frames_still_has_a_wait_frame() {
     // the kernel could not walk user frames: the row must not become an empty stack
-    let mut out = cswitch(77, 999, 7, 100, vec![]);
-    out.wait_reason = 15; // WrQueue
-    let a = run(&[out, cswitch(TARGET, 7, 999, 150, vec![])]);
+    // 15 is WrQueue
+    let a = run(&[waited(cswitch(TARGET, 7, 999, 150, vec![]), 100, 15)]);
     assert_eq!(a.off_cpu[0].stack, vec!["[wait: WrQueue]"]);
 }
 
@@ -374,18 +374,15 @@ fn first_seen_switch_in_has_an_unknown_wait_reason() {
 
 #[test]
 fn unknown_wait_reason_codes_are_numbered() {
-    let mut out = cswitch(77, 999, 7, 100, vec![]);
-    out.wait_reason = 200;
-    let a = run(&[out, cswitch(TARGET, 7, 999, 150, vec![])]);
+    let a = run(&[waited(cswitch(TARGET, 7, 999, 150, vec![]), 100, 200)]);
     assert_eq!(a.off_cpu[0].stack, vec!["[wait: reason 200]"]);
 }
 
 #[test]
 fn sched_delay_without_user_frames_names_the_scheduler_queue() {
-    let a = run(&[
-        cswitch(77, 999, 7, 100, vec![]),
-        ready(TARGET, 7, 200),
-        cswitch(TARGET, 7, 999, 203, vec![]),
-    ]);
+    let a = run(&[readied(
+        waited(cswitch(TARGET, 7, 999, 203, vec![]), 100, 0),
+        200,
+    )]);
     assert_eq!(a.sched_delay[0].stack, vec!["[scheduler queue]"]);
 }

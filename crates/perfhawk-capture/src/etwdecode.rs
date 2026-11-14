@@ -71,6 +71,11 @@ pub struct Decoder {
     /// same (time, thread) can add to it: Windows sends a context switch's
     /// kernel stack and its user-mode stack as separate records.
     walked: HashMap<(i64, u32), usize>,
+    /// When each target thread last left the CPU and why, and when it last
+    /// became runnable. Folded into the thread's next switch-in event, so a
+    /// wait costs one stored event instead of three.
+    left: HashMap<u32, (i64, u8)>,
+    ready: HashMap<u32, i64>,
     /// In-flight file operations by IRP, to time them at completion.
     irps: HashMap<u64, usize>,
     /// (event index, file key, file object) for name resolution at the end.
@@ -102,6 +107,8 @@ impl Decoder {
             pending: HashMap::new(),
             early: HashMap::new(),
             walked: HashMap::new(),
+            left: HashMap::new(),
+            ready: HashMap::new(),
             irps: HashMap::new(),
             file_refs: Vec::new(),
             names_by_key: HashMap::new(),
@@ -236,33 +243,37 @@ impl Decoder {
             // end, rundown end: thread ids are reused, so forget the thread
             2 | 4 => {
                 if u32_at(d, 0)? == self.target_pid {
-                    self.tids.remove(&u32_at(d, 4)?);
+                    let tid = u32_at(d, 4)?;
+                    self.tids.remove(&tid);
+                    self.left.remove(&tid);
+                    self.ready.remove(&tid);
                 }
             }
             36 => {
                 let (new, old) = (u32_at(d, 0)?, u32_at(d, 4)?);
-                let new_ours = self.tids.contains(&new);
-                if !new_ours && !self.tids.contains(&old) {
-                    return None;
+                let reason = *d.get(12)?;
+                if self.tids.contains(&old) {
+                    self.left.insert(old, (r.qpc, reason));
                 }
-                let pid = if new_ours { self.target_pid } else { 0 };
-                let mut e = RawEvent::new(RawKind::CSwitch, r.qpc, pid, new);
-                e.new_tid = new;
-                e.old_tid = old;
-                e.wait_reason = *d.get(12)?;
-                let idx = self.push(e)?;
-                if new_ours {
-                    self.expect_stack(idx, r.qpc, new);
+                if self.tids.contains(&new) {
+                    let mut e = RawEvent::new(RawKind::CSwitch, r.qpc, self.target_pid, new);
+                    e.new_tid = new;
+                    e.old_tid = old;
+                    if let Some((t, why)) = self.left.remove(&new) {
+                        e.left_qpc = t;
+                        e.wait_reason = why;
+                    }
+                    e.ready_qpc = self.ready.remove(&new).unwrap_or(0);
+                    if let Some(idx) = self.push(e) {
+                        self.expect_stack(idx, r.qpc, new);
+                    }
                 }
             }
             50 => {
                 let tid = u32_at(d, 0)?;
-                if !self.tids.contains(&tid) {
-                    return None;
+                if self.tids.contains(&tid) {
+                    self.ready.insert(tid, r.qpc);
                 }
-                let mut e = RawEvent::new(RawKind::ReadyThread, r.qpc, self.target_pid, tid);
-                e.new_tid = tid;
-                let _ = self.push(e);
             }
             _ => {}
         }
