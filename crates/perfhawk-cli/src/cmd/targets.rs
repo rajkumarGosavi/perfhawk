@@ -1,36 +1,10 @@
 use super::print_table;
-use perfhawk_capture::{dotnet, go::discovery};
-
-struct Row {
-    runtime: &'static str,
-    pid: u32,
-    version: Option<String>,
-    agent: bool,
-    command: Option<String>,
-}
+use perfhawk_capture::list_targets;
 
 pub fn run(json: bool) -> Result<(), String> {
-    let mut targets: Vec<Row> = discovery::list()
-        .into_iter()
-        .map(|d| Row {
-            runtime: "go",
-            pid: d.pid,
-            version: d.go_version,
-            agent: true,
-            command: None,
-        })
-        .collect();
-    match dotnet::list_dotnet_processes() {
-        Ok(procs) => targets.extend(procs.into_iter().filter_map(|p| {
-            Some(Row {
-                runtime: "dotnet",
-                pid: p.pid?,
-                version: p.runtime_version,
-                agent: false,
-                command: p.command,
-            })
-        })),
-        Err(e) => eprintln!("warning: {e}; showing Go targets only"),
+    let (targets, warning) = list_targets();
+    if let Some(e) = warning {
+        eprintln!("warning: {e}; showing Go targets only");
     }
     if json {
         let v: Vec<_> = targets
