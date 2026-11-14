@@ -9,7 +9,7 @@ import { hotPath } from '../analysis/hotPath'
 import { useDocumentTitle } from '../a11y/announce'
 import { viewTitle } from '../a11y/title'
 import { keyAction } from '../analysis/keys'
-import { activeFilterCount } from './filters'
+import { activeFilterCount, filtersToggleLabel } from './filters'
 import { effectiveExclude } from '../analysis/perfhawk'
 import { addTransform, decodeTx, encodeTx, type Transform } from '../analysis/transforms'
 import { FlameGraph, type FlameExportApi } from '../flame/FlameGraph'
@@ -137,7 +137,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
   const pushView = (patch: Partial<ViewState>) => navigate(patch, 'push')
   const hot = !!state.hot
   const filterCount = activeFilterCount({ focus, exclude, hide, hidePh: state.hidePh })
-  const [filtersOpen, setFiltersOpen] = useState(() => filterCount > 0)
+  const [filtersOpen, setFiltersOpen] = useState(true)
   useDocumentTitle(viewTitle(state, record?.name))
   const onTransform = (t: Transform) => navigate({ tx: encodeTx(addTransform(decodeTx(tx), t)) }, 'push')
   const toggleHot = () => navigate({ hot: hot ? undefined : true }, 'replace')
@@ -265,7 +265,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           aria-controls="profile-filters"
           onClick={() => setFiltersOpen((o) => !o)}
         >
-          Filters{filterCount > 0 ? ` (${filterCount})` : ''}
+          <span aria-hidden="true">{filtersOpen ? '▾' : '▸'}</span> {filtersToggleLabel(filtersOpen, filterCount)}
         </button>
       </div>
       {filtersOpen && (
