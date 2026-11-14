@@ -30,8 +30,9 @@ export function Home({
   const changed = () => setVersion((v) => v + 1)
   const [itemCount, setItemCount] = useState<number | null>(null)
   const [dismissed, setDismissed] = useState<string | null>(() => getPref(WELCOME_KEY))
-  const [welcomeOpen, setWelcomeOpen] = useState(false)
-  const showWelcome = welcomeOpen || shouldShowWelcome(dismissed, itemCount)
+  // The user's explicit choice (button or dismiss) wins over the automatic first-run / empty-state display.
+  const [welcomeChoice, setWelcomeChoice] = useState<boolean | null>(null)
+  const showWelcome = welcomeChoice ?? shouldShowWelcome(dismissed, itemCount)
 
   // Count what exists so the welcome returns when there is nothing to look at.
   useEffect(() => {
@@ -46,7 +47,7 @@ export function Home({
   const dismiss = () => {
     setPref(WELCOME_KEY, '1')
     setDismissed('1')
-    setWelcomeOpen(false)
+    setWelcomeChoice(false)
   }
   const openRecorded = (shortId: string) => {
     setFocusSession(shortId)
@@ -81,7 +82,7 @@ export function Home({
           <button aria-pressed={tab === 'record'} onClick={() => setTab('record')}>Record</button>
         </div>
         {onHistory && <button onClick={onHistory}>History</button>}
-        <button onClick={() => setWelcomeOpen((o) => !o)} aria-expanded={showWelcome}>What is Perfhawk?</button>
+        <button onClick={() => setWelcomeChoice(!showWelcome)} aria-expanded={showWelcome}>What is Perfhawk?</button>
       </div>
       {showWelcome && <Welcome onImport={importFile} onRecord={() => setTab('record')} onDismiss={dismiss} />}
       <p className="muted tab-desc">
