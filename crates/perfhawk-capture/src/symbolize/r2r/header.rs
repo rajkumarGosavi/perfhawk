@@ -8,6 +8,9 @@ use std::ops::Range;
 const RTR_SIGNATURE: u32 = 0x0052_5452;
 const SECTION_RUNTIME_FUNCTIONS: u32 = 102;
 const SECTION_METHOD_DEF_ENTRY_POINTS: u32 = 103;
+/// Pairs of `u32` (cold runtime function index, hot runtime function index)
+/// for split methods (format version 8.0 and later).
+const SECTION_HOT_COLD_MAP: u32 = 120;
 /// Offset of `ManagedNativeHeader` inside `IMAGE_COR20_HEADER`.
 const COR_MANAGED_NATIVE_HEADER: usize = 64;
 /// Offset of `MetaData` inside `IMAGE_COR20_HEADER`.
@@ -23,6 +26,9 @@ pub struct R2rImage<'a> {
     pub runtime_functions: Range<usize>,
     /// Native-format sparse array indexed by MethodDef row.
     pub method_def_entry_points: Range<usize>,
+    /// 8-byte (cold, hot) runtime function index pairs; absent when no
+    /// method is split.
+    pub hot_cold_map: Option<Range<usize>>,
     /// The CLI metadata directory from the COR header.
     pub metadata: Range<usize>,
 }
@@ -128,13 +134,14 @@ pub fn open(data: &[u8]) -> Option<R2rImage<'_>> {
     }
     // READYTORUN_CORE_HEADER: u32 flags, u32 section count, then sections.
     let count = u32_at(hdr, 12)? as usize;
-    let (mut rf, mut md) = (None, None);
+    let (mut rf, mut md, mut hc) = (None, None, None);
     for i in 0..count.min(256) {
         let o = 16 + i * 12;
         let (ty, rva, size) = (u32_at(hdr, o)?, u32_at(hdr, o + 4)?, u32_at(hdr, o + 8)?);
         match ty {
             SECTION_RUNTIME_FUNCTIONS => rf = range(rva, size),
             SECTION_METHOD_DEF_ENTRY_POINTS => md = range(rva, size),
+            SECTION_HOT_COLD_MAP => hc = range(rva, size),
             _ => {}
         }
     }
@@ -144,6 +151,7 @@ pub fn open(data: &[u8]) -> Option<R2rImage<'_>> {
         minor,
         runtime_functions: rf?,
         method_def_entry_points: md?,
+        hot_cold_map: hc,
         metadata: range(meta_rva, meta_size)?,
     })
 }
