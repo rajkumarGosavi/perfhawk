@@ -90,7 +90,7 @@ export function ProfileList({
       {profiles === null ? (
         !error && <p className="muted">Loading...</p>
       ) : profiles.length === 0 ? (
-        <p className="muted">No profiles yet. Import one above.</p>
+        <p className="muted">No profiles yet. Import a file above, or record one with <code>perfhawk record &lt;target&gt; --open</code>.</p>
       ) : (
         <div className="table-wrap">
           <table>

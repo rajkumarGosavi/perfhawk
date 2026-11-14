@@ -80,7 +80,7 @@ export function SessionList({
         !error && <p className="muted">Loading...</p>
       ) : sessions.length === 0 ? (
         <p className="muted">
-          No sessions yet. Record one with <code>perfhawk record --pid &lt;pid&gt;</code>.
+          No sessions yet. A session is one recording run: start one with <code>perfhawk record &lt;target&gt; --open</code>.
         </p>
       ) : (
         <div className="table-wrap">

@@ -237,3 +237,11 @@ td.down { color: var(--diff-down-3); }
 .help-keys { display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-4); margin: var(--space-2) 0; }
 .help-keys dt { font-family: var(--mono); font-weight: 600; }
 .help-keys dd { margin: 0; }
+
+/* Welcome */
+.welcome { margin-bottom: var(--space-3); }
+.welcome h2 { font-size: var(--text-lg); }
+.welcome h3 { font-size: var(--text-md); margin: 0 0 var(--space-1); }
+.welcome-actions { display: grid; grid-template-columns: 1fr; gap: var(--space-3); margin: var(--space-3) 0; }
+@media (min-width: 700px) { .welcome-actions { grid-template-columns: 1fr 1fr; } }
+.tab-desc { margin: 0 0 var(--space-2); }
