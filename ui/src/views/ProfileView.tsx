@@ -9,10 +9,9 @@ import { hotPath } from '../analysis/hotPath'
 import { useDocumentTitle } from '../a11y/announce'
 import { viewTitle } from '../a11y/title'
 import { keyAction } from '../analysis/keys'
-import { activeFilterCount, filtersToggleLabel } from './filters'
 import { effectiveExclude } from '../analysis/perfhawk'
 import { addTransform, decodeTx, encodeTx, type Transform } from '../analysis/transforms'
-import { FlameGraph, type FlameExportApi } from '../flame/FlameGraph'
+import type { FlameExportApi } from '../flame/FlameGraph'
 import { toCollapsed } from '../export/collapsed'
 import { toCsv } from '../export/csv'
 import { copyText, downloadBlob, downloadText, fileStem } from '../export/download'
@@ -34,6 +33,10 @@ import { TopTable } from './TopTable'
 import { TransformBar } from './TransformBar'
 import { Term } from '../help/Term'
 import { Skeleton } from './Skeleton'
+import { FilterBar } from './FilterBar'
+import type { FilterKind } from './filterModel'
+import { TimelineStrip } from './TimelineStrip'
+import { Workbench } from './Workbench'
 
 type Data =
   | { kind: 'flame'; tree: FlameNode }
@@ -44,7 +47,7 @@ type Data =
   | { kind: 'graph'; graph: CallGraph }
   | { kind: 'heat'; heat: Heatmap }
 
-const FLAME_LAYOUTS: [ViewName, string][] = [['flame', 'Flame'], ['icicle', 'Icicle'], ['both', 'Flame + table']]
+const FLAME_LAYOUTS: [ViewName, string][] = [['flame', 'Flame'], ['icicle', 'Icicle']]
 const defaultGroupBy = (kind: string): 'stack' | 'site' => (kind === 'lock' || kind === 'blocking' ? 'site' : 'stack')
 const HOT_VIEWS: ViewName[] = ['flame', 'icicle', 'tree', 'both']
 
@@ -74,9 +77,6 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
   const [exportMsg, setExportMsg] = useState<string | null>(null)
 
   const replace = (patch: Partial<ViewState>) => navigate(patch, 'replace')
-  const [focus, setFocus] = useDebounced(state.focus ?? '', (v) => replace({ focus: v || undefined }))
-  const [exclude, setExclude] = useDebounced(state.exclude ?? '', (v) => replace({ exclude: v || undefined }))
-  const [hide, setHide] = useDebounced(state.hide ?? '', (v) => replace({ hide: v || undefined }))
   const [search, setSearch] = useDebounced(state.search ?? '', (v) => replace({ search: v || undefined }))
 
   useEffect(() => {
@@ -119,7 +119,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         ? getGroups(ref, { ...q, by: groupBy, limit: 500 }).then((rows) => ({ kind: 'groups', rows }))
         : view === 'top'
         ? getTop(ref, { ...q, limit: 500, sort }).then((rows) => ({ kind: 'top', rows }))
-        : view === 'both'
+        : view === 'both' || view === 'flame' || view === 'icicle'
           ? Promise.all([getFlame(ref, q), getTop(ref, { ...q, limit: 500, sort })]).then(([tree, rows]) => ({
               kind: 'both', tree, rows,
             }))
@@ -135,10 +135,12 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
 
   const pushView = (patch: Partial<ViewState>) => navigate(patch, 'push')
   const hot = !!state.hot
-  const filterCount = activeFilterCount({ focus, exclude, hide, hidePh: state.hidePh })
-  const [filtersOpen, setFiltersOpen] = useState(true)
   useDocumentTitle(viewTitle(state, record?.name))
   const onTransform = (t: Transform) => navigate({ tx: encodeTx(addTransform(decodeTx(tx), t)) }, 'push')
+  const onFilter = (kind: FilterKind, value: string) => {
+    const cur = (state[kind] ?? '').trim()
+    replace({ [kind]: cur ? `${cur}|${value}` : value })
+  }
   const toggleHot = () => navigate({ hot: hot ? undefined : true }, 'replace')
 
   useEffect(() => {
@@ -221,10 +223,10 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       <div className="toolbar">
         <h2 className="view-title mono">{record?.name ?? ref}</h2>
         {record && <><FidelityBadge fidelity={record.fidelity} /><Term k="fidelity" icon /></>}
-        {FLAME_LAYOUTS.some(([v]) => v === view) && (
+        {(view === 'flame' || view === 'icicle' || view === 'both') && (
           <div className="tabs" role="group" aria-label="Flame layout">
             {FLAME_LAYOUTS.map(([v, label]) => (
-              <button key={v} aria-pressed={view === v} onClick={() => pushView({ view: v })}>{label}</button>
+              <button key={v} aria-pressed={(view === 'both' ? 'flame' : view) === v} onClick={() => pushView({ view: v })}>{label}</button>
             ))}
           </div>
         )}
@@ -262,34 +264,25 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           </select>
         </label>
         <label className="field">Search<input id="fn-search" ref={searchRef} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="highlight" /></label>
-        <button
-          type="button"
-          aria-expanded={filtersOpen}
-          aria-controls="profile-filters"
-          onClick={() => setFiltersOpen((o) => !o)}
-        >
-          <span aria-hidden="true">{filtersOpen ? '▾' : '▸'}</span> {filtersToggleLabel(filtersOpen, filterCount)}
-        </button>
       </div>
-      {filtersOpen && (
-        <div className="toolbar" id="profile-filters" role="group" aria-label="Filters">
-          <span className="field-wrap"><label className="field">Focus<input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="regex" /></label><Term k="focus" icon /></span>
-        <span className="field-wrap"><label className="field">Exclude<input value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder="regex" /></label><Term k="exclude" icon /></span>
-        <span className="field-wrap"><label className="field">Hide<input value={hide} onChange={(e) => setHide(e.target.value)} placeholder="regex" /></label><Term k="hide" icon /></span>
-        <label className="field check" title="Drop samples from Perfhawk's own in-process Go agent (agent, fgprof, pprof decoder), so percentages describe your app only.">
-          <input type="checkbox" checked={!!state.hidePh} onChange={(e) => navigate({ hidePh: e.target.checked ? true : undefined }, 'push')} />
-          Hide Perfhawk frames
-        </label>
-        </div>
+      <FilterBar
+        focus={state.focus}
+        exclude={state.exclude}
+        hide={state.hide}
+        hidePh={state.hidePh}
+        onSet={(kind: FilterKind, value) => replace({ [kind]: value })}
+        onHidePh={(on) => navigate({ hidePh: on ? true : undefined }, 'push')}
+      />
+      {record?.has_timeline && view !== 'summary' && view !== 'time' && (
+        <TimelineStrip
+          profileRef={ref}
+          query={{ st, focus: qf, exclude: qe, hide: qh, tx }}
+          range={t0 !== undefined && t1 !== undefined ? { t0, t1 } : undefined}
+          onRange={(r) => replace({ t0: r?.t0, t1: r?.t1 })}
+        />
       )}
-      {(t0 !== undefined || state.b0 !== undefined) && (
-        <div className="toolbar" role="group" aria-label="Time selection">
-          {t0 !== undefined && t1 !== undefined && (
-            <span className="chip">
-              <span className="mono">Window: {formatRange({ t0, t1 })}</span>
-              <button aria-label="Clear window" onClick={() => navigate({ t0: undefined, t1: undefined }, 'push')}>×</button>
-            </span>
-          )}
+      {state.b0 !== undefined && (
+        <div className="toolbar" role="group" aria-label="Baseline window">
           {state.b0 !== undefined && state.b1 !== undefined && (
             <span className="chip">
               <span className="mono">Baseline: {formatRange({ t0: state.b0, t1: state.b1 })}</span>
@@ -317,18 +310,6 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           navigate={navigate}
         />
       )}
-      {data?.kind === 'flame' && (view === 'flame' || view === 'icicle') && (
-        <FlameGraph
-          root={data.tree}
-          unit={unit}
-          inverted={view === 'icicle'}
-          search={state.search}
-          highlight={highlight}
-          exportRef={exportRef}
-          onSelectFunc={(f) => pushView({ view: 'sandwich', func: f })}
-          onViewAsTree={() => pushView({ view: 'tree' })}
-        />
-      )}
       {data?.kind === 'flame' && view === 'tree' && (
         <CallTree
           root={data.tree}
@@ -338,26 +319,27 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           onTransform={onTransform}
         />
       )}
-      {data?.kind === 'both' && view === 'both' && (
-        <>
-          <FlameGraph
-            root={data.tree}
-            unit={unit}
-            inverted={false}
-            search={state.search}
-            highlight={highlight}
-            exportRef={exportRef}
-            onSelectFunc={(f) => pushView({ view: 'sandwich', func: f })}
-            onViewAsTree={() => pushView({ view: 'tree' })}
-          />
-          <TopTable
-            rows={data.rows}
-            unit={unit}
-            sort={sort}
-            onSort={(s) => pushView({ sort: s === 'self' ? undefined : s })}
-            onSelect={(f) => pushView({ view: 'sandwich', func: f })}
-          />
-        </>
+      {data?.kind === 'both' && (view === 'flame' || view === 'icicle' || view === 'both') && (
+        <Workbench
+          tree={data.tree}
+          rows={data.rows}
+          unit={unit}
+          inverted={view === 'icicle'}
+          profileRef={ref}
+          query={{ st, focus: qf, exclude: qe, hide: qh, depth, tx, t0, t1 }}
+          search={state.search}
+          highlight={highlight}
+          exportRef={exportRef}
+          bottomTab={state.bt ?? 'top'}
+          onBottomTab={(t) => navigate({ bt: t === 'top' ? undefined : t }, 'replace')}
+          sort={sort}
+          onSort={(s) => pushView({ sort: s === 'self' ? undefined : s })}
+          hot={hot}
+          onTransform={onTransform}
+          onFilter={onFilter}
+          onSandwich={(f) => pushView({ view: 'sandwich', func: f })}
+          navigate={navigate}
+        />
       )}
       {data?.kind === 'top' && view === 'top' && (
         <TopTable

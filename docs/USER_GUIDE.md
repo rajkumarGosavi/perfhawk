@@ -466,9 +466,10 @@ deepest rows are clipped with a notice; use Focus or zoom to see them.
 
 ### Toolbar
 - **Sample type**: choose which value to analyze, for example `inuse_space` or `alloc_space` for a Go heap profile.
-- **Focus / Exclude / Hide**: regex filters, updated as you type (see §6).
+- **Filters**: applied Focus, Exclude and Hide filters show as chips under the toolbar; remove one with its x. **+ Add filter** opens a small form: pick the type, enter a regular expression (checked before it is applied; see §6). **Hide Perfhawk frames** is a toggle next to them.
+- **Time range** (recordings with time data): a strip above the view shows activity over time. Drag on it to select a window; the view, tables and findings follow. Esc, double-click or **Full recording** clears it; with the strip focused, arrow keys move and resize the window.
 - **Search**: highlights matching frames in the graph without filtering anything.
-- **Views**: the left rail lists Summary, Flame graph, Call tree, Top functions, Timeline (recordings only), Call graph, Groups and History. In the flame view a **Flame / Icicle / Flame + table** switch in the toolbar changes the layout. Sandwich is opened from a function; older links with `view=icicle`, `both` or `sandwich` still work.
+- **Views**: the left rail lists Summary, Flame graph, Call tree, Top functions, Timeline (recordings only), Call graph, Groups and History. The Flame graph page is a workbench: the flame graph, an **Inspector** for the clicked frame (self and total, Focus subtree / Merge / Drop / Hide / Sandwich, direct callers and callees) and **Top functions / Call tree / Findings** tabs below. A **Flame / Icicle** switch in the toolbar flips the graph. Sandwich is opened from a function; older links with `view=icicle`, `both` or `sandwich` still work (`both` now opens the workbench). `bt=tree` or `bt=findings` selects the lower tab.
 - **Command palette (Ctrl K)**: jump to a view, focus search, open help or switch the theme by typing.
 - **Hot path (h)**: highlights the hottest call path in Flame, Icicle, Call tree and Both.
 - **?**: lists the keyboard shortcuts.

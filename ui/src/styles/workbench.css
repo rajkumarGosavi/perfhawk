@@ -1,0 +1,46 @@
+/* Profile workbench: timeline strip, filter bar, flame + inspector, tables */
+.timeline-strip { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3); }
+.timeline-strip-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin-bottom: var(--space-2); font-size: 13px; }
+.timeline-crumbs { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); }
+.timeline-crumbs .linklike:disabled { color: var(--muted); cursor: default; }
+.timeline-hint { margin-left: auto; font-size: var(--text-sm); }
+.timeline-svg { display: block; width: 100%; height: 64px; background: var(--bg); border-radius: var(--radius-sm); cursor: crosshair; touch-action: none; }
+.timeline-line { fill: none; stroke: var(--muted); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.timeline-band { fill: var(--accent); fill-opacity: 0.18; }
+.timeline-edge { fill: var(--accent); }
+
+.filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.filter-toggle, .filter-add { border-radius: 14px; min-height: 32px; padding: 2px var(--space-3); font-size: var(--text-sm); }
+.filter-add { border-style: dashed; border-color: var(--border-strong); background: transparent; color: var(--muted); }
+.filter-toggle[aria-pressed='true'] { background: var(--accent-soft); color: var(--fg); border-color: var(--accent); }
+.filter-pop { z-index: 50; width: min(92vw, 360px); background: var(--surface-raised); color: var(--fg); border: 1px solid var(--border-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-1); padding: var(--space-4); }
+.filter-form { display: flex; flex-direction: column; gap: var(--space-3); }
+.filter-form .field input, .filter-form .field select { width: 100%; }
+.filter-error { margin: 0; color: var(--danger-fg); background: var(--danger-bg); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-sm); }
+.filter-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
+.workbench { display: flex; flex-direction: column; gap: var(--space-3); }
+.workbench-main { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-start; }
+.workbench-flame { flex: 999 1 520px; min-width: 0; }
+.workbench-tables { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
+
+.inspector { flex: 1 1 280px; max-width: 420px; min-width: 260px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); box-sizing: border-box; }
+.inspector-name { margin: 0; font-size: var(--text-md); word-break: break-all; }
+.inspector-file { margin: 0; font-size: var(--text-sm); word-break: break-all; }
+.inspector-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.inspector-card { display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); }
+.inspector-card strong { font-size: var(--text-lg); }
+.inspector-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.inspector-actions button { min-height: 32px; font-size: var(--text-sm); }
+.inspector-list h4 { margin: 0 0 var(--space-1); font-size: 13px; }
+.inspector-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.inspector-list li { display: flex; align-items: center; gap: var(--space-2); }
+.inspector-fn { flex: 1; min-width: 0; font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inspector-bar { flex: 0 0 72px; height: 6px; background: var(--border); border-radius: 3px; }
+.inspector-bar span { display: block; height: 6px; background: var(--heat-3); border-radius: 3px; }
+.inspector-list .num { flex: 0 0 48px; font-size: var(--text-sm); }
+
+@media (max-width: 900px) {
+  .inspector { max-width: none; flex-basis: 100%; }
+  .timeline-hint { margin-left: 0; }
+}
