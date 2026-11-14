@@ -313,3 +313,20 @@ fn truncated_payloads_never_panic() {
     }
     let _ = d.finish();
 }
+
+#[test]
+fn nt_paths_map_to_drive_letters() {
+    let map = vec![
+        ("\\Device\\HarddiskVolume3".to_string(), "C:".to_string()),
+        ("\\Device\\HarddiskVolume30".to_string(), "D:".to_string()),
+    ];
+    assert_eq!(
+        nt_to_dos("\\Device\\HarddiskVolume3\\data\\x.db", &map),
+        "C:\\data\\x.db"
+    );
+    // a longer device name must not match a shorter prefix
+    assert_eq!(nt_to_dos("\\Device\\HarddiskVolume30\\a", &map), "D:\\a");
+    assert_eq!(nt_to_dos("\\Device\\HarddiskVolume3", &map), "C:");
+    assert_eq!(nt_to_dos("\\Device\\Other\\a", &map), "\\Device\\Other\\a");
+    assert_eq!(nt_to_dos("C:\\already", &map), "C:\\already");
+}

@@ -281,3 +281,16 @@ impl Decoder {
         self.events
     }
 }
+
+/// `\Device\HarddiskVolume3\a` to `C:\a`, given (device, drive) pairs. Paths
+/// on unknown devices are returned unchanged.
+pub fn nt_to_dos(path: &str, devices: &[(String, String)]) -> String {
+    for (dev, drive) in devices {
+        if let Some(rest) = path.strip_prefix(dev.as_str()) {
+            if rest.is_empty() || rest.starts_with('\\') {
+                return format!("{drive}{rest}");
+            }
+        }
+    }
+    path.to_string()
+}
