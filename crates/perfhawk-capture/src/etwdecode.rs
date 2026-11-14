@@ -44,8 +44,10 @@ fn u64_at(d: &[u8], o: usize) -> Option<u64> {
 fn wstr_at(d: &[u8], o: usize) -> Option<String> {
     let rest = d.get(o..)?;
     let units: Vec<u16> = rest
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
         .take_while(|&u| u != 0)
         .collect();
     Some(String::from_utf16_lossy(&units))
@@ -224,8 +226,10 @@ impl Decoder {
         }
         let frames: Vec<u64> = d
             .get(16..)?
-            .chunks_exact(8)
-            .map(|c| u64::from_le_bytes(c.try_into().unwrap()))
+            .as_chunks::<8>()
+            .0
+            .iter()
+            .map(|c| u64::from_le_bytes(*c))
             .filter(|&a| a < KERNEL_BASE)
             .collect();
         match self.pending.remove(&key) {

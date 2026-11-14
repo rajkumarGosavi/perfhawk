@@ -26,6 +26,8 @@ flate2.workspace = true
 windows = { version = "0.57", features = [
     "Win32_Foundation",
     "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_Diagnostics_Etw",
     "Win32_System_Performance",
     "Win32_System_Threading",
