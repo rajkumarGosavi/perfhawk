@@ -1,7 +1,10 @@
 //! Real ETW tests. Windows only. The elevated ones are `#[ignore]`d and need
 //! `PERFHAWK_ETW=1` plus an administrator shell:
 //!
-//!     PERFHAWK_ETW=1 cargo test -p perfhawk-capture --test etw_real -- --ignored --nocapture
+//!     PERFHAWK_ETW=1 cargo test -p perfhawk-capture --test etw_real -- --ignored --nocapture --test-threads=1
+//!
+//! `--test-threads=1` is required: on Windows builds that fall back to the classic
+//! "NT Kernel Logger", only one kernel trace can run at a time.
 #![cfg(windows)]
 
 use perfhawk_capture::etw::{is_elevated, EtwError, RawTrace};
@@ -119,7 +122,12 @@ fn provider_captures_block_io_off_cpu_and_sched_for_this_process() {
         .iter()
         .find(|a| a.kind == ProfileKind::BlockIo)
         .unwrap();
-    assert!(io.warning.is_none(), "block io warning: {:?}", io.warning);
+    // This profiles the test binary itself: system DLL frames have no names
+    // yet (PDB support is a follow-up), so an "unresolved frames" note is fine.
+    // Any other warning (lost events, event cap) is not.
+    if let Some(w) = &io.warning {
+        assert!(w.contains("unresolved frames"), "block io warning: {w}");
+    }
     assert!(io.timeline.is_some());
     // the profile bytes decode and name our file
     let p = perfhawk_import::import_pprof(&io.bytes, &Default::default()).expect("valid pprof");
@@ -140,4 +148,62 @@ fn dropping_a_trace_stops_the_session() {
     let second = RawTrace::start(&name, 0x2, &[], |_| {})
         .expect("the same session name is free again after the drop");
     second.stop();
+}
+
+#[test]
+#[ignore = "needs an elevated shell, PERFHAWK_ETW=1 and a built examples/dotnet-demo (Release)"]
+fn dotnet_session_reports_method_names_for_a_running_process() {
+    use perfhawk_capture::etw::UserTrace;
+    use perfhawk_capture::symbolize::{
+        decode_method_event, DOTNET_KEYWORDS, GUID_DOTNET_RUNDOWN, GUID_DOTNET_RUNTIME,
+    };
+    use std::sync::Mutex;
+
+    if !enabled() || !is_elevated() {
+        eprintln!("skipped: needs PERFHAWK_ETW=1 and an elevated shell");
+        return;
+    }
+    let dll = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/dotnet-demo/bin/Release/net8.0/dotnet-demo.dll");
+    assert!(
+        dll.exists(),
+        "build it: dotnet build examples/dotnet-demo -c Release"
+    );
+    let mut child = std::process::Command::new("dotnet")
+        .arg(&dll)
+        .args(["all", "8"])
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .expect("dotnet starts");
+    std::thread::sleep(std::time::Duration::from_secs(2)); // let it JIT some methods
+    let pid = child.id();
+    let names = Arc::new(Mutex::new(Vec::<String>::new()));
+    let sink = names.clone();
+    let trace = UserTrace::start(
+        &format!("perfhawk-test-dotnet-{}", std::process::id()),
+        &[
+            (GUID::from_u128(GUID_DOTNET_RUNTIME), DOTNET_KEYWORDS),
+            (GUID::from_u128(GUID_DOTNET_RUNDOWN), DOTNET_KEYWORDS),
+        ],
+        pid,
+        move |r| {
+            if r.pid == pid {
+                if let Some(m) = decode_method_event(r.id, r.data) {
+                    sink.lock().unwrap().push(m.name);
+                }
+            }
+        },
+    )
+    .expect("user trace starts when elevated");
+    std::thread::sleep(std::time::Duration::from_secs(4));
+    trace.stop();
+    let _ = child.kill();
+    let _ = child.wait();
+    let names = names.lock().unwrap();
+    assert!(
+        names.iter().any(|n| n.starts_with("DotnetDemo.")),
+        "rundown did not report the demo's methods; got {} names, e.g. {:?}",
+        names.len(),
+        names.iter().take(5).collect::<Vec<_>>()
+    );
 }

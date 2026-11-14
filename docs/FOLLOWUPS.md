@@ -54,7 +54,7 @@ Items found during reviews and deliberately deferred. ~~Struck through~~ items w
 
 ## From Phase 2 M3 (ETW provider)
 
-- **.NET managed frames.** Subscribe to `Microsoft-Windows-DotNETRuntime` and its Rundown provider (JIT, Loader and NGen keywords) in a second user-mode session and feed `MethodLoad` events to `Symbolizer::add_method` (the resolver and `load_methods` already exist). Until then .NET frames in Block I/O and off-CPU profiles show as module+offset or `[unknown]`.
+- **.NET managed frames: implemented, not yet verified live.** `EtwProvider` starts a second user-mode session (`etw::UserTrace`) on `Microsoft-Windows-DotNETRuntime` and its Rundown provider (Loader|JIT|NGen, PID-filtered) when the target is .NET, and feeds `MethodLoadVerbose`/`MethodDCStartVerbose` events to `Symbolizer::add_method`. Run `dotnet_session_reports_method_names_for_a_running_process` and a real `perfhawk record --kind block-io` against the Jellyfin sample from an elevated shell with `PERFHAWK_ETW=1`. Still missing: ReadyToRun (precompiled framework) method names (needs the R2R keyword or PDB/R2R map reading), so framework frames may still be `module+offset`.
 - **PDB names** for system and native DLL frames (DbgHelp or a PDB reader); today they are `module+0xoffset`. ReadyToRun names too.
 - **Stale sessions.** A crashed run leaves `perfhawk-kernel-<pid>` registered; enumerate with `QueryAllTraces` and stop the ones whose process is gone at the next start.
 - **Event volume.** The callback decodes every kernel record of the machine and keeps only the target's; for very long captures, measure memory and consider a kernel-side process filter.
