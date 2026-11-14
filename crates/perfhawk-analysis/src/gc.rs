@@ -313,6 +313,9 @@ pub struct GcReport {
     pub summary: GcSummary,
     pub series: GcSeries,
     pub findings: Vec<GcFinding>,
+    /// At most `GcConfig::max_points` events (the ones with the longest pauses), in time order,
+    /// for the event table. The summary is computed from all events.
+    pub events: Vec<GcEvent>,
 }
 
 fn ms(ns: u64) -> f64 {
@@ -459,11 +462,23 @@ pub fn gc_findings(d: &GcData, s: &GcSummary, cfg: &GcConfig) -> Vec<GcFinding> 
 pub fn report(d: &GcData, cfg: &GcConfig) -> GcReport {
     let summary = summarize(d, cfg);
     let findings = gc_findings(d, &summary, cfg);
+    let mut events: Vec<GcEvent> = d.events.clone();
+    if events.len() > cfg.max_points {
+        // Longest pauses first (earlier events win ties), then back into time order.
+        events.sort_by(|a, b| {
+            b.pause_ns
+                .cmp(&a.pause_ns)
+                .then(a.start_ns.cmp(&b.start_ns))
+        });
+        events.truncate(cfg.max_points);
+        events.sort_by_key(|e| e.start_ns);
+    }
     GcReport {
         runtime: d.runtime.clone(),
         notes: d.notes.clone(),
         series: series(d, cfg),
         summary,
         findings,
+        events,
     }
 }

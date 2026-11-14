@@ -142,4 +142,5 @@ async fn gc_large_report_is_bounded() {
     assert_eq!(status, 200);
     assert_eq!(v["summary"]["totalGcs"], 200_000);
     assert!(v["series"]["pauses"].as_array().unwrap().len() <= 500);
+    assert!(v["events"].as_array().unwrap().len() <= 500, "event table payload is bounded");
 }

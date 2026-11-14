@@ -189,3 +189,31 @@ fn report_bundles_summary_series_findings_sorted() {
     // Warn before Info.
     assert_eq!(rules, vec!["gc_long_pause", "gc_induced"]);
 }
+
+#[test]
+fn report_events_are_bounded_keep_the_longest_and_stay_ordered() {
+    let n = 1_000u32;
+    let evs: Vec<GcEvent> = (0..n).map(|i| ev(i, Some(0), 1 + i as u64 % 7)).collect();
+    let mut evs = evs;
+    evs[777].pause_ns = 90 * MS;
+    evs[777].duration_ns = 91 * MS;
+    let cfg = GcConfig::default();
+    let r = report(&data(evs), &cfg);
+    assert_eq!(r.events.len(), cfg.max_points);
+    assert!(
+        r.events.iter().any(|e| e.pause_ns == 90 * MS),
+        "the longest pause is kept"
+    );
+    assert!(
+        r.events.windows(2).all(|w| w[0].start_ns <= w[1].start_ns),
+        "ordered by time"
+    );
+    assert_eq!(r.summary.total_gcs, 1_000);
+}
+
+#[test]
+fn report_events_are_all_present_when_few() {
+    let evs: Vec<GcEvent> = (0..5).map(|i| ev(i, Some(1), 3)).collect();
+    let r = report(&data(evs), &GcConfig::default());
+    assert_eq!(r.events.len(), 5);
+}
