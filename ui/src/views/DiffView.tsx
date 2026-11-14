@@ -14,7 +14,7 @@ import { formatPct, formatValue } from '../format'
 import type { ViewState } from '../url'
 import { formatRange } from '../time/range'
 import { CallTree } from './CallTree'
-import { diffStatus, filterDiffTree, filterRows, toSideTree } from './diffHelpers'
+import { diffStatus, directionMark, filterDiffTree, filterRows, toSideTree } from './diffHelpers'
 import { toFlameNodes, type DiffFlameNode } from './diffTree'
 import { effectiveExclude } from '../analysis/perfhawk'
 import { TransformBar } from './TransformBar'
@@ -247,9 +247,9 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
       {!baseRef && <p className="muted">Pick a base profile to compare against.</p>}
       {loading && !error && <p className="muted" role="status">Loading...</p>}
       <div className="diff-legend muted" aria-hidden="true">
-        <span className="swatch" style={{ background: 'var(--diff-down-4)' }} /> shrank
+        <span className="swatch" style={{ background: 'var(--diff-down-4)' }} /> ▼ shrank
         <span className="swatch" style={{ background: 'var(--diff-flat)' }} /> unchanged
-        <span className="swatch" style={{ background: 'var(--diff-up-4)' }} /> grew
+        <span className="swatch" style={{ background: 'var(--diff-up-4)' }} /> ▲ grew
         · width = larger of base and head
       </div>
       <div style={{ opacity: loading ? 0.5 : 1 }}>
@@ -293,10 +293,10 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
                   {rows.map((r, i) => (
                     <tr key={`${r.name}|${r.file}|${i}`}>
                       <td className="name" title={r.file ? `${r.name}\n${r.file}` : r.name}>{r.name}</td>
-                      <td className={`num ${r.deltaSelf > 0 ? 'up' : r.deltaSelf < 0 ? 'down' : ''}`}>{signed(r.deltaSelf, unit)}</td>
+                      <td className={`num ${r.deltaSelf > 0 ? 'up' : r.deltaSelf < 0 ? 'down' : ''}`}><span aria-hidden="true">{directionMark(r.deltaSelf)}</span> {signed(r.deltaSelf, unit)}</td>
                       <td className="num">{formatValue(r.baseSelf, unit)}</td>
                       <td className="num">{formatValue(r.headSelf, unit)}</td>
-                      <td className={`num ${r.deltaTotal > 0 ? 'up' : r.deltaTotal < 0 ? 'down' : ''}`}>{signed(r.deltaTotal, unit)}</td>
+                      <td className={`num ${r.deltaTotal > 0 ? 'up' : r.deltaTotal < 0 ? 'down' : ''}`}><span aria-hidden="true">{directionMark(r.deltaTotal)}</span> {signed(r.deltaTotal, unit)}</td>
                       <td className="num">{r.baseTotal > 0 ? formatPct((r.deltaTotal / r.baseTotal) * 100) : ''}</td>
                       <td>{(() => { const st = diffStatus(r.baseTotal, r.headTotal); return st === 'new' || st === 'gone' ? st : '' })()}</td>
                     </tr>

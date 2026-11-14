@@ -2,20 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { FlameNode } from '../api'
 import { formatPct, formatValue } from '../format'
 import { subscribeTheme } from '../theme'
+import { hashHue, labelColorFor } from './color'
 import { layoutFlame, layoutHeight, maxCanvasRows, type Rect } from './layout'
 
 export const ROW_HEIGHT = 18
 const LABEL_MIN_W = 30
-
-function hashHue(name: string): number {
-  let h = 2166136261
-  for (let i = 0; i < name.length; i++) {
-    h ^= name.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  // Warm range: red to yellow (0..55 degrees).
-  return (h >>> 0) % 56
-}
 
 type Props = {
   root: FlameNode
@@ -127,7 +118,6 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
     const cs = getComputedStyle(canvas)
     const sat = cs.getPropertyValue('--flame-sat').trim() || '78%'
     const light = cs.getPropertyValue('--flame-light').trim() || '62%'
-    const text = cs.getPropertyValue('--flame-text').trim() || '#000'
     const match = cs.getPropertyValue('--match').trim() || '#1e6fe0'
     const hotColor = cs.getPropertyValue('--flame-hot').trim() || '#000'
     ctx.font = '11px ui-monospace, Consolas, monospace'
@@ -136,11 +126,12 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
       const y = r.y - shift
       if (y < 0 || y >= height) continue
       const isMatch = !!needle && r.node.name.toLowerCase().includes(needle)
-      ctx.fillStyle = isMatch
+      const fill = isMatch
         ? match
         : colorOf
           ? resolveColor(cs, colorOf(r.node))
           : `hsl(${hashHue(r.node.name)} ${sat} ${light})`
+      ctx.fillStyle = fill
       ctx.fillRect(r.x, y, Math.max(r.w - 1, 0.5), ROW_HEIGHT - 1)
       if (highlight?.has(r.node)) {
         ctx.strokeStyle = hotColor
@@ -164,7 +155,7 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
         ctx.restore()
       }
       if (r.w > LABEL_MIN_W) {
-        ctx.fillStyle = isMatch ? '#ffffff' : text
+        ctx.fillStyle = labelColorFor(fill)
         ctx.save()
         ctx.beginPath()
         ctx.rect(r.x, y, r.w - 1, ROW_HEIGHT)

@@ -12,7 +12,6 @@
   --match: #1e6fe0;
   --flame-sat: 78%;
   --flame-light: 62%;
-  --flame-text: #2a1608;
   --flame-hot: #111111;
   --diff-flat: #9a948a;
   --diff-up-0: #f3c9c2;
@@ -47,7 +46,6 @@
     --match: #5aa7ff;
     --flame-sat: 60%;
     --flame-light: 40%;
-    --flame-text: #fbf3e8;
     --flame-hot: #ffffff;
     --diff-flat: #5d584f;
     --diff-up-0: #5a2a24;

@@ -63,3 +63,8 @@ export function toSideTree(root: DiffNode, side: 'base' | 'head'): DiffFlameNode
   }
   return out
 }
+
+/** A glyph for the direction of a change, so growth and shrinkage never rely on colour alone. */
+export function directionMark(delta: number): '▲' | '▼' | '' {
+  return delta > 0 ? '▲' : delta < 0 ? '▼' : ''
+}
