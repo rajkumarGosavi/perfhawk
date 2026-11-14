@@ -143,6 +143,7 @@ pub fn routes() -> Router<St> {
         )
         .route("/api/sessions/{reference}/pivot", get(pivot_h))
         .route("/api/sessions/{reference}/doctor", get(doctor_h))
+        .route("/api/sessions/{reference}/gc", get(gc_h))
         .route(
             "/api/sessions/{reference}/timeline",
             get(session_timeline_h),
@@ -883,6 +884,25 @@ async fn doctor_h(State(s): State<St>, Path(r): Path<String>) -> ApiResult<Respo
     })
     .await?;
     Ok(Json(d).into_response())
+}
+
+/// GC report for a session: `{"available": false, "reason"}` or `{"available": true, ...report}`.
+async fn gc_h(State(s): State<St>, Path(r): Path<String>) -> ApiResult<Response> {
+    let store = s.store.clone();
+    let report = blocking(move || {
+        let sess = store.resolve_session(&r)?;
+        crate::gc::report_for_session(&store, &sess)
+    })
+    .await?;
+    let body = match report {
+        Some(rep) => {
+            let mut v = serde_json::to_value(&rep).map_err(ApiError::internal)?;
+            v["available"] = true.into();
+            v
+        }
+        None => serde_json::json!({"available": false, "reason": "no GC data for this session"}),
+    };
+    Ok(Json(body).into_response())
 }
 
 async fn pivot_h(

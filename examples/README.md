@@ -53,6 +53,26 @@ This captures CPU (approximate), wall-clock, allocations, lock contention and
 threads, grouped as one session. To attach to a running demo instead, use
 `perfhawk record --pid <pid>`.
 
+### GC analysis with the `gc` workload
+
+`dotnet-demo gc <seconds>` adds a garbage-collection workload: steady short-lived
+allocations (gen0 collections), a list that keeps growing so objects are promoted and the
+heap after full GCs rises, a large-object allocation every half second (LOH), and three
+explicit `GC.Collect()` calls at 25%, 50% and 75% of the run. (`all` includes the
+allocation workload but not the explicit collects.)
+
+```bash
+perfhawk record --duration 15s -- dotnet examples/dotnet-demo/bin/Release/net8.0/dotnet-demo.dll gc 20
+perfhawk gc last
+```
+
+Expected: collections at gen0, gen1 and gen2, a `gc_heap_growth` finding ("possible leak")
+and a `gc_induced` finding (3 explicit collections). The demo prints
+`[dotnet-demo] GC.CollectionCount gen0=... gen1=... gen2=...` when it finishes if you want
+to compare: `gen0` is every collection, `gen1` counts gen1 and gen2 collections, `gen2` only
+gen2, while `perfhawk gc` lists collections by exactly their own generation. Open the session
+in `perfhawk ui` to see the charts.
+
 ## .NET with dotnet-trace (alternative)
 
 The `profile.ps1` / `profile.sh` scripts still work if you prefer `dotnet-trace`.

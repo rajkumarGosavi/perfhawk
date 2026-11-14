@@ -1,0 +1,9 @@
+{"schema":1,"runtime":"dotnet","start_unix_ns":1700000000000000000,"duration_ns":2000000000,"fidelity":"native",
+ "events":[
+  {"id":1,"start_ns":100000000,"generation":0,"kind":"blocking","reason":"allocation","reason_raw":"AllocSmall","induced":false,"pause_ns":2000000,"duration_ns":2500000,"heap_after_bytes":4000000,"gen_after":{"gen0":0,"gen1":1000000,"gen2":2000000,"loh":1000000}},
+  {"id":2,"start_ns":600000000,"generation":1,"kind":"blocking","reason":"allocation","reason_raw":"AllocSmall","induced":false,"pause_ns":3000000,"duration_ns":3500000,"heap_before_bytes":4000000,"heap_after_bytes":3500000},
+  {"id":3,"start_ns":1200000000,"generation":2,"kind":"background","reason":"induced","reason_raw":"Induced","induced":true,"pause_ns":4000000,"duration_ns":90000000}
+ ],
+ "heap":[{"t_ns":102500000,"total_bytes":4000000,"gen0":0,"gen1":1000000,"gen2":2000000,"loh":1000000}],
+ "alloc":{"bucket_ns":1000000000,"bytes":[1000000,2000000]},
+ "notes":["fixture"]}

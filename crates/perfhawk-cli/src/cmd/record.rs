@@ -16,6 +16,8 @@ pub struct Args {
     pub name: Option<String>,
     pub tags: Vec<String>,
     pub timeline: bool,
+    /// Capture GC data when the runtime supports it.
+    pub gc: bool,
 }
 
 pub const ONE_TARGET: &str = "choose one target: --pid, --url, --go-test or -- <program>";
@@ -62,6 +64,7 @@ pub fn run(store: &Store, a: Args, target: Target) -> (u8, Option<String>) {
             kinds: a.kinds,
             duration: a.duration,
             timeline: a.timeline,
+            gc: a.gc,
         },
         name: a.name,
         tags: a.tags,
@@ -112,6 +115,9 @@ pub fn run(store: &Store, a: Args, target: Target) -> (u8, Option<String>) {
         ]);
     }
     print_table(&rows, &[3, 4]);
+    if let Ok(Some(g)) = store.load_gc(&session.id) {
+        println!("{}", super::gc::headline(&g));
+    }
     let code = match session.status {
         SessionStatus::Complete => 0,
         SessionStatus::Partial => {

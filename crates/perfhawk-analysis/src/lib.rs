@@ -6,6 +6,7 @@ mod diff;
 mod doctor;
 mod filter;
 mod findings;
+pub mod gc;
 mod graph;
 mod groups;
 mod heatmap;

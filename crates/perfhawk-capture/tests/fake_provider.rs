@@ -12,6 +12,7 @@ type Script = Box<dyn Fn(&CancelToken) -> Result<CaptureOutcome, CaptureError> +
 struct FakeProvider {
     caps: Vec<Capability>,
     script: Script,
+    gc_support: bool,
 }
 
 fn cap(kind: ProfileKind, available: bool) -> Capability {
@@ -57,6 +58,9 @@ impl Provider for FakeProvider {
     fn capabilities(&self, _rt: &RuntimeInfo) -> Vec<Capability> {
         self.caps.clone()
     }
+    fn supports_gc(&self) -> bool {
+        self.gc_support
+    }
     fn capture(
         &self,
         _rt: &RuntimeInfo,
@@ -73,12 +77,24 @@ fn setup<F>(caps: Vec<Capability>, script: F) -> (tempfile::TempDir, Store, Prov
 where
     F: Fn(&CancelToken) -> Result<CaptureOutcome, CaptureError> + Send + Sync + 'static,
 {
+    setup_gc(caps, script, false)
+}
+
+fn setup_gc<F>(
+    caps: Vec<Capability>,
+    script: F,
+    gc_support: bool,
+) -> (tempfile::TempDir, Store, ProviderRegistry)
+where
+    F: Fn(&CancelToken) -> Result<CaptureOutcome, CaptureError> + Send + Sync + 'static,
+{
     let tmp = tempfile::TempDir::new().unwrap();
     let store = Store::open(tmp.path()).unwrap();
     let mut reg = ProviderRegistry::default();
     reg.register(Box::new(FakeProvider {
         caps,
         script: Box::new(script),
+        gc_support,
     }));
     (tmp, store, reg)
 }
@@ -90,6 +106,7 @@ fn req(kinds: Vec<ProfileKind>) -> RecordRequest {
             kinds,
             duration: Duration::from_secs(1),
             timeline: false,
+            gc: false,
         },
         name: None,
         tags: vec!["t".into()],
@@ -104,6 +121,7 @@ fn two_artifacts(end: CaptureEnd) -> CaptureOutcome {
         ],
         end,
         warnings: vec![],
+        gc: None,
     }
 }
 
@@ -160,6 +178,7 @@ fn record_target_exit_is_partial() {
             artifacts: vec![art(ProfileKind::Cpu, Fidelity::Native, CPU)],
             end: CaptureEnd::TargetExited,
             warnings: vec!["exited early".into()],
+            gc: None,
         })
     });
     let s = record(&store, &reg, &req(vec![]), &CancelToken::new(), &|_| {}).unwrap();
@@ -177,6 +196,7 @@ fn record_cancel_is_cancelled() {
             artifacts: vec![art(ProfileKind::Cpu, Fidelity::Native, CPU)],
             end: CaptureEnd::Cancelled,
             warnings: vec![],
+            gc: None,
         })
     });
     let token = CancelToken::new();
@@ -251,6 +271,7 @@ impl Provider for Spy {
             artifacts: vec![],
             end: CaptureEnd::Complete,
             warnings: vec![],
+            gc: None,
         })
     }
 }
@@ -312,6 +333,7 @@ fn cancelled_token_wins_over_target_exited() {
             artifacts: vec![art(ProfileKind::Cpu, Fidelity::Native, CPU)],
             end: CaptureEnd::TargetExited,
             warnings: vec![],
+            gc: None,
         })
     });
     let s = record(&store, &reg, &req(vec![]), &token, &|_| {}).unwrap();
@@ -344,6 +366,7 @@ fn cpu_with_timeline(t: Option<perfhawk_model::Timeline>) -> CaptureOutcome {
         artifacts: vec![a],
         end: CaptureEnd::Complete,
         warnings: vec![],
+        gc: None,
     }
 }
 
@@ -461,4 +484,76 @@ fn a_mismatched_timeline_is_dropped_with_a_warning_but_the_profile_is_kept() {
         s.warnings
     );
     assert!(store.load_timeline(&s.profile_ids[0]).unwrap().is_none());
+}
+
+const GC_JSON: &[u8] = include_bytes!("fixtures/gc.json");
+
+fn gc_req(gc: bool) -> RecordRequest {
+    let mut r = req(vec![ProfileKind::Cpu]);
+    r.plan.gc = gc;
+    r
+}
+
+fn cpu_outcome(gc: Option<perfhawk_model::GcData>) -> CaptureOutcome {
+    CaptureOutcome {
+        artifacts: vec![art(ProfileKind::Cpu, Fidelity::Native, CPU)],
+        end: CaptureEnd::Complete,
+        warnings: vec![],
+        gc,
+    }
+}
+
+#[test]
+fn record_stores_gc_data_with_the_session() {
+    let caps = vec![cap(ProfileKind::Cpu, true)];
+    let (_t, store, reg) = setup_gc(
+        caps,
+        |_| {
+            Ok(cpu_outcome(Some(
+                perfhawk_model::GcData::from_json(GC_JSON).unwrap(),
+            )))
+        },
+        true,
+    );
+    let s = record(&store, &reg, &gc_req(true), &CancelToken::new(), &|_| {}).unwrap();
+    assert_eq!(s.status, SessionStatus::Complete);
+    assert!(s.has_gc);
+    assert_eq!(store.load_gc(&s.id).unwrap().unwrap().events.len(), 3);
+}
+
+#[test]
+fn record_warns_when_gc_supported_but_missing() {
+    let caps = vec![cap(ProfileKind::Cpu, true)];
+    let (_t, store, reg) = setup_gc(caps, |_| Ok(cpu_outcome(None)), true);
+    let s = record(&store, &reg, &gc_req(true), &CancelToken::new(), &|_| {}).unwrap();
+    assert!(
+        s.warnings.iter().any(|w| w.contains("no GC data")),
+        "{:?}",
+        s.warnings
+    );
+    assert!(!s.has_gc);
+}
+
+#[test]
+fn record_does_not_warn_when_gc_not_requested() {
+    let caps = vec![cap(ProfileKind::Cpu, true)];
+    let (_t, store, reg) = setup_gc(caps, |_| Ok(cpu_outcome(None)), true);
+    let s = record(&store, &reg, &gc_req(false), &CancelToken::new(), &|_| {}).unwrap();
+    assert!(
+        s.warnings.iter().all(|w| !w.contains("GC")),
+        "{:?}",
+        s.warnings
+    );
+}
+
+#[test]
+fn record_does_not_warn_when_provider_does_not_support_gc() {
+    let caps = vec![cap(ProfileKind::Cpu, true)];
+    let (_t, store, reg) = setup_gc(caps, |_| Ok(cpu_outcome(None)), false);
+    let s = record(&store, &reg, &gc_req(true), &CancelToken::new(), &|_| {}).unwrap();
+    assert!(
+        s.warnings.iter().all(|w| !w.contains("GC")),
+        "{:?}",
+        s.warnings
+    );
 }

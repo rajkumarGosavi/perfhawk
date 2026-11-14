@@ -2,7 +2,7 @@
 //!
 //! `FAKE_SCRIPT` names the script. Each line is printed as-is, except
 //! directives: `{"type":"artifact","fixture":"<file>",...}` copies the fixture
-//! to `<--out>/<kind>.pb.gz` and prints a normal artifact line;
+//! to `<--out>/<kind>.pb.gz` (`gc.json` for kind `gc`) and prints a normal artifact line;
 //! `{"type":"wait_stop"}` blocks until `stop` (or EOF) arrives on stdin;
 //! `{"type":"echo_args"}` reports the helper's own arguments as a progress event;
 //! `{"type":"sleep","ms":N}` sleeps; `{"type":"exit","code":N}` exits at once.
@@ -81,7 +81,12 @@ fn main() {
                 let kind = v.get("kind").and_then(|k| k.as_str()).unwrap_or("cpu");
                 let fixture = v["fixture"].as_str().unwrap_or_default();
                 let dir = out_dir.clone().unwrap_or_else(|| ".".into());
-                let dest = std::path::Path::new(&dir).join(format!("{kind}.pb.gz"));
+                let file = if kind == "gc" {
+                    "gc.json".to_string()
+                } else {
+                    format!("{kind}.pb.gz")
+                };
+                let dest = std::path::Path::new(&dir).join(file);
                 let _ = std::fs::create_dir_all(&dir);
                 if let Err(e) = std::fs::copy(fixture, &dest) {
                     let _ = writeln!(

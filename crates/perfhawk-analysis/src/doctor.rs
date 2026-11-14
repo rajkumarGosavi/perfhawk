@@ -39,6 +39,9 @@ pub struct DoctorInput<'a> {
     pub profiles: Vec<DoctorProfile<'a>>,
     /// How to point `perfhawk record` at the target, for example `--pid 4242`.
     pub record_target: Option<String>,
+    /// GC event data summary, when the session has it. It replaces the stack-sample
+    /// estimate of GC cost with the measured pause share.
+    pub gc: Option<&'a crate::gc::GcSummary>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -473,8 +476,9 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
                 });
                 triggered.push((Verdict::WaitingUnknown, wait_share));
             }
-            // GC pressure is a finding, never the verdict.
-            if let Ok(gc_re) = Regex::new(GC_PATTERN) {
+            // GC pressure is a finding, never the verdict. Measured pauses (below) win over
+            // this stack-sample estimate when the session has GC data.
+            if let (None, Ok(gc_re)) = (input.gc, Regex::new(GC_PATTERN)) {
                 let mut gc_ns = 0i64;
                 let p = cpu_dp.profile;
                 for_each_sample(p, p.default_sample_type, &Filter::default(), |funcs, v| {
@@ -502,6 +506,26 @@ pub fn diagnose(input: &DoctorInput, cfg: &DoctorConfig) -> Diagnosis {
         }
         None => {
             notes.push("no usable CPU profile: CPU-bound and waiting rules were skipped".into())
+        }
+    }
+
+    if let Some(g) = input.gc {
+        if g.pause_share_pct >= cfg.gc_pct {
+            findings.push(DoctorFinding {
+                rule: "gc_pressure",
+                confidence: confidence(g.pause_share_pct, cfg.gc_pct, &Fidelity::Native),
+                fidelity: Fidelity::Native,
+                share_pct: g.pause_share_pct,
+                title: format!(
+                    "GC pressure: {:.0}% of wall time is GC pause",
+                    g.pause_share_pct
+                ),
+                detail: "Application threads were stopped by the garbage collector for this share of the capture (measured from GC events).".into(),
+                next: vec![],
+                hints: vec![
+                    "Reduce the allocation rate; run `perfhawk gc` for pauses, heap and allocation detail.".into(),
+                ],
+            });
         }
     }
 

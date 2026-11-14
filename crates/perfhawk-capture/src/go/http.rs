@@ -264,5 +264,6 @@ pub(crate) fn capture_http(
         artifacts: ordered,
         end,
         warnings,
+        gc: None,
     })
 }

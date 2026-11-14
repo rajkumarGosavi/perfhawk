@@ -70,6 +70,7 @@ fn capture_without_elevation_is_unsupported_with_the_elevated_hint() {
         kinds: vec![ProfileKind::BlockIo],
         duration: Duration::from_secs(1),
         timeline: true,
+        gc: false,
     };
     let err = EtwProvider::new()
         .capture(&rt(Some(1234)), &plan, &CancelToken::new(), &|_| {})

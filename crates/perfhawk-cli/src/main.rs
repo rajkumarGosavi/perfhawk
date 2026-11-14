@@ -36,6 +36,15 @@ enum Command {
         /// Tag to attach (repeatable)
         #[arg(long = "tag")]
         tags: Vec<String>,
+        /// Import GC data (a gc.json file or a .nettrace file) as a session instead of a profile
+        #[arg(long)]
+        gc: bool,
+        /// With --gc: attach the GC data to this existing session instead of creating one
+        #[arg(long, value_name = "REF", requires = "gc")]
+        session: Option<String>,
+        /// With --session: replace GC data the session already has
+        #[arg(long, requires = "session")]
+        replace: bool,
     },
     /// List imported profiles
     Ls {
@@ -99,6 +108,9 @@ enum Command {
         /// Do not capture per-sample time
         #[arg(long)]
         no_timeline: bool,
+        /// Do not capture GC data (it is captured by default where the runtime supports it)
+        #[arg(long)]
+        no_gc: bool,
         /// Open the UI on the new session afterwards
         #[arg(long)]
         open: bool,
@@ -147,6 +159,13 @@ enum Command {
     },
     /// List recording targets (Go agents, .NET processes)
     Targets {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show GC counts, pauses, heap and allocation for a session
+    Gc {
+        #[arg(default_value = "last")]
+        reference: String,
         #[arg(long)]
         json: bool,
     },
@@ -258,6 +277,22 @@ async fn main() -> ExitCode {
     let cli = Cli::parse();
     if let Command::Import {
         files,
+        session: Some(_),
+        ..
+    } = &cli.command
+    {
+        if files.len() > 1 {
+            let _ = Cli::command()
+                .error(
+                    clap::error::ErrorKind::ArgumentConflict,
+                    "--session can only be used with a single file",
+                )
+                .print();
+            return ExitCode::from(2);
+        }
+    }
+    if let Command::Import {
+        files,
         name: Some(_),
         ..
     } = &cli.command
@@ -290,6 +325,7 @@ async fn main() -> ExitCode {
             name: None,
             tags: vec![],
             timeline: true,
+            gc: true,
         };
         if let Err(m) = cmd::record::build_target(&probe) {
             let _ = Cli::command()
@@ -317,6 +353,7 @@ async fn main() -> ExitCode {
             name: None,
             tags: vec![],
             timeline: true,
+            gc: true,
         };
         let bad = match (session, cmd::record::build_target(&probe)) {
             (Some(_), _) if !program.is_empty() => {
@@ -349,8 +386,18 @@ async fn main() -> ExitCode {
         Command::Import {
             files,
             name,
+            tags,
+            gc: true,
+            session,
+            replace,
+            ..
+        } => ExitCode::from(cmd::import::run_gc(&store, files, name, tags, session, replace) as u8),
+        Command::Import {
+            files,
+            name,
             kind,
             tags,
+            ..
         } => ExitCode::from(cmd::import::run(&store, files, name, kind, tags) as u8),
         Command::Ls { json } => done(cmd::ls::run(&store, json)),
         Command::Show {
@@ -426,6 +473,7 @@ async fn main() -> ExitCode {
             tags,
             timeline: _,
             no_timeline,
+            no_gc,
             open,
             port,
             program,
@@ -440,6 +488,7 @@ async fn main() -> ExitCode {
                 name,
                 tags,
                 timeline: !no_timeline,
+                gc: !no_gc,
             };
             let target = match cmd::record::build_target(&args) {
                 Ok(t) => t,
@@ -480,6 +529,7 @@ async fn main() -> ExitCode {
                     name: name.clone(),
                     tags: vec![],
                     timeline: true,
+                    gc: true,
                 };
                 match cmd::record::build_target(&args) {
                     Ok(t) => Some(t),
@@ -500,6 +550,7 @@ async fn main() -> ExitCode {
             ))
         }
         Command::Targets { json } => done(cmd::targets::run(json)),
+        Command::Gc { reference, json } => done(cmd::gc::run(&store, &reference, json)),
         Command::Sessions { json } => done(cmd::sessions::run(&store, json)),
         Command::Diff {
             base,

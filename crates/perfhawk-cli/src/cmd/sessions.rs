@@ -29,6 +29,7 @@ pub fn run(store: &Store, json: bool) -> Result<(), String> {
         "STARTED (UTC)",
         "DURATION",
         "PROFILES",
+        "GC",
         "TARGET",
     ]
     .map(String::from)
@@ -43,6 +44,7 @@ pub fn run(store: &Store, json: bool) -> Result<(), String> {
                 .map(format_duration_ms)
                 .unwrap_or_else(|| "-".into()),
             s.profile_ids.len().to_string(),
+            if s.has_gc { "yes" } else { "-" }.to_string(),
             target_text(s),
         ]);
     }
