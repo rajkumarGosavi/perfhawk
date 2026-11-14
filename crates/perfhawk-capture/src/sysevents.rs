@@ -3,8 +3,10 @@
 //! session (`etw`) only has to produce [`RawEvent`]s; everything here is
 //! testable without admin rights and reusable by a Linux provider.
 
-use crate::events::EventRow;
+use crate::events::{event_artifact, EventRow, EventSpec};
+use crate::types::Artifact;
 use perfhawk_model::file_leaf;
+use perfhawk_model::ProfileKind;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -242,6 +244,107 @@ pub fn aggregate(input: &AggregateInput) -> Aggregated {
     // Threads still off-CPU when the window closed.
     for (_, o) in off {
         span_row(o, window_end, &mut out.off_cpu);
+    }
+    out
+}
+
+/// Which process a capture is about. `start_qpc` guards against pid reuse.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TargetIdentity {
+    pub pid: u32,
+    pub start_qpc: Option<i64>,
+}
+
+/// QPC time of the target's `ProcessEnd`, if the trace saw it.
+pub fn target_exited(events: &[RawEvent], id: &TargetIdentity) -> Option<i64> {
+    events
+        .iter()
+        .find(|e| e.kind == RawKind::ProcessEnd && e.pid == id.pid)
+        .map(|e| e.qpc)
+}
+
+/// True when `ev` belongs to the target process and not to an earlier process
+/// that had the same pid.
+pub fn same_process(ev: &RawEvent, id: &TargetIdentity) -> bool {
+    ev.pid == id.pid && id.start_qpc.is_none_or(|s| ev.qpc >= s)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LossStats {
+    pub events_lost: u64,
+    pub buffers_lost: u64,
+}
+
+pub fn loss_warning(l: &LossStats) -> Option<String> {
+    if l.events_lost == 0 && l.buffers_lost == 0 {
+        return None;
+    }
+    Some(format!(
+        "ETW dropped {} events and {} buffers under load; the numbers undercount",
+        l.events_lost, l.buffers_lost
+    ))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WindowSpec {
+    pub start_unix_ns: i64,
+    pub duration_ns: u64,
+    pub bucket_ns: u64,
+}
+
+/// One artifact per requested kind. A kind with no rows still yields an empty
+/// artifact so the user sees "nothing happened" rather than a missing profile.
+pub fn build_artifacts(
+    agg: &Aggregated,
+    spec: &WindowSpec,
+    loss: &LossStats,
+    kinds: &[ProfileKind],
+) -> Vec<Artifact> {
+    use perfhawk_model::{sample_types as st, Fidelity, Unit};
+    let mut out = Vec::new();
+    for &kind in kinds {
+        let (rows, types): (&[EventRow], Vec<(&str, Unit)>) = match kind {
+            ProfileKind::BlockIo => (
+                &agg.block_io,
+                vec![
+                    (st::IO_TIME, Unit::Nanoseconds),
+                    (st::IO_BYTES, Unit::Bytes),
+                ],
+            ),
+            ProfileKind::OffCpu => (&agg.off_cpu, vec![(st::OFFCPU, Unit::Nanoseconds)]),
+            ProfileKind::SchedDelay => {
+                (&agg.sched_delay, vec![(st::SCHED_DELAY, Unit::Nanoseconds)])
+            }
+            _ => continue,
+        };
+        let mut a = event_artifact(
+            &EventSpec {
+                kind,
+                fidelity: Fidelity::Native,
+                sample_types: &types,
+                start_unix_ns: spec.start_unix_ns,
+                duration_ns: spec.duration_ns,
+                bucket_ns: spec.bucket_ns,
+            },
+            rows,
+        );
+        let mut warnings = Vec::new();
+        if rows.is_empty() {
+            warnings.push(format!("no {kind} events were seen for the target"));
+        }
+        if let Some(w) = loss_warning(loss) {
+            warnings.push(w);
+        }
+        if agg.unresolved_frames > 0 {
+            warnings.push(format!(
+                "{} unresolved frames were shown as module+offset or [unknown]",
+                agg.unresolved_frames
+            ));
+        }
+        if !warnings.is_empty() {
+            a.warning = Some(warnings.join("; "));
+        }
+        out.push(a);
     }
     out
 }

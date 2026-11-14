@@ -167,3 +167,136 @@ fn disk_event_covered_by_a_file_event_is_not_counted_twice() {
     let a = run(&[w, d]);
     assert_eq!(a.block_io.len(), 1);
 }
+
+// ---- Task 3: lifecycle, loss and artifacts ----
+
+use perfhawk_capture::EventRow;
+use perfhawk_model::ProfileKind;
+
+fn window() -> WindowSpec {
+    WindowSpec {
+        start_unix_ns: 5_000_000_000,
+        duration_ns: 10_000_000_000,
+        bucket_ns: 1_000_000_000,
+    }
+}
+
+fn no_loss() -> LossStats {
+    LossStats {
+        events_lost: 0,
+        buffers_lost: 0,
+    }
+}
+
+fn agg_with_io() -> Aggregated {
+    Aggregated {
+        block_io: vec![EventRow {
+            stack: vec!["main".into(), file_leaf("C:/a")],
+            values: vec![1_000, 10],
+            bucket: 0,
+        }],
+        ..Aggregated::default()
+    }
+}
+
+#[test]
+fn process_end_is_reported() {
+    let id = TargetIdentity {
+        pid: TARGET,
+        start_qpc: None,
+    };
+    let end = RawEvent::new(RawKind::ProcessEnd, at_ms(300), TARGET, 1);
+    let other = RawEvent::new(RawKind::ProcessEnd, at_ms(100), 77, 1);
+    assert_eq!(target_exited(&[other, end], &id), Some(at_ms(300)));
+    assert_eq!(target_exited(&[], &id), None);
+}
+
+#[test]
+fn pid_reuse_events_before_start_are_ignored() {
+    let id = TargetIdentity {
+        pid: TARGET,
+        start_qpc: Some(at_ms(500)),
+    };
+    let old = RawEvent::new(RawKind::FileWrite, at_ms(100), TARGET, 1);
+    let new = RawEvent::new(RawKind::FileWrite, at_ms(600), TARGET, 1);
+    let wrong = RawEvent::new(RawKind::FileWrite, at_ms(600), 77, 1);
+    assert!(!same_process(&old, &id));
+    assert!(same_process(&new, &id));
+    assert!(!same_process(&wrong, &id));
+}
+
+#[test]
+fn loss_warning_none_when_zero() {
+    assert_eq!(loss_warning(&no_loss()), None);
+}
+
+#[test]
+fn loss_warning_mentions_counts() {
+    let w = loss_warning(&LossStats {
+        events_lost: 12,
+        buffers_lost: 3,
+    })
+    .unwrap();
+    assert!(w.starts_with("ETW dropped"), "{w}");
+    assert!(w.contains("12") && w.contains('3'), "{w}");
+}
+
+#[test]
+fn build_artifacts_only_requested_kinds() {
+    let a = build_artifacts(
+        &agg_with_io(),
+        &window(),
+        &no_loss(),
+        &[ProfileKind::BlockIo],
+    );
+    assert_eq!(a.len(), 1);
+    assert_eq!(a[0].kind, ProfileKind::BlockIo);
+    assert!(a[0].timeline.is_some());
+    assert_eq!(a[0].warning, None);
+}
+
+#[test]
+fn empty_kind_still_yields_artifact_with_warning() {
+    let a = build_artifacts(
+        &agg_with_io(),
+        &window(),
+        &no_loss(),
+        &[ProfileKind::BlockIo, ProfileKind::OffCpu],
+    );
+    let off = a.iter().find(|x| x.kind == ProfileKind::OffCpu).unwrap();
+    assert_eq!(
+        off.warning.as_deref(),
+        Some("no off_cpu events were seen for the target")
+    );
+}
+
+#[test]
+fn loss_warning_attached_to_every_artifact() {
+    let loss = LossStats {
+        events_lost: 5,
+        buffers_lost: 1,
+    };
+    let a = build_artifacts(
+        &agg_with_io(),
+        &window(),
+        &loss,
+        &[ProfileKind::BlockIo, ProfileKind::SchedDelay],
+    );
+    assert_eq!(a.len(), 2);
+    for x in &a {
+        assert!(
+            x.warning.as_deref().unwrap().contains("ETW dropped"),
+            "{:?}",
+            x.warning
+        );
+    }
+}
+
+#[test]
+fn unresolved_frames_warning_has_count() {
+    let mut agg = agg_with_io();
+    agg.unresolved_frames = 42;
+    let a = build_artifacts(&agg, &window(), &no_loss(), &[ProfileKind::BlockIo]);
+    let w = a[0].warning.as_deref().unwrap();
+    assert!(w.contains("42") && w.contains("unresolved"), "{w}");
+}
