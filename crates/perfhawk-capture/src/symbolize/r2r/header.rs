@@ -53,6 +53,21 @@ fn metadata_range<P: ImageNtHeaders>(pe: &PeFile<'_, P>, data: &[u8]) -> Option<
     )
 }
 
+/// `SizeOfImage` from the PE optional header (PE32 or PE32+).
+pub fn size_of_image(data: &[u8]) -> Option<u64> {
+    use object::read::pe::ImageOptionalHeader;
+    match PeFile64::parse(data) {
+        Ok(pe) => Some(u64::from(pe.nt_headers().optional_header().size_of_image())),
+        Err(_) => Some(u64::from(
+            PeFile32::parse(data)
+                .ok()?
+                .nt_headers()
+                .optional_header()
+                .size_of_image(),
+        )),
+    }
+}
+
 /// Map an RVA range to a byte range of the file, clamped to its section.
 fn file_range<P: ImageNtHeaders>(
     pe: &PeFile<'_, P>,

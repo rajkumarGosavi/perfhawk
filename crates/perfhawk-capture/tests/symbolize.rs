@@ -149,3 +149,43 @@ fn load_methods_feeds_method_load_events_only() {
     load_methods(&[other, m], &mut s);
     assert_eq!(s.resolve(0x5010), Frame::Named("N.C::M".into()));
 }
+
+mod common;
+
+#[test]
+fn resolves_address_inside_corelib_r2r_method() {
+    let Some(p) = common::find_corelib() else {
+        eprintln!("skipped: no .NET runtime installed");
+        return;
+    };
+    let syms = perfhawk_capture::symbolize::r2r::r2r_symbols(&p).unwrap();
+    let sym = &syms[syms.len() / 2];
+    let image_size = perfhawk_capture::symbolize::r2r::size_of_image(&std::fs::read(&p).unwrap())
+        .expect("PE header has an image size");
+    let base = 0x7ff8_0000_0000u64;
+    let mut s = Symbolizer::new();
+    s.add_image(base, image_size, &p);
+    assert_eq!(
+        s.resolve(base + sym.start + sym.size / 2),
+        Frame::Named(sym.name.clone())
+    );
+    // The PE header itself is not a method.
+    assert!(matches!(s.resolve(base + 0x10), Frame::ModuleOffset { .. }));
+}
+
+#[test]
+fn r2r_names_are_skipped_when_the_loaded_image_size_differs_from_the_file() {
+    let Some(p) = common::find_corelib() else {
+        eprintln!("skipped: no .NET runtime installed");
+        return;
+    };
+    let syms = perfhawk_capture::symbolize::r2r::r2r_symbols(&p).unwrap();
+    let sym = &syms[syms.len() / 2];
+    let base = 0x7ff8_0000_0000u64;
+    let mut s = Symbolizer::new();
+    s.add_image(base, 0x1234_0000, &p); // a different build was loaded
+    assert!(matches!(
+        s.resolve(base + sym.start + 1),
+        Frame::ModuleOffset { .. }
+    ));
+}

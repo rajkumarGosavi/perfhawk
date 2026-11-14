@@ -5,7 +5,7 @@ mod header;
 mod metadata;
 mod native;
 
-pub use header::{cli_metadata, open, R2rImage};
+pub use header::{cli_metadata, open, size_of_image, R2rImage};
 pub use metadata::method_names;
 pub use native::{decode_unsigned, NativeArray};
 
@@ -25,6 +25,17 @@ pub struct R2rSym {
 /// ReadyToRun image, or cannot be parsed.
 pub fn r2r_symbols(path: &Path) -> Option<Vec<R2rSym>> {
     symbols_from_bytes(&std::fs::read(path).ok()?)
+}
+
+/// Like [`r2r_symbols`], but only when the file on disk is the build the target
+/// loaded: `loaded_size` (the image size the OS reported) must equal the file's
+/// `SizeOfImage`, otherwise the RVAs would map to the wrong methods.
+pub fn r2r_symbols_for_image(path: &Path, loaded_size: u64) -> Option<Vec<R2rSym>> {
+    let data = std::fs::read(path).ok()?;
+    if loaded_size != 0 && size_of_image(&data)? != loaded_size {
+        return None;
+    }
+    symbols_from_bytes(&data)
 }
 
 fn symbols_from_bytes(data: &[u8]) -> Option<Vec<R2rSym>> {
