@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"net/http"
+	"runtime"
 	"runtime/debug"
 	"runtime/metrics"
 	"sort"
@@ -92,6 +93,9 @@ func gcHandler(w http.ResponseWriter, r *http.Request) {
 		Schema: 1, Runtime: "go", StartUnixNs: t0.UnixNano(), Fidelity: "approximate",
 		Events: []gcEvent{}, Heap: []gcHeapPoint{}, Alloc: gcAlloc{BucketNs: uint64(gcPollInterval), Bytes: []uint64{}},
 		Notes: []string{"Go GC duration is not measured; duration equals pause time. Reasons and generations are not reported by the Go runtime."},
+	}
+	if runtime.GOOS == "windows" {
+		doc.Notes = append(doc.Notes, "On Windows the Go runtime clock is coarse (about a millisecond or more), so short pauses can read as 0 ns.")
 	}
 	lost := 0
 	nextID := uint32(1)
