@@ -229,8 +229,9 @@ impl RawTrace {
                     Context: cb_ptr as *mut c_void,
                     ..Default::default()
                 };
-                lf.Anonymous1.ProcessTraceMode =
-                    PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD;
+                lf.Anonymous1.ProcessTraceMode = PROCESS_TRACE_MODE_REAL_TIME
+                    | PROCESS_TRACE_MODE_EVENT_RECORD
+                    | PROCESS_TRACE_MODE_RAW_TIMESTAMP;
                 lf.Anonymous2.EventRecordCallback = Some(record_cb);
                 let h = OpenTraceW(&mut lf);
                 if h.Value != u64::MAX {
