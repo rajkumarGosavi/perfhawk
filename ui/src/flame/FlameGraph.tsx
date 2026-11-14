@@ -51,6 +51,8 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
   const [kbFocus, setKbFocus] = useState(false)
   const [tipHidden, setTipHidden] = useState(false)
   const [announce, setAnnounce] = useState('')
+  const press = useRef<number | undefined>(undefined)
+  const pressed = useRef(false)
 
   useEffect(() => {
     if (!exportRef) return
@@ -239,10 +241,23 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
         onMouseMove={(e) => { setTipHidden(false); setHover(hit(e)) }}
         onMouseLeave={() => setHover(null)}
         onClick={(e) => {
+          if (pressed.current) { pressed.current = false; return } // a long-press already acted
           const h = hit(e)
           if (h) setZoom(h.rect.node === root ? undefined : h.rect.node)
         }}
         onDoubleClick={() => setZoom(undefined)}
+        onPointerDown={(e) => {
+          if (e.pointerType !== 'touch') return
+          const h = hit(e)
+          clearTimeout(press.current)
+          if (h && h.rect.node.funcId !== null && onSelectFunc) {
+            const id = h.rect.node.funcId
+            press.current = window.setTimeout(() => { pressed.current = true; onSelectFunc(id) }, 600)
+          }
+        }}
+        onPointerUp={() => clearTimeout(press.current)}
+        onPointerCancel={() => clearTimeout(press.current)}
+        onPointerLeave={() => clearTimeout(press.current)}
         onContextMenu={(e) => {
           const h = hit(e)
           if (h && h.rect.node.funcId !== null && onSelectFunc) {

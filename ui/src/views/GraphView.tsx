@@ -4,6 +4,7 @@ import type { Transform } from '../analysis/transforms'
 import { formatPct, formatValue } from '../format'
 import { layoutGraph, type Route } from '../graph/layout'
 import { edgeWidth, heat, moveFocus, neighbours, nodeSize, type Dir } from '../graph/model'
+import { pinchScale, pointerDistance, type Point } from '../flame/gesture'
 
 type Props = {
   graph: CallGraph
@@ -38,6 +39,8 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
   const boxRef = useRef<HTMLDivElement>(null)
   const nodeRefs = useRef(new Map<number, SVGGElement>())
   const drag = useRef<{ px: number; py: number; x: number; y: number } | null>(null)
+  const pointers = useRef(new Map<number, Point>())
+  const pinch = useRef<{ dist: number; k: number } | null>(null)
 
   useEffect(() => setSlider(nodes), [nodes])
 
@@ -143,14 +146,38 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
         onKeyDown={onKeyDown}
         onPointerDown={(e) => {
           if ((e.target as Element).closest('[data-node]')) return
-          drag.current = { px: e.clientX, py: e.clientY, x: view.x, y: view.y }
+          pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+          if (pointers.current.size === 2) {
+            const [a, b] = [...pointers.current.values()]
+            pinch.current = { dist: pointerDistance(a, b), k: view.k }
+            drag.current = null
+          } else {
+            drag.current = { px: e.clientX, py: e.clientY, x: view.x, y: view.y }
+          }
           ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
         }}
         onPointerMove={(e) => {
+          if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+          const p = pinch.current
+          if (p && pointers.current.size === 2) {
+            const [a, b] = [...pointers.current.values()]
+            const k = Math.min(4, Math.max(0.1, p.k * pinchScale(p.dist, pointerDistance(a, b))))
+            setView((v) => ({ ...v, k }))
+            return
+          }
           const d = drag.current
           if (d) setView((v) => ({ ...v, x: d.x + e.clientX - d.px, y: d.y + e.clientY - d.py }))
         }}
-        onPointerUp={() => { drag.current = null }}
+        onPointerUp={(e) => {
+          pointers.current.delete(e.pointerId)
+          pinch.current = null
+          drag.current = null
+        }}
+        onPointerCancel={(e) => {
+          pointers.current.delete(e.pointerId)
+          pinch.current = null
+          drag.current = null
+        }}
       >
         <svg width="100%" height="100%" role="group" aria-label="Call graph nodes. Arrow keys move, Enter opens the function, f focuses its subtree.">
           <defs>

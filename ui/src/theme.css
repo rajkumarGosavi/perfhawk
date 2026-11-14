@@ -72,7 +72,7 @@ h1 { font-size: 16px; margin: 0; letter-spacing: 0.04em; }
 .mono { font-family: var(--mono); }
 .num { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
 
-.app-header { display: flex; align-items: baseline; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.app-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 main { padding: 12px; max-width: 100%; }
 
 button, select, input {
@@ -88,7 +88,7 @@ label.field.check { flex-direction: row; align-items: center; align-self: flex-e
 label.field.check input { margin: 0; }
 
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; margin-bottom: 10px; }
-.tabs { display: flex; gap: 4px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; }
 .banner { background: var(--danger-bg); color: var(--danger-fg); padding: 8px 12px; border-radius: 4px; margin-bottom: 10px; }
 .muted { color: var(--muted); }
 
@@ -257,3 +257,17 @@ button.danger { background: var(--danger-bg); color: var(--danger-fg); border-co
 .skip-link { position: absolute; left: var(--space-2); top: -100px; z-index: 40; padding: var(--space-2) var(--space-3); background: var(--accent); color: var(--accent-fg); border-radius: var(--radius-sm); }
 .skip-link:focus { top: var(--space-2); }
 main:focus { outline: none; }
+
+/* Touch: bigger targets for coarse pointers */
+@media (pointer: coarse) {
+  button, select, input, .term-icon { min-height: 44px; }
+  button:not(.linklike):not(.term):not(.term-icon):not(.panel-scrim):not(.tree-chevron) { min-width: 44px; }
+  .term-icon { min-width: 44px; width: 44px; border-radius: 22px; }
+  input[type='checkbox'] { min-height: 24px; min-width: 24px; }
+  .linklike { min-height: 44px; display: inline-flex; align-items: center; }
+}
+
+/* Motion: no animation or smooth scrolling for people who ask for less */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}
