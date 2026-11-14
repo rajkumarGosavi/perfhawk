@@ -34,6 +34,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"sort"
 	"sync"
@@ -61,7 +62,8 @@ func main() {
 	pprofAddr := flag.String("pprof", "127.0.0.1:6060", "net/http/pprof listen address (empty to disable)")
 	useAgent := flag.Bool("agent", true, "start the perfhawk agent so `perfhawk record --pid` can attach")
 	files := flag.Bool("files", true, "write profile files at the end (holds the CPU profiler while running)")
-	mode := flag.String("mode", "mixed", "workload: mixed (everything), or cpu, lock, disk (a slow-read stand-in): known-answer runs for `perfhawk doctor`")
+	mode := flag.String("mode", "mixed", "workload: mixed (everything), or cpu, lock, disk (a slow-read stand-in), gc (allocation churn): known-answer runs for `perfhawk doctor`")
+	gogc := flag.Int("gogc", 0, "GC percent (debug.SetGCPercent) for -mode gc; 0 keeps the default")
 	flag.Parse()
 
 	if *files {
@@ -106,8 +108,18 @@ func main() {
 	svc := newService()
 
 	on := func(m string) bool { return *mode == "mixed" || *mode == m }
-	if !on("cpu") && !on("lock") && !on("disk") {
-		log.Fatalf("unknown -mode %q (want mixed, cpu, lock or disk)", *mode)
+	if !on("cpu") && !on("lock") && !on("disk") && *mode != "gc" {
+		log.Fatalf("unknown -mode %q (want mixed, cpu, lock, disk or gc)", *mode)
+	}
+	// Allocation churn plus a growing retained slice: frequent collections with a rising live heap.
+	if *mode == "gc" {
+		if *gogc != 0 {
+			debug.SetGCPercent(*gogc)
+		}
+		for i := 0; i < 2; i++ {
+			wg.Add(1)
+			go func() { defer wg.Done(); gcWorker(stop) }()
+		}
 	}
 
 	// CPU-heavy request handlers.
@@ -379,4 +391,28 @@ func writeLookup(dir, profile, name string) {
 		log.Fatal(err)
 	}
 	log.Printf("wrote %s", name)
+}
+
+// gcWorker allocates short-lived garbage continuously and retains a slice of
+// buffers that grows up to ~128 MiB before it is dropped, so the live heap
+// climbs and then falls while the collector keeps running.
+func gcWorker(stop <-chan struct{}) {
+	var retained [][]byte
+	var held int
+	for {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		for i := 0; i < 64; i++ {
+			_ = make([]byte, 16<<10) // garbage
+		}
+		b := make([]byte, 64<<10)
+		retained = append(retained, b)
+		if held += len(b); held > 128<<20 {
+			retained, held = nil, 0
+		}
+		time.Sleep(200 * time.Microsecond)
+	}
 }
