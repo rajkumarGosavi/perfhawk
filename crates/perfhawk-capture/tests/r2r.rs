@@ -162,3 +162,50 @@ fn corelib_metadata_names() {
         "get_Length missing"
     );
 }
+
+#[test]
+fn corelib_symbols_are_sorted_non_overlapping_and_named() {
+    let Some(p) = find_corelib() else {
+        eprintln!("skipped: no .NET runtime installed");
+        return;
+    };
+    let started = std::time::Instant::now();
+    let syms = r2r::r2r_symbols(&p).expect("CoreLib has ReadyToRun symbols");
+    let took = started.elapsed();
+    eprintln!("{} symbols in {took:?}", syms.len());
+    assert!(syms.len() > 10_000, "{} symbols", syms.len());
+    for w in syms.windows(2) {
+        assert!(w[0].size > 0, "zero-size symbol {}", w[0].name);
+        assert!(
+            w[0].start + w[0].size <= w[1].start,
+            "{} [{:#x}+{:#x}] overlaps {} at {:#x}",
+            w[0].name,
+            w[0].start,
+            w[0].size,
+            w[1].name,
+            w[1].start
+        );
+    }
+    let wanted = [
+        "System.String::get_Length",
+        "System.String::Concat",
+        "System.Threading.Monitor::Enter",
+        "System.Object::GetType",
+    ];
+    let found: Vec<_> = wanted
+        .iter()
+        .filter(|w| syms.iter().any(|s| &s.name == *w))
+        .collect();
+    assert!(!found.is_empty(), "none of {wanted:?} found");
+    eprintln!("found known methods: {found:?}");
+    if !cfg!(debug_assertions) {
+        assert!(took.as_millis() < 200, "parse took {took:?}");
+    }
+}
+
+#[test]
+fn non_r2r_and_missing_files_have_no_symbols() {
+    let mini = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/MiniLib.dll");
+    assert!(r2r::r2r_symbols(std::path::Path::new(mini)).is_none());
+    assert!(r2r::r2r_symbols(std::path::Path::new("definitely/not/here.dll")).is_none());
+}
