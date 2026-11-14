@@ -73,6 +73,8 @@ pub struct RawTrace {
     props: Vec<u64>,
     name: Vec<u16>,
     thread: Option<JoinHandle<()>>,
+    /// True when the classic "NT Kernel Logger" had to be used.
+    pub classic: bool,
 }
 
 unsafe extern "system" fn record_cb(rec: *mut EVENT_RECORD) {
@@ -242,6 +244,7 @@ impl RawTrace {
                 props,
                 name: name_w,
                 thread: Some(thread),
+                classic,
             })
         }
     }
