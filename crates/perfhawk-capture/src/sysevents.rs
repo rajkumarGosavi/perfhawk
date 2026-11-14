@@ -159,7 +159,7 @@ pub fn aggregate(input: &AggregateInput) -> Aggregated {
 
     let mut out = Aggregated::default();
     // When each thread last left the CPU / was made runnable.
-    let mut last_out: HashMap<u32, i64> = HashMap::new();
+    let mut last_out: HashMap<u32, (i64, u8)> = HashMap::new();
     let mut ready: HashMap<u32, i64> = HashMap::new();
 
     let span_row = |start_qpc: i64, end_qpc: i64, stack: Vec<String>, dest: &mut Vec<EventRow>| {
@@ -205,17 +205,25 @@ pub fn aggregate(input: &AggregateInput) -> Aggregated {
             RawKind::CSwitch => {
                 // Remember when the outgoing thread left the CPU (any process:
                 // its pid is not on the event).
-                last_out.insert(e.old_tid, e.qpc);
+                last_out.insert(e.old_tid, (e.qpc, e.wait_reason));
                 if e.pid == input.target_pid {
                     // The stack is where the incoming thread had been blocked.
                     let stack = (input.symbolize)(e);
                     // A thread first seen switching in has been waiting at least
                     // since the window opened.
-                    let left = last_out.remove(&e.new_tid).unwrap_or(c.qpc_start);
-                    let left = left.max(c.qpc_start);
-                    span_row(left, e.qpc, stack.clone(), &mut out.off_cpu);
+                    let (left, reason) = match last_out.remove(&e.new_tid) {
+                        Some((t, r)) => (t.max(c.qpc_start), wait_reason_name(r)),
+                        None => (c.qpc_start, "unknown".to_string()),
+                    };
+                    let mut wait_stack = stack.clone();
+                    wait_stack.push(format!("[wait: {reason}]"));
+                    span_row(left, e.qpc, wait_stack, &mut out.off_cpu);
                     if let Some(r) = ready.remove(&e.new_tid) {
-                        span_row(r, e.qpc, stack, &mut out.sched_delay);
+                        let mut s = stack;
+                        if s.is_empty() {
+                            s.push("[scheduler queue]".to_string());
+                        }
+                        span_row(r, e.qpc, s, &mut out.sched_delay);
                     }
                 }
             }
@@ -327,4 +335,55 @@ pub fn build_artifacts(
         out.push(a);
     }
     out
+}
+
+/// Windows `KWAIT_REASON` names, for the frame that ends an off-CPU stack. The
+/// kernel often cannot walk user frames of a thread that is resuming, so this
+/// frame also keeps those rows from becoming empty stacks.
+fn wait_reason_name(code: u8) -> String {
+    const NAMES: [&str; 39] = [
+        "Executive",
+        "FreePage",
+        "PageIn",
+        "PoolAllocation",
+        "DelayExecution",
+        "Suspended",
+        "UserRequest",
+        "WrExecutive",
+        "WrFreePage",
+        "WrPageIn",
+        "WrPoolAllocation",
+        "WrDelayExecution",
+        "WrSuspended",
+        "WrUserRequest",
+        "WrEventPair",
+        "WrQueue",
+        "WrLpcReceive",
+        "WrLpcReply",
+        "WrVirtualMemory",
+        "WrPageOut",
+        "WrRendezvous",
+        "WrKeyedEvent",
+        "WrTerminated",
+        "WrProcessInSwap",
+        "WrCpuRateControl",
+        "WrCalloutStack",
+        "WrKernel",
+        "WrResource",
+        "WrPushLock",
+        "WrMutex",
+        "WrQuantumEnd",
+        "WrDispatchInt",
+        "WrPreempted",
+        "WrYieldExecution",
+        "WrFastMutex",
+        "WrGuardedMutex",
+        "WrRundown",
+        "WrAlertByThreadId",
+        "WrDeferredPreempt",
+    ];
+    match NAMES.get(code as usize) {
+        Some(n) => (*n).to_string(),
+        None => format!("reason {code}"),
+    }
 }

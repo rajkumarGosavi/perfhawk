@@ -91,7 +91,10 @@ fn off_cpu_span_runs_from_switch_out_to_switch_in() {
     ]);
     assert_eq!(a.off_cpu.len(), 1);
     assert_eq!(a.off_cpu[0].values, vec![1_000_000]);
-    assert_eq!(a.off_cpu[0].stack, vec!["fn1", "fn2", "fn3"]);
+    assert_eq!(
+        a.off_cpu[0].stack,
+        vec!["fn1", "fn2", "fn3", "[wait: Executive]"]
+    );
     assert!(a.block_io.is_empty() && a.sched_delay.is_empty());
 }
 
@@ -344,4 +347,45 @@ fn many_disk_events_against_many_file_events_stay_fast() {
         "{:?}",
         t.elapsed()
     );
+}
+
+#[test]
+fn off_cpu_stack_ends_in_the_wait_reason_of_the_switch_out() {
+    let mut out = cswitch(77, 999, 7, 100, vec![]);
+    out.wait_reason = 13; // WrUserRequest
+    let a = run(&[out, cswitch(TARGET, 7, 999, 150, vec![1])]);
+    assert_eq!(a.off_cpu[0].stack, vec!["fn1", "[wait: WrUserRequest]"]);
+}
+
+#[test]
+fn off_cpu_without_user_frames_still_has_a_wait_frame() {
+    // the kernel could not walk user frames: the row must not become an empty stack
+    let mut out = cswitch(77, 999, 7, 100, vec![]);
+    out.wait_reason = 15; // WrQueue
+    let a = run(&[out, cswitch(TARGET, 7, 999, 150, vec![])]);
+    assert_eq!(a.off_cpu[0].stack, vec!["[wait: WrQueue]"]);
+}
+
+#[test]
+fn first_seen_switch_in_has_an_unknown_wait_reason() {
+    let a = run(&[cswitch(TARGET, 7, 999, 150, vec![1])]);
+    assert_eq!(a.off_cpu[0].stack, vec!["fn1", "[wait: unknown]"]);
+}
+
+#[test]
+fn unknown_wait_reason_codes_are_numbered() {
+    let mut out = cswitch(77, 999, 7, 100, vec![]);
+    out.wait_reason = 200;
+    let a = run(&[out, cswitch(TARGET, 7, 999, 150, vec![])]);
+    assert_eq!(a.off_cpu[0].stack, vec!["[wait: reason 200]"]);
+}
+
+#[test]
+fn sched_delay_without_user_frames_names_the_scheduler_queue() {
+    let a = run(&[
+        cswitch(77, 999, 7, 100, vec![]),
+        ready(TARGET, 7, 200),
+        cswitch(TARGET, 7, 999, 203, vec![]),
+    ]);
+    assert_eq!(a.sched_delay[0].stack, vec!["[scheduler queue]"]);
 }
