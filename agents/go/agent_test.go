@@ -429,3 +429,176 @@ func TestRejectsNonLoopbackHost(t *testing.T) {
 		}
 	}
 }
+
+type gcWire struct {
+	Schema     int    `json:"schema"`
+	Runtime    string `json:"runtime"`
+	DurationNs uint64 `json:"duration_ns"`
+	Fidelity   string `json:"fidelity"`
+	Events     []struct {
+		ID         uint32  `json:"id"`
+		StartNs    uint64  `json:"start_ns"`
+		Generation *uint8  `json:"generation"`
+		Kind       string  `json:"kind"`
+		Reason     string  `json:"reason"`
+		Induced    bool    `json:"induced"`
+		PauseNs    uint64  `json:"pause_ns"`
+		DurationNs uint64  `json:"duration_ns"`
+		HeapBefore *uint64 `json:"heap_before_bytes"`
+		GenAfter   any     `json:"gen_after"`
+		Promoted   *uint64 `json:"promoted_bytes"`
+	} `json:"events"`
+	Heap  []struct{ TNs, TotalBytes uint64 } `json:"heap"`
+	Alloc struct {
+		BucketNs uint64   `json:"bucket_ns"`
+		Bytes    []uint64 `json:"bytes"`
+	} `json:"alloc"`
+	Notes []string `json:"notes"`
+}
+
+func TestGCEndpointRecordsForcedCollections(t *testing.T) {
+	a := start(t, Options{DisableDiscovery: true})
+	// A GC before the window must not show up in it.
+	runtime.GC()
+	stop := make(chan struct{})
+	var sink [][]byte
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				sink = append(sink[:0], make([]byte, 1<<20))
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}()
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		for i := 0; i < 5; i++ {
+			runtime.GC()
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+	raw := get(t, "http://"+a.Addr()+"/debug/perfhawk/gc?seconds=1")
+	close(stop)
+	wg.Wait()
+	var d gcWire
+	if err := json.Unmarshal(raw, &d); err != nil {
+		t.Fatalf("not json: %v\n%s", err, raw)
+	}
+	if d.Schema != 1 || d.Runtime != "go" || d.Fidelity != "approximate" {
+		t.Fatalf("header: %+v", d)
+	}
+	if len(d.Events) < 5 {
+		t.Fatalf("events = %d, want >= 5", len(d.Events))
+	}
+	induced := 0
+	var prev uint64
+	for i, e := range d.Events {
+		if e.StartNs < prev {
+			t.Fatalf("event %d out of order", i)
+		}
+		prev = e.StartNs
+		if e.PauseNs > e.DurationNs {
+			t.Fatalf("event %d pause %d > duration %d", i, e.PauseNs, e.DurationNs)
+		}
+		if e.Generation != nil || e.Kind != "concurrent" || e.HeapBefore != nil || e.GenAfter != nil || e.Promoted != nil {
+			t.Fatalf("event %d invents fields Go does not know: %+v", i, e)
+		}
+		if e.Induced {
+			induced++
+			if e.Reason != "induced" {
+				t.Fatalf("event %d induced with reason %q", i, e.Reason)
+			}
+		} else if e.Reason != "other" {
+			t.Fatalf("event %d reason %q, want other", i, e.Reason)
+		}
+	}
+	// runtime.GC() can ride on a natural cycle already running, which the runtime does not
+	// count as forced, so under this much churn fewer than 5 may be induced; never more.
+	if induced < 1 || induced > 5 {
+		t.Fatalf("induced = %d, want 1..5 (the pre-window GC must not count)", induced)
+	}
+	if len(d.Heap) < 10 || d.Alloc.BucketNs != 50_000_000 || len(d.Alloc.Bytes) == 0 {
+		t.Fatalf("heap=%d alloc=%+v", len(d.Heap), d.Alloc)
+	}
+	var total uint64
+	for _, b := range d.Alloc.Bytes {
+		total += b
+	}
+	if total == 0 {
+		t.Fatal("allocation series is all zero")
+	}
+	if len(d.Notes) == 0 {
+		t.Fatal("want a note that Go GC duration is not measured")
+	}
+}
+
+func TestGCEndpointIdleRunHasNoEvents(t *testing.T) {
+	a := start(t, Options{DisableDiscovery: true})
+	runtime.GC()
+	raw := get(t, "http://"+a.Addr()+"/debug/perfhawk/gc?seconds=1")
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if string(m["events"]) != "[]" {
+		t.Fatalf("events = %s, want []", m["events"])
+	}
+}
+
+func TestGCEndpointBadSeconds(t *testing.T) {
+	a := start(t, Options{DisableDiscovery: true})
+	for _, q := range []string{"", "?seconds=0", "?seconds=601", "?seconds=x"} {
+		resp, err := http.Get("http://" + a.Addr() + "/debug/perfhawk/gc" + q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 400 {
+			t.Fatalf("%q: status %d, want 400", q, resp.StatusCode)
+		}
+	}
+}
+
+func TestGCEndpointConflictAndCancel(t *testing.T) {
+	a := start(t, Options{DisableDiscovery: true})
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, "GET", "http://"+a.Addr()+"/debug/perfhawk/gc?seconds=30", nil)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			resp.Body.Close()
+		}
+	}()
+	time.Sleep(300 * time.Millisecond)
+	resp, err := http.Get("http://" + a.Addr() + "/debug/perfhawk/gc?seconds=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 409 {
+		t.Fatalf("second capture status %d, want 409", resp.StatusCode)
+	}
+	cancel()
+	<-done
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		resp, err := http.Get("http://" + a.Addr() + "/debug/perfhawk/gc?seconds=1")
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == 200 {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("capture slot not released after cancel")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}

@@ -73,6 +73,20 @@ to compare: `gen0` is every collection, `gen1` counts gen1 and gen2 collections,
 gen2, while `perfhawk gc` lists collections by exactly their own generation. Open the session
 in `perfhawk ui` to see the charts.
 
+### GC analysis for Go
+
+`go-demo -mode gc` allocates short-lived garbage continuously and keeps a growing retained
+slice (up to about 128 MiB, then dropped). `-gogc N` sets the GC percent.
+
+```bash
+go run ./examples/go-demo -files=false -mode gc -duration 60s     # note the pid
+perfhawk record --pid <pid> --duration 15s
+perfhawk gc last
+```
+
+Expected: many collections, a rising and falling heap, and a high allocation rate. Go does
+not report GC duration, reasons or generations, so those show as pause-only or `other`.
+
 ## .NET with dotnet-trace (alternative)
 
 The `profile.ps1` / `profile.sh` scripts still work if you prefer `dotnet-trace`.

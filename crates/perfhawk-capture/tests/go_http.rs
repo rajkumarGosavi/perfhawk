@@ -136,6 +136,123 @@ fn kind_of(o: &CaptureOutcome, k: ProfileKind) -> &Artifact {
         .unwrap_or_else(|| panic!("no {k} artifact"))
 }
 
+const GC_JSON: &str = r#"{"schema":1,"runtime":"go","start_unix_ns":1,"duration_ns":1000000000,"fidelity":"approximate","events":[{"id":1,"start_ns":10,"kind":"concurrent","reason":"other","induced":false,"pause_ns":5,"duration_ns":5}],"heap":[{"t_ns":0,"total_bytes":100}],"alloc":{"bucket_ns":50000000,"bytes":[1]},"notes":[]}"#;
+
+fn gc_plan(kinds: Vec<ProfileKind>, secs: u64) -> CapturePlan {
+    CapturePlan {
+        gc: true,
+        ..plan(kinds, secs)
+    }
+}
+
+fn capture_gc(m: &Mock, kinds: Vec<ProfileKind>, token: &CancelToken) -> CaptureOutcome {
+    let (p, rt) = detect_url(m);
+    p.capture(
+        &rt,
+        &Target::Url(m.base.clone()),
+        &gc_plan(kinds, 1),
+        token,
+        &|_| {},
+    )
+    .unwrap()
+}
+
+#[test]
+fn gc_is_fetched_with_the_profiles() {
+    let mut routes = agent_routes();
+    routes.push(("/debug/perfhawk/gc", ok(GC_JSON.as_bytes(), true)));
+    let m = mock(routes);
+    let out = capture_gc(&m, vec![ProfileKind::Cpu], &CancelToken::new());
+    let gc = out.gc.expect("gc data");
+    assert_eq!(gc.runtime, "go");
+    assert_eq!(gc.events.len(), 1);
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    let hits = m.hits.lock().unwrap().clone();
+    assert!(
+        hits.contains(&"/debug/perfhawk/gc?seconds=1".to_string()),
+        "{hits:?}"
+    );
+}
+
+#[test]
+fn gc_404_from_an_older_agent_is_a_warning() {
+    let m = mock(agent_routes());
+    let out = capture_gc(&m, vec![ProfileKind::Memory], &CancelToken::new());
+    assert!(out.gc.is_none());
+    assert_eq!(out.artifacts.len(), 1);
+    assert_eq!(out.end, CaptureEnd::Complete);
+    assert!(
+        out.warnings
+            .iter()
+            .any(|w| w.contains("update the perfhawk agent")),
+        "{:?}",
+        out.warnings
+    );
+}
+
+#[test]
+fn gc_garbage_body_is_a_warning() {
+    let mut routes = agent_routes();
+    routes.push(("/debug/perfhawk/gc", ok(b"not json", false)));
+    let m = mock(routes);
+    let out = capture_gc(&m, vec![ProfileKind::Memory], &CancelToken::new());
+    assert!(out.gc.is_none());
+    assert_eq!(out.end, CaptureEnd::Complete);
+    assert!(
+        out.warnings.iter().any(|w| w.contains("invalid GC data")),
+        "{:?}",
+        out.warnings
+    );
+}
+
+#[test]
+fn gc_without_agent_warns() {
+    let m = mock(vec![
+        ("/debug/pprof/", ok(b"x", false)),
+        ("/debug/pprof/heap", ok(HEAP, false)),
+    ]);
+    let out = capture_gc(&m, vec![ProfileKind::Memory], &CancelToken::new());
+    assert!(out.gc.is_none());
+    assert!(
+        out.warnings
+            .iter()
+            .any(|w| w.contains("needs the perfhawk agent")),
+        "{:?}",
+        out.warnings
+    );
+}
+
+#[test]
+fn gc_cancel_mid_window_does_not_hang() {
+    let mut routes = agent_routes();
+    routes.push(("/debug/perfhawk/gc", ok(GC_JSON.as_bytes(), true)));
+    let m = mock(routes);
+    let token = CancelToken::new();
+    let t2 = token.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300));
+        t2.cancel();
+    });
+    let (p, rt) = detect_url(&m);
+    let start = Instant::now();
+    let out = p
+        .capture(
+            &rt,
+            &Target::Url(m.base.clone()),
+            &gc_plan(vec![ProfileKind::Cpu], 30),
+            &token,
+            &|_| {},
+        )
+        .unwrap();
+    assert!(
+        start.elapsed() < Duration::from_secs(10),
+        "{:?}",
+        start.elapsed()
+    );
+    assert_eq!(out.end, CaptureEnd::Cancelled);
+    assert!(out.gc.is_none());
+}
+
 #[test]
 fn detect_by_url_with_agent() {
     let m = mock(agent_routes());

@@ -300,8 +300,16 @@ perfhawk record --pid 4242 --kinds block_io,off_cpu,sched_delay --duration 30s
 Shows what the garbage collector did during a session: how many collections ran
 at each generation, how long they paused your program, how big the heap was and
 how fast the program allocated. `REF` is a session reference (default `last`).
-GC data comes from `perfhawk record` on a .NET process (captured by default;
-`--no-gc` turns it off) or from `perfhawk import --gc`.
+GC data comes from `perfhawk record` on a .NET process or on a Go process that runs the
+perfhawk agent (captured by default; `--no-gc` turns it off), or from `perfhawk import --gc`.
+
+**Go.** The agent polls the runtime's GC counters every 50 ms, so Go sessions show
+collections, pauses, the live heap and the allocation rate. Go does not report a
+collection's own running time, its reason or generations, so for Go the duration equals the
+pause, every collection is reason `other` (or `induced` for `runtime.GC()`), there are no
+generations, and no heap-before or promoted figures. On Windows the runtime clock is coarse
+(about a millisecond or more), so short pauses can read 0 ns. Try it with
+`go run ./examples/go-demo -files=false -mode gc` and `perfhawk record --pid <pid>`.
 
 ```powershell
 perfhawk record --duration 15s -- dotnet examples\dotnet-demo\bin\Release\net8.0\dotnet-demo.dll gc 20
