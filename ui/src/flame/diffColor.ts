@@ -1,7 +1,7 @@
 /**
  * Colour for a frame by how its value changed between base and head.
  * Red = grew, green = shrank, grey = unchanged. The values are CSS custom
- * properties (see theme.css); the canvas renderer resolves them.
+ * properties (see styles/tokens.css); the canvas renderer resolves them.
  */
 export function diffColor(base: number, head: number): string {
   const ratio = Math.max(-1, Math.min(1, (head - base) / Math.max(base, head, 1)))

@@ -1,0 +1,73 @@
+:root {
+  color-scheme: light;
+  --bg: #fbfaf8;
+  --surface: #ffffff;
+  --fg: #1f1b16;
+  --muted: #6b645a;
+  --border: #ddd6cb;
+  --accent: #0b6bcb;
+  --accent-fg: #ffffff;
+  --danger-bg: #fde8e6;
+  --danger-fg: #8a1c12;
+  --match: #1e6fe0;
+  --flame-sat: 78%;
+  --flame-light: 62%;
+  --flame-hot: #111111;
+  --on-heat: #111111;
+  --warn: #b7791f;
+  --diff-flat: #9a948a;
+  --diff-up-0: #f3c9c2;
+  --diff-up-1: #ec9f94;
+  --diff-up-2: #e0705f;
+  --diff-up-3: #cc4733;
+  --diff-up-4: #a82414;
+  --diff-down-0: #c6e4c5;
+  --diff-down-1: #9ccf9a;
+  --diff-down-2: #6bb86a;
+  --diff-down-3: #3f9a44;
+  --diff-down-4: #25762c;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
+  --radius-sm: 4px; --radius-md: 6px;
+  --text-xs: 11px; --text-sm: 12px; --text-md: 14px; --text-lg: 18px;
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.18);
+  --control-h: 36px;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+    --bg: #14120f;
+    --surface: #1d1a16;
+    --fg: #ece6dc;
+    --muted: #9a9183;
+    --border: #38332b;
+    --accent: #5aa7ff;
+    --accent-fg: #0b1a2b;
+    --danger-bg: #3d1713;
+    --danger-fg: #ffb4aa;
+    --match: #5aa7ff;
+    --flame-sat: 60%;
+    --flame-light: 40%;
+    --flame-hot: #ffffff;
+    --on-heat: #10141a;
+    --warn: #e0a020;
+    --diff-flat: #5d584f;
+    --diff-up-0: #5a2a24;
+    --diff-up-1: #7d352c;
+    --diff-up-2: #a2402f;
+    --diff-up-3: #c9523c;
+    --diff-up-4: #ea6a50;
+    --diff-down-0: #25422a;
+    --diff-down-1: #2d5c34;
+    --diff-down-2: #387a40;
+    --diff-down-3: #46a050;
+    --diff-down-4: #5bc468;
+}
+:root[data-palette='cb'] {
+  --diff-up-0: #fde0c0; --diff-up-1: #fbc283; --diff-up-2: #f59a3c; --diff-up-3: #d9770a; --diff-up-4: #a85600;
+  --diff-down-0: #cfe3f7; --diff-down-1: #9fc6ee; --diff-down-2: #62a3e0; --diff-down-3: #2f7fca; --diff-down-4: #165a9c;
+}
+:root[data-theme='dark'][data-palette='cb'] {
+    --diff-up-0: #5a3a14; --diff-up-1: #7d4e16; --diff-up-2: #a8661a; --diff-up-3: #d9801f; --diff-up-4: #f5a04a;
+    --diff-down-0: #1c3a5a; --diff-down-1: #24507d; --diff-down-2: #2f69a2; --diff-down-3: #4a8bcf; --diff-down-4: #70aef0;
+}
