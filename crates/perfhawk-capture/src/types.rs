@@ -42,6 +42,8 @@ pub struct CapturePlan {
     pub duration: Duration,
     /// Ask runtimes for per-sample time so the profile gets a timeline.
     pub timeline: bool,
+    /// Also capture GC data when the runtime supports it (see `Provider::supports_gc`).
+    pub gc: bool,
 }
 
 /// One captured profile, ready to import.
@@ -66,6 +68,8 @@ pub enum CaptureEnd {
 #[derive(Debug)]
 pub struct CaptureOutcome {
     pub artifacts: Vec<Artifact>,
+    /// GC data, when the plan asked for it and the provider produced it.
+    pub gc: Option<perfhawk_model::GcData>,
     pub end: CaptureEnd,
     pub warnings: Vec<String>,
 }

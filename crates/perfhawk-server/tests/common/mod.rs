@@ -26,6 +26,7 @@ fn cpu_outcome(end: CaptureEnd) -> CaptureOutcome {
         }],
         end,
         warnings: vec![],
+        gc: None,
     }
 }
 

@@ -259,6 +259,7 @@ fn launch_and_capture(
             artifacts: vec![],
             end: CaptureEnd::Cancelled,
             warnings: vec![],
+            gc: None,
         }),
         None => Err(CaptureError::Target(
             "program did not start the perfhawk agent; import github.com/rajkumarGosavi/perfhawk/agents/go".into(),

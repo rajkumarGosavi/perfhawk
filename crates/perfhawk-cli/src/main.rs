@@ -99,6 +99,9 @@ enum Command {
         /// Do not capture per-sample time
         #[arg(long)]
         no_timeline: bool,
+        /// Do not capture GC data (it is captured by default where the runtime supports it)
+        #[arg(long)]
+        no_gc: bool,
         /// Open the UI on the new session afterwards
         #[arg(long)]
         open: bool,
@@ -290,6 +293,7 @@ async fn main() -> ExitCode {
             name: None,
             tags: vec![],
             timeline: true,
+            gc: true,
         };
         if let Err(m) = cmd::record::build_target(&probe) {
             let _ = Cli::command()
@@ -317,6 +321,7 @@ async fn main() -> ExitCode {
             name: None,
             tags: vec![],
             timeline: true,
+            gc: true,
         };
         let bad = match (session, cmd::record::build_target(&probe)) {
             (Some(_), _) if !program.is_empty() => {
@@ -426,6 +431,7 @@ async fn main() -> ExitCode {
             tags,
             timeline: _,
             no_timeline,
+            no_gc,
             open,
             port,
             program,
@@ -440,6 +446,7 @@ async fn main() -> ExitCode {
                 name,
                 tags,
                 timeline: !no_timeline,
+                gc: !no_gc,
             };
             let target = match cmd::record::build_target(&args) {
                 Ok(t) => t,
@@ -480,6 +487,7 @@ async fn main() -> ExitCode {
                     name: name.clone(),
                     tags: vec![],
                     timeline: true,
+                    gc: true,
                 };
                 match cmd::record::build_target(&args) {
                     Ok(t) => Some(t),

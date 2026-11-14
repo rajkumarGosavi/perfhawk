@@ -209,7 +209,11 @@ pub fn summarize(d: &GcData, _cfg: &GcConfig) -> GcSummary {
     };
     let bs = bucket_secs(d);
     let alloc_peak_bytes_per_s = if bs > 0.0 {
-        d.alloc.bytes.iter().map(|b| *b as f64 / bs).fold(0.0, f64::max)
+        d.alloc
+            .bytes
+            .iter()
+            .map(|b| *b as f64 / bs)
+            .fold(0.0, f64::max)
     } else {
         0.0
     };
@@ -421,7 +425,11 @@ pub fn gc_findings(d: &GcData, s: &GcSummary, cfg: &GcConfig) -> Vec<GcFinding> 
         });
     }
 
-    let loh = d.events.iter().filter(|e| e.reason == "large-object").count();
+    let loh = d
+        .events
+        .iter()
+        .filter(|e| e.reason == "large-object")
+        .count();
     let loh_share = if total > 0 {
         loh as f64 / total as f64 * 100.0
     } else {

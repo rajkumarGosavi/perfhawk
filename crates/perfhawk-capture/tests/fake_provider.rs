@@ -90,6 +90,7 @@ fn req(kinds: Vec<ProfileKind>) -> RecordRequest {
             kinds,
             duration: Duration::from_secs(1),
             timeline: false,
+            gc: false,
         },
         name: None,
         tags: vec!["t".into()],
@@ -104,6 +105,7 @@ fn two_artifacts(end: CaptureEnd) -> CaptureOutcome {
         ],
         end,
         warnings: vec![],
+        gc: None,
     }
 }
 
@@ -160,6 +162,7 @@ fn record_target_exit_is_partial() {
             artifacts: vec![art(ProfileKind::Cpu, Fidelity::Native, CPU)],
             end: CaptureEnd::TargetExited,
             warnings: vec!["exited early".into()],
+            gc: None,
         })
     });
     let s = record(&store, &reg, &req(vec![]), &CancelToken::new(), &|_| {}).unwrap();
@@ -177,6 +180,7 @@ fn record_cancel_is_cancelled() {
             artifacts: vec![art(ProfileKind::Cpu, Fidelity::Native, CPU)],
             end: CaptureEnd::Cancelled,
             warnings: vec![],
+            gc: None,
         })
     });
     let token = CancelToken::new();
@@ -251,6 +255,7 @@ impl Provider for Spy {
             artifacts: vec![],
             end: CaptureEnd::Complete,
             warnings: vec![],
+            gc: None,
         })
     }
 }
@@ -312,6 +317,7 @@ fn cancelled_token_wins_over_target_exited() {
             artifacts: vec![art(ProfileKind::Cpu, Fidelity::Native, CPU)],
             end: CaptureEnd::TargetExited,
             warnings: vec![],
+            gc: None,
         })
     });
     let s = record(&store, &reg, &req(vec![]), &token, &|_| {}).unwrap();
@@ -344,6 +350,7 @@ fn cpu_with_timeline(t: Option<perfhawk_model::Timeline>) -> CaptureOutcome {
         artifacts: vec![a],
         end: CaptureEnd::Complete,
         warnings: vec![],
+        gc: None,
     }
 }
 

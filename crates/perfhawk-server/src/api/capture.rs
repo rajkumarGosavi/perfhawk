@@ -236,6 +236,7 @@ async fn record_h(State(s): State<St>, headers: HeaderMap, body: Body) -> ApiRes
             kinds,
             duration,
             timeline: b.timeline.unwrap_or(false),
+            gc: true,
         },
         name,
         tags,

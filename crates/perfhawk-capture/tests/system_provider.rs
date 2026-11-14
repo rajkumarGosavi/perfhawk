@@ -114,6 +114,7 @@ fn outcome(artifacts: Vec<Artifact>) -> CaptureOutcome {
         artifacts,
         end: CaptureEnd::Complete,
         warnings: vec![],
+        gc: None,
     }
 }
 
@@ -124,6 +125,7 @@ fn req(kinds: Vec<ProfileKind>) -> RecordRequest {
             kinds,
             duration: Duration::from_secs(5),
             timeline: false,
+            gc: false,
         },
         name: None,
         tags: vec![],

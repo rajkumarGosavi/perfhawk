@@ -14,6 +14,11 @@ pub trait Provider: Send + Sync {
 
     fn capabilities(&self, rt: &RuntimeInfo) -> Vec<Capability>;
 
+    /// Whether `capture` can return GC data when `CapturePlan::gc` is set.
+    fn supports_gc(&self) -> bool {
+        false
+    }
+
     fn capture(
         &self,
         rt: &RuntimeInfo,

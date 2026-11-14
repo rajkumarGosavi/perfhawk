@@ -50,8 +50,14 @@ fn has(fs: &[GcFinding], rule: &str) -> bool {
 
 #[test]
 fn long_pause_fires_at_50ms_not_49ms() {
-    assert!(has(&findings(&data(vec![ev(1, Some(0), 50)])), "gc_long_pause"));
-    assert!(!has(&findings(&data(vec![ev(1, Some(0), 49)])), "gc_long_pause"));
+    assert!(has(
+        &findings(&data(vec![ev(1, Some(0), 50)])),
+        "gc_long_pause"
+    ));
+    assert!(!has(
+        &findings(&data(vec![ev(1, Some(0), 49)])),
+        "gc_long_pause"
+    ));
 }
 
 #[test]
@@ -73,7 +79,10 @@ fn gen2_heavy_needs_share_and_minimum_count() {
     };
     assert!(has(&mk(3, 10), "gc_gen2_heavy"), "30% of 10 fires");
     assert!(!has(&mk(2, 10), "gc_gen2_heavy"), "20% does not");
-    assert!(!has(&mk(3, 9), "gc_gen2_heavy"), "fewer than 10 GCs does not");
+    assert!(
+        !has(&mk(3, 9), "gc_gen2_heavy"),
+        "fewer than 10 GCs does not"
+    );
 }
 
 fn gen2_run(after: &[u64]) -> GcData {
@@ -91,9 +100,15 @@ fn gen2_run(after: &[u64]) -> GcData {
 
 #[test]
 fn heap_growth_needs_four_gen2s() {
-    assert!(!has(&findings(&gen2_run(&[100, 200, 400])), "gc_heap_growth"));
+    assert!(!has(
+        &findings(&gen2_run(&[100, 200, 400])),
+        "gc_heap_growth"
+    ));
     let fs = findings(&gen2_run(&[100, 100, 200, 200]));
-    let f = fs.iter().find(|f| f.rule == "gc_heap_growth").expect("fires");
+    let f = fs
+        .iter()
+        .find(|f| f.rule == "gc_heap_growth")
+        .expect("fires");
     assert_eq!(f.based_on, 4);
 }
 
@@ -102,12 +117,19 @@ fn heap_growth_wording_says_possible() {
     let fs = findings(&gen2_run(&[100, 100, 200, 200]));
     let f = fs.iter().find(|f| f.rule == "gc_heap_growth").unwrap();
     assert!(f.title.to_lowercase().contains("possible"), "{}", f.title);
-    assert!(f.detail.contains('4'), "detail names the gen2 count: {}", f.detail);
+    assert!(
+        f.detail.contains('4'),
+        "detail names the gen2 count: {}",
+        f.detail
+    );
 }
 
 #[test]
 fn flat_heap_is_not_growth() {
-    assert!(!has(&findings(&gen2_run(&[100, 100, 100, 100, 100])), "gc_heap_growth"));
+    assert!(!has(
+        &findings(&gen2_run(&[100, 100, 100, 100, 100])),
+        "gc_heap_growth"
+    ));
 }
 
 #[test]

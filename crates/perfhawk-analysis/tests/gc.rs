@@ -60,7 +60,9 @@ fn counts_per_generation() {
 
 #[test]
 fn pause_percentiles_nearest_rank() {
-    let evs = (1..=10).map(|i| ev(i, i as u64, Some(0), i as u64, 20)).collect();
+    let evs = (1..=10)
+        .map(|i| ev(i, i as u64, Some(0), i as u64, 20))
+        .collect();
     let p = summarize(&data(evs), &GcConfig::default()).pause;
     assert_eq!(p.count, 10);
     assert_eq!(p.total_ns, 55 * MS);
@@ -73,8 +75,15 @@ fn pause_percentiles_nearest_rank() {
 
 #[test]
 fn pause_share_uses_total_pause_not_gc_duration() {
-    let s = summarize(&data(vec![ev(1, 10, Some(0), 10, 100)]), &GcConfig::default());
-    assert!((s.pause_share_pct - 1.0).abs() < 1e-9, "{}", s.pause_share_pct);
+    let s = summarize(
+        &data(vec![ev(1, 10, Some(0), 10, 100)]),
+        &GcConfig::default(),
+    );
+    assert!(
+        (s.pause_share_pct - 1.0).abs() < 1e-9,
+        "{}",
+        s.pause_share_pct
+    );
 }
 
 #[test]
@@ -205,6 +214,13 @@ fn series_downsamples_but_summary_uses_all() {
     assert_eq!(s.total_gcs, 200_000);
     assert!(sr.pauses.len() <= cfg.max_points);
     assert!(sr.heap.len() <= cfg.max_points);
-    assert!(sr.pauses.iter().any(|p| p.pause_ns == 40 * MS), "peak pause survives");
-    assert_eq!(sr.heap.last().unwrap().total_bytes, (n - 1) as u64, "peak heap survives");
+    assert!(
+        sr.pauses.iter().any(|p| p.pause_ns == 40 * MS),
+        "peak pause survives"
+    );
+    assert_eq!(
+        sr.heap.last().unwrap().total_bytes,
+        (n - 1) as u64,
+        "peak heap survives"
+    );
 }

@@ -144,7 +144,9 @@ impl GcData {
             }
         }
         if self.alloc.bucket_ns == 0 && !self.alloc.bytes.is_empty() {
-            return Err(invalid("allocation series has bytes but a zero bucket width"));
+            return Err(invalid(
+                "allocation series has bytes but a zero bucket width",
+            ));
         }
         Ok(())
     }

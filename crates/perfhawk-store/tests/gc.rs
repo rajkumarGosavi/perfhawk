@@ -60,7 +60,9 @@ fn data() -> GcData {
 }
 
 fn sidecar(root: &std::path::Path, id: &str) -> std::path::PathBuf {
-    root.join("blobs").join(&id[..2]).join(format!("{id}.gc.zst"))
+    root.join("blobs")
+        .join(&id[..2])
+        .join(format!("{id}.gc.zst"))
 }
 
 #[test]
@@ -98,7 +100,10 @@ fn save_invalid_is_rejected() {
     let mut bad = data();
     bad.events[1].start_ns = 0;
     bad.events[0].start_ns = 50;
-    assert!(matches!(s.save_gc(&id, &bad), Err(StoreError::InvalidGc(_))));
+    assert!(matches!(
+        s.save_gc(&id, &bad),
+        Err(StoreError::InvalidGc(_))
+    ));
     assert!(!s.has_gc(&id));
 }
 

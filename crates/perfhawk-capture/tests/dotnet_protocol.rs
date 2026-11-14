@@ -63,6 +63,7 @@ fn plan(kinds: Vec<ProfileKind>) -> CapturePlan {
         kinds,
         duration: Duration::from_secs(2),
         timeline: false,
+        gc: false,
     }
 }
 
@@ -708,4 +709,44 @@ fn dotnet_memory_never_gets_a_timeline() {
     );
     assert!(seen.iter().all(|m| !m.contains("--bucket-ms")), "{seen:?}");
     assert!(out.artifacts[0].timeline.is_none());
+}
+
+const GC_OK: &str = "fixtures/gc.json";
+const GC_BAD: &str = "fixtures/gc-bad.json";
+
+fn gc_plan(on: bool) -> CapturePlan {
+    CapturePlan {
+        kinds: vec![ProfileKind::Cpu],
+        duration: Duration::from_secs(2),
+        timeline: false,
+        gc: on,
+    }
+}
+
+#[test]
+fn gc_artifact_line_parses_to_gc_data() {
+    let (out, _) = capture_with(script(art("gc", GC_OK)), gc_plan(true));
+    let gc = out.gc.expect("gc data");
+    assert_eq!(gc.events.len(), 3);
+    assert_eq!(gc.runtime, "dotnet");
+    assert!(out.artifacts.is_empty(), "gc is not a profile artifact");
+}
+
+#[test]
+fn gc_is_requested_only_when_the_plan_asks_for_it() {
+    let (_, on) = capture_with(script(art("cpu", CPU)), gc_plan(true));
+    assert!(on.iter().any(|m| m.contains("--kinds cpu,gc ")), "{on:?}");
+    let (_, off) = capture_with(script(art("cpu", CPU)), gc_plan(false));
+    assert!(off.iter().any(|m| m.contains("--kinds cpu ")), "{off:?}");
+}
+
+#[test]
+fn invalid_gc_json_becomes_a_warning_not_a_failure() {
+    let (out, _) = capture_with(script(art("gc", GC_BAD)), gc_plan(true));
+    assert!(out.gc.is_none());
+    assert!(
+        out.warnings.iter().any(|w| w.contains("GC data")),
+        "{:?}",
+        out.warnings
+    );
 }

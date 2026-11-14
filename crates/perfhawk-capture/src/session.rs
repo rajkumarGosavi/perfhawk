@@ -72,6 +72,7 @@ pub fn record(
         kinds: kinds.clone(),
         duration: req.plan.duration,
         timeline: req.plan.timeline,
+        gc: req.plan.gc,
     };
 
     let name = req
@@ -179,6 +180,7 @@ pub fn record(
             artifacts: vec![],
             end: CaptureEnd::Complete,
             warnings: vec![],
+            gc: None,
         },
     };
     match sys_res {
