@@ -67,6 +67,8 @@ td.down { color: var(--diff-down-4); }
 /* Summary */
 .summary-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
 @media (min-width: 900px) { .summary-grid { grid-template-columns: 1fr 1fr; } }
+.summary-grid > * { min-width: 0; }
+.summary-grid .linklike { overflow-wrap: anywhere; word-break: break-all; }
 .card { border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 10px 12px; }
 .card h2, .card h3 { font-size: 14px; margin: 0 0 6px; }
 .card table { width: 100%; border-collapse: collapse; }
