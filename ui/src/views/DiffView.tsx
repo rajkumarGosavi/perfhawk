@@ -3,6 +3,8 @@ import {
   ApiError, getDiffFlame, getDiffTop, getProfile, listProfiles,
   type DiffFlame, type DiffTop, type ProfileRecord,
 } from '../api'
+import { CheckPanel } from './CheckPanel'
+import { focusPattern } from './checkLogic'
 import { ErrorNotice } from './ErrorNotice'
 import { reloadPage } from './reload'
 import { diffColor } from '../flame/diffColor'
@@ -244,6 +246,17 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
           <button aria-pressed={tab === 'tree'} onClick={() => setTab('tree')}>Call tree</button>
         </div>
       </div>
+      {baseRef && head && base && (
+        <details className="check-panel">
+          <summary>Regression check</summary>
+          <CheckPanel
+            head={headRef}
+            base={baseRef}
+            sampleType={stName}
+            onFocusFunction={(name) => navigate({ focus: focusPattern(name) }, 'replace')}
+          />
+        </details>
+      )}
       <TransformBar tx={tx} onChange={(next) => navigate({ tx: next }, 'push')} />
       <div className="toolbar"><ExportMenu items={exportItems} /></div>
       {exportMsg && <p className="muted" role="status">{exportMsg}</p>}

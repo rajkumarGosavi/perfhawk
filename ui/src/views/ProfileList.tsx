@@ -103,7 +103,7 @@ export function ProfileList({
       {profiles === null ? (
         !error && <Skeleton />
       ) : profiles.length === 0 ? (
-        <p className="muted">No profiles yet. Import a file above, or record one with <code>perfhawk record --pid &lt;pid&gt; --open</code>.</p>
+        <p className="muted">No profiles yet. Import a file above, record one from the Record tab, or from a terminal with <code>perfhawk record --pid &lt;pid&gt; --open</code>.</p>
       ) : (
         <div className="table-wrap">
           <table>

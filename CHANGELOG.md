@@ -7,6 +7,7 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- Web UI: a **Record** tab records a running Go or .NET process (pick it from a list, or enter a pid or a local pprof url), with live progress, cancel, and **Record and diagnose** to open the session with its Doctor verdict. A **Regression check** panel in the Diff view is the UI form of `perfhawk check` (PASS or FAIL with the offending functions). Browser recording attaches only; it cannot launch programs or reach non-local urls.
 - Web UI: a first-run welcome on the home page explaining sessions and profiles, an in-app Help panel (`?`), hover/focus definitions for terms such as Self and Total, and a System/Light/Dark theme switch.
 - Windows OS-level tracing (ETW): `perfhawk record --kinds block_io,off_cpu,sched_delay` records Block I/O (by file), off-CPU time and scheduler delay for one process, with Go frames named from symbols. Needs an administrator shell; Perfhawk never elevates itself and prints the exact command to rerun.
 - Windows x64 release package: `perfhawk.exe` with the UI embedded, a self-contained `perfhawk-dotnet.exe` recording helper, checksums, and a PowerShell installer.

@@ -55,6 +55,8 @@ perfhawk record --pid 1234 --duration 15s    # .NET 8+: no code change needed
 perfhawk ui
 ```
 
+Or skip the terminal: run `perfhawk ui` and use the **Record** tab to pick a process, record it, and open the result with a plain-language diagnosis. The Diff view has a **Regression check** panel (the UI form of `perfhawk check`).
+
 ## What you need installed
 
 | You want to... | Needs |

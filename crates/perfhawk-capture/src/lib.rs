@@ -14,6 +14,7 @@ mod session;
 pub mod symbolize;
 pub mod sysevents;
 mod system;
+mod targets;
 mod timeline;
 mod types;
 
@@ -25,5 +26,6 @@ pub use go::GoProvider;
 pub use provider::{Provider, ProviderRegistry};
 pub use session::{record, RecordRequest};
 pub use system::{is_system_kind, SystemProvider, NO_SYSTEM_PROVIDER_NOTE, SYSTEM_KINDS};
+pub use targets::{list_targets, rows_from, TargetRow};
 pub use timeline::{timeline_from_labels, BUCKET_LABEL};
 pub use types::*;

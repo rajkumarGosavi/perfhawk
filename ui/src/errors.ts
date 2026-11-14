@@ -46,6 +46,31 @@ const TABLE: Record<string, Entry> = {
     hint: 'Check that it is a supported profile format (see Help, Getting started) and try again.',
     retryable: false,
   },
+  capture_running: {
+    title: 'A recording is already running',
+    hint: 'Perfhawk records one process at a time. Wait for it to finish, or cancel it, then start again.',
+    retryable: false,
+  },
+  needs_privilege: {
+    title: 'This recording needs administrator rights',
+    hint: 'Open a terminal as administrator (or with sudo) and run the command shown under Technical details. Perfhawk never raises its own privileges.',
+    retryable: false,
+  },
+  unsupported: {
+    title: "That kind of recording isn't available for this process",
+    hint: 'Untick it, or pick another process. The reason is shown next to each kind.',
+    retryable: false,
+  },
+  not_detected: {
+    title: "Perfhawk can't tell what that process is",
+    hint: 'Only Go processes with the Perfhawk agent and running .NET processes can be recorded. Check the process is still running, then refresh the list.',
+    retryable: true,
+  },
+  capture_failed: {
+    title: 'The recording failed',
+    hint: 'Check that the process is still running, then try again. Technical details show what the recorder reported.',
+    retryable: true,
+  },
   internal: {
     title: 'Something went wrong on the server',
     hint: 'Try again. If it keeps happening, run `perfhawk doctor` or check the terminal running Perfhawk for details.',
