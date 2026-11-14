@@ -324,7 +324,9 @@ async fn main() -> ExitCode {
             }
             (Some(_), _) => None,
             (None, Ok(_)) => None,
-            (None, Err(m)) => Some(format!("{m} (or --session <REF> to diagnose a recorded session)")),
+            (None, Err(m)) => Some(format!(
+                "{m} (or --session <REF> to diagnose a recorded session)"
+            )),
         };
         if let Some(m) = bad {
             let _ = Cli::command()

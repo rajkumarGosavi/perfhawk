@@ -71,6 +71,10 @@ pub fn run(store: &Store, a: Args, target: Target) -> (u8, Option<String>) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("error: {e}");
+                if e.to_string().contains("elevated shell") {
+                    let args: Vec<String> = std::env::args().collect();
+                    eprintln!("run: {}", elevated_command(&args));
+                }
                 return (1, None);
             }
         };
@@ -118,4 +122,53 @@ pub fn run(store: &Store, a: Args, target: Target) -> (u8, Option<String>) {
         SessionStatus::Failed | SessionStatus::Running => 1,
     };
     (code, Some(session.short_id))
+}
+
+/// The exact command to rerun from an elevated shell: the user's own
+/// arguments, with the program shown as plain `perfhawk`.
+fn elevated_command(args: &[String]) -> String {
+    let quoted: Vec<String> = args
+        .iter()
+        .skip(1)
+        .map(|a| {
+            if a.is_empty() || a.contains(char::is_whitespace) {
+                format!("\"{a}\"")
+            } else {
+                a.clone()
+            }
+        })
+        .collect();
+    format!("perfhawk {}", quoted.join(" "))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::elevated_command;
+
+    fn v(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn elevated_command_replaces_program_and_keeps_arguments() {
+        assert_eq!(
+            elevated_command(&v(&[
+                "C:\\x\\perfhawk.exe",
+                "record",
+                "--pid",
+                "5",
+                "--kinds",
+                "block_io"
+            ])),
+            "perfhawk record --pid 5 --kinds block_io"
+        );
+    }
+
+    #[test]
+    fn elevated_command_quotes_arguments_with_spaces() {
+        assert_eq!(
+            elevated_command(&v(&["perfhawk", "record", "--name", "my run"])),
+            "perfhawk record --name \"my run\""
+        );
+    }
 }

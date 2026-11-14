@@ -1,9 +1,9 @@
 use assert_cmd::Command;
-use predicates::prelude::*;
 use perfhawk_model::{
     Fidelity, ProfileBuilder, ProfileKind, ProfileMeta, SampleType, SourceFormat, Unit,
 };
 use perfhawk_store::{ImportOptions, SessionStatus, Store, TargetInfo};
+use predicates::prelude::*;
 use std::path::Path;
 
 fn perfhawk(home: &Path) -> Command {
@@ -153,7 +153,7 @@ fn doctor_unknown_session_fails() {
 }
 
 #[test]
-fn follow_up_without_system_provider_refuses() {
+fn follow_up_without_privilege_refuses_and_prints_the_elevated_command() {
     let h = tempfile::tempdir().unwrap();
     let wall = time_profile(
         ProfileKind::Wall,
@@ -163,13 +163,17 @@ fn follow_up_without_system_provider_refuses() {
         ],
     );
     let cpu = time_profile(ProfileKind::Cpu, &[(&["main", "work"], 2_000_000_000)]);
-    let id = seed(h.path(), &[(ProfileKind::Wall, wall), (ProfileKind::Cpu, cpu)]);
+    let id = seed(
+        h.path(),
+        &[(ProfileKind::Wall, wall), (ProfileKind::Cpu, cpu)],
+    );
     perfhawk(h.path())
         .args(["doctor", "--session", &id, "--follow-up"])
         .assert()
         .code(1)
         .stdout(predicate::str::contains("--kinds block_io,off_cpu"))
-        .stderr(predicate::str::contains("ETW on Windows"));
+        .stderr(predicate::str::contains("cannot run the follow-up"))
+        .stderr(predicate::str::contains("elevated shell"));
 }
 
 #[test]

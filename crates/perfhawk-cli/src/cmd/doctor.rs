@@ -3,7 +3,7 @@
 use super::{kind_str, print_table};
 use perfhawk_analysis::{Diagnosis, NextStep};
 use perfhawk_capture::{
-    CancelToken, CapturePlan, Capability, ProviderRegistry, RecordRequest, RuntimeInfo, Target,
+    CancelToken, Capability, CapturePlan, ProviderRegistry, RecordRequest, RuntimeInfo, Target,
 };
 use perfhawk_model::ProfileKind;
 use perfhawk_server::doctor::diagnose_session;
@@ -184,7 +184,7 @@ pub fn run(store: &Store, a: Args) -> u8 {
     if let Some(why) = blocked {
         eprintln!("error: cannot run the follow-up: {why}");
         if let Some(c) = &step.command {
-            eprintln!("run it yourself in an elevated shell once available: {c}");
+            eprintln!("run it yourself from an elevated shell (administrator on Windows, root on Linux): {c}");
         }
         return 1;
     }
@@ -206,7 +206,11 @@ pub fn run(store: &Store, a: Args) -> u8 {
     let cancel = CancelToken::install_ctrlc();
     match perfhawk_capture::record(store, &registry, &req, &cancel, &|m| eprintln!("{m}")) {
         Ok(s) => {
-            println!("follow-up session {}  ({})", s.short_id, kind_str(&s.status));
+            println!(
+                "follow-up session {}  ({})",
+                s.short_id,
+                kind_str(&s.status)
+            );
             0
         }
         Err(e) => fail(e.to_string()),
