@@ -125,3 +125,27 @@ fn overlapping_reload_prefers_latest_method() {
     s.add_method(0x1000, 0x40, "A::M tier0b".into());
     assert_eq!(s.resolve(0x1010), Frame::Named("A::M tier0b".into()));
 }
+
+#[test]
+fn method_name_formats_namespace_class_method() {
+    assert_eq!(
+        method_name("DotnetDemo.Program", "DiskWorker", "instance void ()"),
+        "DotnetDemo.Program::DiskWorker"
+    );
+    assert_eq!(method_name("", "Main", ""), "Main");
+}
+
+#[test]
+fn load_methods_feeds_method_load_events_only() {
+    use perfhawk_capture::sysevents::{MethodInfo, RawEvent, RawKind};
+    let mut m = RawEvent::new(RawKind::MethodLoad, 0, 1, 1);
+    m.method = Some(MethodInfo {
+        start: 0x5000,
+        size: 0x20,
+        name: "N.C::M".into(),
+    });
+    let other = RawEvent::new(RawKind::FileRead, 0, 1, 1);
+    let mut s = Symbolizer::new();
+    load_methods(&[other, m], &mut s);
+    assert_eq!(s.resolve(0x5010), Frame::Named("N.C::M".into()));
+}

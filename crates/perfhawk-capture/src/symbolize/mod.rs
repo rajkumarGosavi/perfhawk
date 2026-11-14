@@ -1,8 +1,10 @@
 //! Address to function-name resolution for OS-level stacks (ETW today, eBPF
 //! later). Not platform-gated so it is tested everywhere.
 
+mod dotnet;
 mod go;
 
+pub use dotnet::{load_methods, method_name};
 pub use go::{go_symbols, GoSym};
 
 use std::collections::BTreeMap;
