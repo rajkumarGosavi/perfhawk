@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import logo from './assets/profiler-icon.svg'
 import { AnnouncerProvider } from './a11y/Announcer'
 import { useDocumentTitle } from './a11y/announce'
 import { viewTitle } from './a11y/title'
@@ -12,7 +11,8 @@ import { History } from './views/History'
 import { HelpPanel } from './views/HelpPanel'
 import { Home } from './views/Home'
 import { ProfileView } from './views/ProfileView'
-import { ThemeSwitch } from './views/ThemeSwitch'
+import { Shell } from './shell/Shell'
+import { ShellProvider } from './shell/ShellContext'
 
 /** Titles the Home and History pages; profile and diff views title themselves once their data loads. */
 function PageTitle({ state }: { state: ViewState }) {
@@ -40,20 +40,6 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (keyAction(e)?.type === 'help') setHelpTopic((t) => (t === null ? topicForView(stateView) : null))
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [stateView])
-
-  // Moving to another page (not just another tab of the same profile) moves focus to the content.
-  useEffect(() => {
-    if (firstPlace.current) { firstPlace.current = false; return }
-    mainRef.current?.focus()
-  }, [placeKey])
-
   // push = new history entry (view/profile changes); replace = filter typing.
   // The patch is merged into the *latest* state, so deferred callers (debounce
   // timers) cannot clobber newer edits. `reset` replaces the state wholesale.
@@ -66,48 +52,50 @@ export default function App() {
     setState(next)
   }, [])
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const a = keyAction(e)
+      if (a?.type === 'help') setHelpTopic((t) => (t === null ? topicForView(stateView) : null))
+      else if (a?.type === 'history') navigate({ view: 'history' }, 'push', true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [stateView, navigate])
+
+  // Moving to another page (not just another tab of the same profile) moves focus to the content.
+  useEffect(() => {
+    if (firstPlace.current) { firstPlace.current = false; return }
+    mainRef.current?.focus()
+  }, [placeKey])
+
+  const page = (
+    <>
+      {!state.profile && <PageTitle state={state} />}
+      {state.profile && state.view === 'diff' ? (
+        <DiffView key={`${state.profile}|${state.base ?? ''}`} state={state} navigate={navigate} />
+      ) : !state.profile && state.view === 'history' ? (
+        <History state={state} navigate={navigate} />
+      ) : state.profile ? (
+        <ProfileView key={state.profile} state={state} navigate={navigate} />
+      ) : (
+        <Home
+          session={state.session}
+          onOpen={(id) => navigate({ profile: id }, 'push', true)}
+          onHistory={() => navigate({ view: 'history' }, 'push', true)}
+          onOpenWindow={(id, r) => navigate({ profile: id, view: 'flame', t0: r.t0, t1: r.t1 }, 'push', true)}
+        />
+      )}
+    </>
+  )
+
   return (
     <AnnouncerProvider>
-    <HelpContext.Provider value={help}>
-      <a
-        className="skip-link"
-        href="#main"
-        onClick={(e) => { e.preventDefault(); mainRef.current?.focus() }}
-      >
-        Skip to main content
-      </a>
-      <header className="app-header">
-        <h1>
-          <button className="linklike brand" onClick={() => navigate({}, 'push', true)}>
-            <img src={logo} alt="" width={22} height={22} />
-            PERFHAWK
-          </button>
-        </h1>
-        <span className="muted">local profiling workbench</span>
-        <span className="header-actions">
-          <button onClick={() => help.open()} title="Help (?)">Help</button>
-          <ThemeSwitch />
-        </span>
-      </header>
-      <main id="main" ref={mainRef} tabIndex={-1}>
-        {!state.profile && <PageTitle state={state} />}
-        {state.profile && state.view === 'diff' ? (
-          <DiffView key={`${state.profile}|${state.base ?? ''}`} state={state} navigate={navigate} />
-        ) : !state.profile && state.view === 'history' ? (
-          <History state={state} navigate={navigate} />
-        ) : state.profile ? (
-          <ProfileView key={state.profile} state={state} navigate={navigate} />
-        ) : (
-          <Home
-            session={state.session}
-            onOpen={(id) => navigate({ profile: id }, 'push', true)}
-            onHistory={() => navigate({ view: 'history' }, 'push', true)}
-            onOpenWindow={(id, r) => navigate({ profile: id, view: 'flame', t0: r.t0, t1: r.t1 }, 'push', true)}
-          />
-        )}
-      </main>
-      {helpTopic !== null && <HelpPanel topic={helpTopic} onClose={() => setHelpTopic(null)} />}
-    </HelpContext.Provider>
+      <HelpContext.Provider value={help}>
+        <ShellProvider>
+          <Shell state={state} navigate={navigate} onHelp={() => help.open()} main={page} mainRef={mainRef} />
+          {helpTopic !== null && <HelpPanel topic={helpTopic} onClose={() => setHelpTopic(null)} />}
+        </ShellProvider>
+      </HelpContext.Provider>
     </AnnouncerProvider>
   )
 }

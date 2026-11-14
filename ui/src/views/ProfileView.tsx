@@ -18,6 +18,8 @@ import { toCsv } from '../export/csv'
 import { copyText, downloadBlob, downloadText, fileStem } from '../export/download'
 import { flameToSvg } from '../export/svg'
 import { ExportMenu, type ExportItem } from './ExportMenu'
+import type { Nav } from '../nav'
+import { useProfileInfo } from '../shell/ShellContext'
 import type { ViewName, ViewState } from '../url'
 import { CallTree } from './CallTree'
 import { formatRange } from '../time/range'
@@ -33,7 +35,6 @@ import { TransformBar } from './TransformBar'
 import { Term } from '../help/Term'
 import { Skeleton } from './Skeleton'
 
-type Nav = (patch: Partial<ViewState>, mode?: 'push' | 'replace', reset?: boolean) => void
 type Data =
   | { kind: 'flame'; tree: FlameNode }
   | { kind: 'top'; rows: TopRow[] }
@@ -43,10 +44,7 @@ type Data =
   | { kind: 'graph'; graph: CallGraph }
   | { kind: 'heat'; heat: Heatmap }
 
-const VIEW_LABELS: [ViewName, string][] = [
-  ['summary', 'Summary'], ['flame', 'Flame'], ['icicle', 'Icicle'], ['tree', 'Call tree'],
-  ['top', 'Top'], ['both', 'Both'], ['sandwich', 'Sandwich'], ['groups', 'Groups'], ['graph', 'Graph'], ['time', 'Time'],
-]
+const FLAME_LAYOUTS: [ViewName, string][] = [['flame', 'Flame'], ['icicle', 'Icicle'], ['both', 'Flame + table']]
 const defaultGroupBy = (kind: string): 'stack' | 'site' => (kind === 'lock' || kind === 'blocking' ? 'site' : 'stack')
 const HOT_VIEWS: ViewName[] = ['flame', 'icicle', 'tree', 'both']
 
@@ -98,6 +96,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
   const { view, func, focus: qf, hide: qh, depth, tx, t0, t1 } = state
   const qe = effectiveExclude(state.exclude, state.hidePh)
   const hasTime = !!record?.has_timeline
+  useProfileInfo(record ? { name: record.name, hasTime } : null)
   const groupBy = state.groupBy ?? defaultGroupBy(record?.kind ?? '')
   const sort = state.sort ?? 'self'
 
@@ -146,7 +145,10 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
     const onKey = (e: KeyboardEvent) => {
       const a = keyAction(e)
       if (!a) return
-      if (a.type === 'view') navigate({ view: a.view }, 'push')
+      if (a.type === 'view') {
+        if (a.view === 'time' && !hasTime) return
+        navigate({ view: a.view }, 'push')
+      }
       else if (a.type === 'hot') navigate({ hot: hot ? undefined : true }, 'replace')
       else if (a.type === 'search') {
         e.preventDefault()
@@ -155,7 +157,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [navigate, hot])
+  }, [navigate, hot, hasTime])
 
   const stem = fileStem(record?.name ?? ref)
   const say = (m: string) => setExportMsg(m)
@@ -217,14 +219,15 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
   return (
     <section aria-label="Profile">
       <div className="toolbar">
-        <button onClick={() => navigate({}, 'push', true)}>&larr; Profiles</button>
         <h2 className="view-title mono">{record?.name ?? ref}</h2>
         {record && <><FidelityBadge fidelity={record.fidelity} /><Term k="fidelity" icon /></>}
-        <div className="tabs" role="group" aria-label="View">
-          {VIEW_LABELS.filter(([v]) => v !== 'time' || hasTime).map(([v, label]) => (
-            <button key={v} aria-pressed={view === v} onClick={() => pushView({ view: v })}>{label}</button>
-          ))}
-        </div>
+        {FLAME_LAYOUTS.some(([v]) => v === view) && (
+          <div className="tabs" role="group" aria-label="Flame layout">
+            {FLAME_LAYOUTS.map(([v, label]) => (
+              <button key={v} aria-pressed={view === v} onClick={() => pushView({ view: v })}>{label}</button>
+            ))}
+          </div>
+        )}
         {HOT_VIEWS.includes(view) && (
           <button aria-pressed={hot} onClick={toggleHot} title="Highlight the hottest call path">
             Hot path (h)
@@ -258,7 +261,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
             ))}
           </select>
         </label>
-        <label className="field">Search<input ref={searchRef} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="highlight" /></label>
+        <label className="field">Search<input id="fn-search" ref={searchRef} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="highlight" /></label>
         <button
           type="button"
           aria-expanded={filtersOpen}
