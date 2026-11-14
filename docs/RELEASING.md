@@ -2,9 +2,28 @@
 
 For maintainers. The engineering checklist is in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md); the launch plan is in [LAUNCH.md](LAUNCH.md).
 
-## What a release produces
+## The flow (3 steps)
 
-A **draft** GitHub Release (published by a human) with:
+1. **Prep PR, merged to `main`:** set the same `version` in `Cargo.toml` `[workspace.package]` and `<Version>` in `helpers/perfhawk-dotnet/PerfhawkDotnet.csproj`; in `CHANGELOG.md` change `## [x.y.z] - unreleased` to `## [x.y.z] - YYYY-MM-DD`. CI green.
+2. **Run the release script** from a clean, up-to-date `main`:
+   ```powershell
+   ./tools/release/release.ps1 -Version 0.1.0 -DryRun   # checks only
+   ./tools/release/release.ps1 -Version 0.1.0           # tags + pushes
+   ```
+   It verifies branch, clean tree, versions, changelog and that the tag is unused, then pushes `v0.1.0` (and `agents/go/v0.1.0` for stable releases).
+3. **Wait for the Release workflow.** It builds, packages, smoke-tests and **publishes** the release automatically. Nothing to click.
+
+Then verify on a clean Windows machine: `irm https://github.com/rajkumarGosavi/perfhawk/releases/latest/download/install.ps1 | iex`, follow the [Quickstart](QUICKSTART.md), uninstall. Announce per [LAUNCH.md](LAUNCH.md).
+
+## Rules
+
+- **Stable** `v0.1.0` becomes "latest" (what `install.ps1` and the `latest/download` URL resolve to).
+- **Pre-release** `v0.1.0-rc.1` is published but never "latest". Test it with the tag URL: `irm https://github.com/rajkumarGosavi/perfhawk/releases/download/v0.1.0-rc.1/install.ps1 | iex`.
+- **Never create releases by hand** in the GitHub UI: a manual release on an existing tag has no assets and breaks `latest`.
+- **Never move or delete a pushed tag** (Go's module proxy caches forever). If something is wrong, ship the next patch version.
+- If the workflow fails before publishing, fix on `main`, bump the version (or delete the tag only if nothing was published), and re-run the script.
+
+## What a release produces
 
 | Asset | What |
 |---|---|
@@ -12,40 +31,16 @@ A **draft** GitHub Release (published by a human) with:
 | `SHA256SUMS` | SHA-256 of the zip |
 | `install.ps1` | The installer, from `scripts/install.ps1` |
 
-Plus a Go module tag for the agent (see below).
-
-## Steps
-
-1. **Branch and freeze.** Work from `main`; CI must be green on Windows.
-2. **Version.** Set `version` in `Cargo.toml` `[workspace.package]` and `<Version>` in `helpers/perfhawk-dotnet/PerfhawkDotnet.csproj` to the same value.
-3. **Changelog.** Move `Unreleased` entries under the new version with a date in `CHANGELOG.md`.
-4. **Release candidate.** Tag `v0.1.0-rc.1` (a tag containing `-` becomes a *pre-release*):
-   ```powershell
-   git tag -a v0.1.0-rc.1 -m "v0.1.0-rc.1"
-   git push origin v0.1.0-rc.1
-   ```
-   The **Release** workflow builds, packages, smoke-tests and drafts the release.
-5. **Test the artifact** on a clean Windows 11 machine or Windows Sandbox: run the installer against the draft (download the zip manually while it is a draft), then follow the [Quickstart](QUICKSTART.md) end to end, then uninstall.
-6. **Final tag.** Repeat step 4 with `v0.1.0`. The workflow checks that the tag matches the `Cargo.toml` version.
-7. **Publish the draft** on GitHub. `install.ps1` resolves "latest" to published, non-draft, non-pre-release releases only.
-8. **Tag the Go agent** (it is a nested module, so its tag is prefixed with its directory):
-   ```powershell
-   git tag agents/go/v0.1.0
-   git push origin agents/go/v0.1.0
-   ```
-   Verify from an empty module:
-   ```powershell
-   mkdir $env:TEMP\gotest; cd $env:TEMP\gotest
-   go mod init example.com/t
-   go get github.com/rajkumarGosavi/perfhawk/agents/go@v0.1.0
-   ```
-   Go's module proxy caches a version forever; **never move or delete a published tag**. If something is wrong, publish `v0.1.1`.
-9. **Smoke test the published release:** `irm .../install.ps1 | iex` on a clean machine.
-10. **Announce** per [LAUNCH.md](LAUNCH.md).
+Plus the Go agent module tag `agents/go/v<version>` (nested module, prefixed with its directory). Verify from an empty module:
+```powershell
+mkdir $env:TEMP\gotest; cd $env:TEMP\gotest
+go mod init example.com/t
+go get github.com/rajkumarGosavi/perfhawk/agents/go@v0.1.0
+```
 
 ## Hotfix
 
-Branch from the tag, fix, bump the patch version, tag `v0.1.1`. The workflow is the same.
+Branch from the tag, fix, bump the patch version, merge to `main`, run the script with the new version.
 
 ## Code signing
 

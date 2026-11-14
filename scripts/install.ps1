@@ -63,6 +63,7 @@ try {
   $zip = Join-Path $tmp $zipAsset.name
   Invoke-WebRequest $zipAsset.browser_download_url -OutFile $zip -UserAgent 'perfhawk-installer'
   $sums = (Invoke-WebRequest $sumAsset.browser_download_url -UserAgent 'perfhawk-installer').Content
+  if ($sums -is [byte[]]) { $sums = [Text.Encoding]::UTF8.GetString($sums) }  # octet-stream assets come back as bytes
   $line = ($sums -split "`n" | Where-Object { $_ -match [regex]::Escape($zipAsset.name) } | Select-Object -First 1)
   if (-not $line) { throw 'SHA256SUMS does not list the package.' }
   $want = ($line -split '\s+')[0].ToLower()
