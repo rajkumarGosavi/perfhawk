@@ -98,12 +98,17 @@ func gcHandler(w http.ResponseWriter, r *http.Request) {
 		doc.Notes = append(doc.Notes, "On Windows the Go runtime clock is coarse (about a millisecond or more), so short pauses can read as 0 ns.")
 	}
 	lost := 0
+	pendingForced := 0 // forced cycles seen but not yet matched to a finished collection
 	nextID := uint32(1)
 
 	poll := func(now time.Time) {
 		elapsed := now.Sub(t0)
 		debug.ReadGCStats(&stats)
 		forced, live, haveLive, allocs := readGCMetrics()
+		// The forced counter moves when a cycle starts, NumGC when it ends, so the two can
+		// be seen in different polls: carry the count until events arrive to claim it.
+		pendingForced += int(forced - lastForced)
+		lastForced = forced
 		if n := int(stats.NumGC - lastNumGC); n > 0 {
 			have := len(stats.Pause)
 			if len(stats.PauseEnd) < have {
@@ -127,8 +132,7 @@ func gcHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			sort.SliceStable(batch, func(a, b int) bool { return batch[a].StartNs < batch[b].StartNs })
 			// runtime.GC() calls advance the forced counter; attribute them to the latest events.
-			f := int(forced - lastForced)
-			for i := len(batch) - 1; i >= 0 && f > 0; i, f = i-1, f-1 {
+			for i := len(batch) - 1; i >= 0 && pendingForced > 0; i, pendingForced = i-1, pendingForced-1 {
 				batch[i].Induced, batch[i].Reason = true, "induced"
 			}
 			if len(doc.Events) > 0 && len(batch) > 0 && batch[0].StartNs < doc.Events[len(doc.Events)-1].StartNs {
@@ -137,7 +141,6 @@ func gcHandler(w http.ResponseWriter, r *http.Request) {
 			doc.Events = append(doc.Events, batch...)
 			lastNumGC = stats.NumGC
 		}
-		lastForced = forced
 		if haveLive {
 			doc.Heap = append(doc.Heap, gcHeapPoint{TNs: uint64(elapsed), TotalBytes: live})
 		}
