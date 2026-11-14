@@ -13,7 +13,7 @@ use crate::sysevents::MethodInfo;
 
 use crate::cancel::CancelToken;
 use crate::etwdecode::{nt_to_dos, Decoder, Record, GUID_FILE_IO, GUID_THREAD};
-use crate::symbolize::Symbolizer;
+use crate::symbolize::{SymbolOptions, Symbolizer, DEFAULT_SERVER};
 use crate::sysevents::{
     aggregate, build_artifacts, AggregateInput, LossStats, QpcClock, RawEvent, RawKind, WindowSpec,
 };
@@ -217,7 +217,7 @@ impl SystemProvider for EtwProvider {
                 *f = nt_to_dos(f, &devices);
             }
         }
-        let mut symbolizer = Symbolizer::new();
+        let mut symbolizer = Symbolizer::with_options(symbol_options());
         if let Ok(ms) = methods.lock() {
             for m in ms.iter() {
                 symbolizer.add_method(m.start, m.size, m.name.clone());
@@ -284,4 +284,23 @@ impl SystemProvider for EtwProvider {
             gc: None,
         })
     }
+}
+
+/// PDB lookup settings from the environment. `PERFHAWK_SYMBOL_SERVER` turns
+/// downloads on (`1` for Microsoft's public server, or a base URL); without it
+/// nothing leaves the machine. `PERFHAWK_SYMBOL_CACHE` overrides the cache
+/// folder (default `%LOCALAPPDATA%\perfhawk\symbols`).
+fn symbol_options() -> SymbolOptions {
+    let cache = std::env::var_os("PERFHAWK_SYMBOL_CACHE")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("LOCALAPPDATA")
+                .map(|d| std::path::PathBuf::from(d).join("perfhawk").join("symbols"))
+        });
+    let server = match std::env::var("PERFHAWK_SYMBOL_SERVER") {
+        Ok(v) if v == "1" => Some(DEFAULT_SERVER.to_string()),
+        Ok(v) if v.starts_with("http") => Some(v),
+        _ => None,
+    };
+    SymbolOptions { cache, server }
 }

@@ -63,6 +63,17 @@ fn collect<'d, Pe: ImageNtHeaders>(
     Ok(out)
 }
 
+/// `(begin, end)` RVAs of every function in a PE image's x64 exception
+/// directory, sorted by begin. Empty for x86 images or on any parse problem.
+pub(super) fn function_extents(data: &[u8]) -> Vec<(u64, u64)> {
+    match object::FileKind::parse(data) {
+        Ok(object::FileKind::Pe64) => PeFile64::parse(data)
+            .map(|f| runtime_functions(&f, data))
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
 /// `(begin, end)` RVAs from the x64 exception directory, sorted by begin.
 fn runtime_functions<'d, Pe: ImageNtHeaders>(
     file: &object::read::pe::PeFile<'d, Pe>,

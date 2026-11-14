@@ -3,6 +3,7 @@
 
 mod dotnet;
 mod go;
+mod pdb;
 mod pe;
 pub mod r2r;
 
@@ -11,6 +12,7 @@ pub use dotnet::{
     GUID_DOTNET_RUNDOWN, GUID_DOTNET_RUNTIME,
 };
 pub use go::{go_symbols, GoSym};
+pub use pdb::{pdb_symbols, SymbolOptions, DEFAULT_SERVER};
 pub use pe::pe_export_symbols;
 
 use std::collections::BTreeMap;
@@ -54,12 +56,21 @@ struct Image {
 pub struct Symbolizer {
     images: Vec<Image>,
     methods: BTreeMap<u64, (u64, String)>,
+    options: SymbolOptions,
     unresolved: AtomicU64,
 }
 
 impl Symbolizer {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A symbolizer that may also read PDBs from a cache and a symbol server.
+    pub fn with_options(options: SymbolOptions) -> Self {
+        Self {
+            options,
+            ..Self::default()
+        }
     }
 
     /// Register a loaded image. Symbols are read from `path` when the file has
@@ -82,7 +93,11 @@ impl Symbolizer {
                 .collect();
         }
         if syms.is_empty() {
-            // Native DLLs (ntdll, coreclr, ...): exported function names.
+            // Native DLLs (ntdll, coreclr, ...): PDB names when a PDB is
+            // available, otherwise exported function names.
+            syms = pdb_symbols(path, &self.options).unwrap_or_default();
+        }
+        if syms.is_empty() {
             syms = pe_export_symbols(path).unwrap_or_default();
         }
         syms.sort_by_key(|s| s.start);
