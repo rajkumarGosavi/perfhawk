@@ -14,15 +14,17 @@ describe('keyAction', () => {
   it.each([
     ['1', 'summary'],
     ['2', 'flame'],
-    ['3', 'icicle'],
-    ['4', 'tree'],
-    ['5', 'top'],
-    ['6', 'both'],
+    ['3', 'tree'],
+    ['4', 'top'],
+    ['5', 'time'],
+    ['6', 'graph'],
     ['7', 'groups'],
-    ['8', 'graph'],
-    ['9', 'time'],
   ])('%s -> view %s', (k, view) => {
     expect(keyAction(ev(k))).toEqual({ type: 'view', view })
+  })
+  it('8 opens history and 9 is unmapped', () => {
+    expect(keyAction(ev('8'))).toEqual({ type: 'history' })
+    expect(keyAction(ev('9'))).toBeNull()
   })
   it('maps h, / and ?', () => {
     expect(keyAction(ev('h'))).toEqual({ type: 'hot' })
@@ -44,6 +46,6 @@ describe('keyAction', () => {
   })
   it('SHORTCUTS documents every mapped key', () => {
     const all = SHORTCUTS.map((s) => s.keys).join(' ')
-    for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'f m x', 'h', '/', '?', 'Esc']) expect(all).toContain(k)
+    for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', 'Ctrl K', 'f m x', 'h', '/', '?', 'Esc']) expect(all).toContain(k)
   })
 })
