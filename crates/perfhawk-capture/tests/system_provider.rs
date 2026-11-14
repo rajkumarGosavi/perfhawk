@@ -40,6 +40,9 @@ impl Provider for Lang {
     fn capabilities(&self, _: &RuntimeInfo) -> Vec<Capability> {
         vec![cap(ProfileKind::Cpu, true)]
     }
+    fn supports_gc(&self) -> bool {
+        true
+    }
     fn capture(
         &self,
         _: &RuntimeInfo,
@@ -302,6 +305,23 @@ fn system_artifact_without_timeline_warns() {
         s.warnings
             .iter()
             .any(|w| w.contains("no time resolution for block_io")),
+        "{:?}",
+        s.warnings
+    );
+}
+
+#[test]
+fn os_only_recording_does_not_warn_about_missing_gc_data() {
+    // The runtime provider is never asked to capture, so a missing GC stream is not a problem.
+    let r = rig(
+        Box::new(|| panic!("language capture must not run")),
+        Some(Box::new(|_| Ok(outcome(vec![io_artifact()])))),
+    );
+    let mut request = req(vec![ProfileKind::BlockIo]);
+    request.plan.gc = true;
+    let s = record(&r.store, &r.reg, &request, &CancelToken::new(), &|_| {}).unwrap();
+    assert!(
+        s.warnings.iter().all(|w| !w.contains("GC")),
         "{:?}",
         s.warnings
     );

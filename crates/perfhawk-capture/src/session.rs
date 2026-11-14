@@ -251,7 +251,8 @@ pub fn record(
             warnings.push(format!("could not store GC data: {e}"));
             degraded = true;
         }
-    } else if req.plan.gc && provider.supports_gc() {
+    } else if req.plan.gc && provider.supports_gc() && !lang_kinds.is_empty() {
+        // Only when the runtime provider was asked to capture: an OS-only recording has no GC stream.
         warnings.push("no GC data was captured".into());
     }
     // A terminal Ctrl-C reaches the whole process group, so the target can die at the
