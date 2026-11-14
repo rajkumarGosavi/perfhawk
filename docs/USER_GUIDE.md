@@ -468,7 +468,8 @@ deepest rows are clipped with a notice; use Focus or zoom to see them.
 - **Sample type**: choose which value to analyze, for example `inuse_space` or `alloc_space` for a Go heap profile.
 - **Focus / Exclude / Hide**: regex filters, updated as you type (see §6).
 - **Search**: highlights matching frames in the graph without filtering anything.
-- **Views**: Summary, Flame, Icicle, Call tree, Top, Both and Sandwich.
+- **Views**: the left rail lists Summary, Flame graph, Call tree, Top functions, Timeline (recordings only), Call graph, Groups and History. In the flame view a **Flame / Icicle / Flame + table** switch in the toolbar changes the layout. Sandwich is opened from a function; older links with `view=icicle`, `both` or `sandwich` still work.
+- **Command palette (Ctrl K)**: jump to a view, focus search, open help or switch the theme by typing.
 - **Hot path (h)**: highlights the hottest call path in Flame, Icicle, Call tree and Both.
 - **?**: lists the keyboard shortcuts.
 
@@ -641,7 +642,8 @@ field.
 
 | Key | Action |
 |---|---|
-| `1` `2` `3` `4` `5` `6` `7` `8` `9` | Summary, Flame, Icicle, Call tree, Top, Both, Groups, Graph, Time |
+| `1` `2` `3` `4` `5` `6` `7` `8` | Summary, Flame graph, Call tree, Top functions, Timeline, Call graph, Groups, History (`5` needs a recording with time data) |
+| `Ctrl K` | Command palette (works while typing in a field) |
 | `f` `m` `x` | Focus subtree / Merge / Drop the selected call-tree node |
 | `h` | Toggle hot path |
 | `/` | Focus Search |
