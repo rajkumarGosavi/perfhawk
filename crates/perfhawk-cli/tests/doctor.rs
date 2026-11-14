@@ -154,6 +154,13 @@ fn doctor_unknown_session_fails() {
 
 #[test]
 fn follow_up_without_privilege_refuses_and_prints_the_elevated_command() {
+    // CI runners are administrators: the follow-up is then not blocked by missing
+    // privilege (it fails later, on the made-up pid), so this path cannot be tested.
+    #[cfg(windows)]
+    if perfhawk_capture::etw::is_elevated() {
+        eprintln!("skipped: running elevated");
+        return;
+    }
     let h = tempfile::tempdir().unwrap();
     let wall = time_profile(
         ProfileKind::Wall,
