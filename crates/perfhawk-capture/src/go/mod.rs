@@ -164,6 +164,11 @@ impl Provider for GoProvider {
         }
     }
 
+    /// Only agent targets can return GC data; others get a warning at capture time.
+    fn supports_gc(&self) -> bool {
+        true
+    }
+
     fn capabilities(&self, rt: &RuntimeInfo) -> Vec<Capability> {
         use ProfileKind::*;
         let n = Fidelity::Native;

@@ -100,6 +100,43 @@ enum Msg {
         gone: bool,
         text: String,
     },
+    Gc {
+        data: Option<perfhawk_model::GcData>,
+        gone: bool,
+        warning: Option<String>,
+    },
+}
+
+/// Fetches and validates the agent's `/debug/perfhawk/gc` result. A missing
+/// endpoint or bad body downgrades to a warning, never a failed capture.
+fn fetch_gc(url: &str, timeout: Duration) -> Msg {
+    let warn = |w: String, gone: bool| Msg::Gc {
+        data: None,
+        gone,
+        warning: Some(w),
+    };
+    match fetch(url, timeout) {
+        Ok(bytes) => match perfhawk_model::GcData::from_json(&bytes) {
+            Ok(d) => Msg::Gc {
+                data: Some(d),
+                gone: false,
+                warning: None,
+            },
+            Err(e) => warn(
+                format!("gc: ignoring invalid GC data from the agent ({e})"),
+                false,
+            ),
+        },
+        Err(FetchError::Status(404, _)) => warn(
+            "gc: update the perfhawk agent to record GC data".into(),
+            false,
+        ),
+        Err(FetchError::Gone(t)) => warn(format!("gc: {t}"), true),
+        Err(FetchError::Status(code, body)) => {
+            warn(format!("gc: HTTP {code} {body}").trim().to_string(), false)
+        }
+        Err(FetchError::Other(t)) => warn(format!("gc: {t}"), false),
+    }
 }
 
 /// Captures `plan.kinds` concurrently from the endpoint at `base`.
@@ -200,13 +237,30 @@ pub(crate) fn capture_http(
             let _ = tx.send(msg);
         });
     }
+    let mut gc_pending = false;
+    if plan.gc {
+        if has_agent {
+            progress("capturing gc from /debug/perfhawk/gc");
+            gc_pending = true;
+            let (tx, url) = (
+                tx.clone(),
+                format!("{base}/debug/perfhawk/gc?seconds={secs}"),
+            );
+            std::thread::spawn(move || {
+                let _ = tx.send(fetch_gc(&url, timeout));
+            });
+        } else {
+            warnings.push("gc: GC data needs the perfhawk agent in the target".into());
+        }
+    }
     drop(tx);
 
+    let mut gc_data = None;
     let mut artifacts: HashMap<ProfileKind, Artifact> = HashMap::new();
     let mut gone = false;
     let mut cancelled = false;
     let mut grace_deadline: Option<Instant> = None;
-    while !pending.is_empty() {
+    while !pending.is_empty() || gc_pending {
         if !cancelled && cancel.is_cancelled() {
             cancelled = true;
             grace_deadline = Some(Instant::now() + CANCEL_GRACE);
@@ -223,6 +277,19 @@ pub(crate) fn capture_http(
             Ok(Msg::Done(a)) => {
                 pending.remove(&a.kind);
                 artifacts.insert(a.kind, a);
+            }
+            Ok(Msg::Gc {
+                data,
+                gone: g,
+                warning,
+            }) => {
+                gc_pending = false;
+                gc_data = data;
+                gone |= g;
+                warnings.extend(warning);
+                if gone {
+                    break;
+                }
             }
             Ok(Msg::Failed {
                 kind,
@@ -264,6 +331,6 @@ pub(crate) fn capture_http(
         artifacts: ordered,
         end,
         warnings,
-        gc: None,
+        gc: gc_data,
     })
 }
