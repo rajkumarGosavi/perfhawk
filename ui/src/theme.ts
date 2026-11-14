@@ -1,3 +1,5 @@
+import { getPref, setPref } from './storage'
+
 export type ThemePref = 'system' | 'light' | 'dark'
 export type ResolvedTheme = 'light' | 'dark'
 
@@ -13,11 +15,7 @@ export function resolveTheme(pref: ThemePref, systemDark: boolean): ResolvedThem
 }
 
 export function readThemePref(): ThemePref {
-  try {
-    return parseThemePref(localStorage.getItem(KEY))
-  } catch {
-    return 'system'
-  }
+  return parseThemePref(getPref(KEY))
 }
 
 const systemDark = () => typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches
@@ -34,11 +32,7 @@ export function applyThemePref(pref: ThemePref): void {
 }
 
 export function writeThemePref(pref: ThemePref): void {
-  try {
-    localStorage.setItem(KEY, pref)
-  } catch {
-    /* storage unavailable: the choice lasts for this page view only */
-  }
+  setPref(KEY, pref)
   applyThemePref(pref)
 }
 
