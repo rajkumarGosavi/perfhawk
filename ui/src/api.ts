@@ -354,3 +354,21 @@ export const getRecordCurrent = async (): Promise<RecordJob | null> =>
   (await request<RecordJob | undefined>('/api/record/current')) ?? null
 export const cancelRecord = (jobId: string) =>
   request<void>(`/api/record/${encodeURIComponent(jobId)}`, DELETE_INIT)
+
+export type CheckRegression = {
+  name: string
+  baseSelf: number
+  headSelf: number
+  /** null for a function that is new in the head. */
+  growthPct: number | null
+  deltaPoints: number
+}
+export type CheckReport = {
+  ok: boolean
+  sampleType: SampleTypeInfo
+  baseTotal: number
+  headTotal: number
+  regressions: CheckRegression[]
+}
+export const getCheck = (head: string, base: string, q: { threshold: number; min_value: number; st?: string }) =>
+  request<CheckReport>(`/api/check${qs({ head, base, ...q })}`)

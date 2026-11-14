@@ -16,6 +16,7 @@ import { TopTable } from '../views/TopTable'
 import { Welcome } from '../views/Welcome'
 import { RecordProgress } from '../views/RecordProgress'
 import { RecordTab } from '../views/RecordTab'
+import { CheckPanel } from '../views/CheckPanel'
 import { ApiError } from '../api'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -113,6 +114,44 @@ describe('axe: record', () => {
     expect(el.querySelector('[role="status"]')?.textContent).toMatch(/recording/i)
     expect(el.textContent).toMatch(/cancel/i)
     expect((await violations(el)).map((x) => x.id)).toEqual([])
+  })
+})
+
+describe('axe: regression check panel', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const REPORT = (ok: boolean) => ({
+    ok,
+    sampleType: { name: 'time', unit: 'nanoseconds' },
+    baseTotal: 200,
+    headTotal: 400,
+    regressions: ok ? [] : [
+      { name: 'main.slow', baseSelf: 100, headSelf: 300, growthPct: 200, deltaPoints: 25 },
+      { name: 'main.new', baseSelf: 0, headSelf: 50, growthPct: null, deltaPoints: 12 },
+    ],
+  })
+
+  async function run(ok: boolean) {
+    vi.stubGlobal('fetch', async () =>
+      new Response(JSON.stringify(REPORT(ok)), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    const el = await render(<CheckPanel head="h1" base="b1" onFocusFunction={() => {}} />)
+    const btn = [...el.querySelectorAll('button')].find((b) => /run check/i.test(b.textContent ?? ''))!
+    await act(async () => { btn.click() })
+    return el
+  }
+
+  it('shows FAIL with the regressions listed, and no serious violations', async () => {
+    const el = await run(false)
+    expect(el.querySelector('[role="status"]')?.textContent).toContain('FAIL: 2 regressions')
+    expect(el.textContent).toContain('main.slow')
+    expect(el.textContent).toContain('new')
+    expect(el.textContent).toContain('perfhawk check h1 --baseline b1 --threshold 10 --min-value 1')
+    expect((await violations(el)).map((x) => x.id)).toEqual([])
+  })
+
+  it('shows PASS when nothing regressed', async () => {
+    const el = await run(true)
+    expect(el.querySelector('[role="status"]')?.textContent).toContain('PASS')
   })
 })
 
