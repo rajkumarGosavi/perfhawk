@@ -96,3 +96,69 @@ fn corelib_method_entry_points_decode_to_valid_runtime_function_indexes() {
     assert!(arr.len() > 20_000, "MethodDef rows: {}", arr.len());
     assert!(present > 10_000, "precompiled methods: {present}");
 }
+
+fn minilib() -> Vec<u8> {
+    std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/MiniLib.dll"
+    ))
+    .unwrap()
+}
+
+#[test]
+fn metadata_names_for_minilib() {
+    let dll = minilib();
+    let md = r2r::cli_metadata(&dll).expect("managed image has metadata");
+    let names = r2r::method_names(&dll[md]).expect("metadata parses");
+    for want in [
+        "Mini.Outer::Run",
+        "Mini.Outer::Stop",
+        "Mini.Outer+Inner::Deep",
+        "Mini.Box`1::Get",
+        "TopLevel::Global",
+    ] {
+        assert!(
+            names.iter().any(|n| n == want),
+            "missing {want}; got {names:?}"
+        );
+    }
+    assert!(
+        names
+            .iter()
+            .all(|n| !n.starts_with("::") && !n.starts_with('.')),
+        "empty namespace must not leave a leading separator: {names:?}"
+    );
+}
+
+#[test]
+fn metadata_rejects_garbage() {
+    assert!(r2r::method_names(&[]).is_none());
+    assert!(r2r::method_names(&[0x42; 200]).is_none());
+    let dll = minilib();
+    let md = r2r::cli_metadata(&dll).unwrap();
+    // Truncations of real metadata must not panic.
+    for cut in [10, 40, 100, md.len() / 2] {
+        let _ = r2r::method_names(&dll[md.start..md.start + cut]);
+    }
+}
+
+#[test]
+fn non_r2r_dll_is_not_a_ready_to_run_image() {
+    assert!(r2r::open(&minilib()).is_none());
+}
+
+#[test]
+fn corelib_metadata_names() {
+    let Some(p) = find_corelib() else {
+        eprintln!("skipped: no .NET runtime installed");
+        return;
+    };
+    let data = std::fs::read(p).unwrap();
+    let md = r2r::cli_metadata(&data).unwrap();
+    let names = r2r::method_names(&data[md]).expect("CoreLib metadata parses");
+    assert!(names.len() > 20_000, "{} names", names.len());
+    assert!(
+        names.iter().any(|n| n == "System.String::get_Length"),
+        "get_Length missing"
+    );
+}

@@ -3,6 +3,8 @@
 
 mod header;
 
-pub use header::{open, R2rImage};
+mod metadata;
+pub use header::{cli_metadata, open, R2rImage};
+pub use metadata::method_names;
 mod native;
 pub use native::{decode_unsigned, NativeArray};

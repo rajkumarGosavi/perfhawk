@@ -1,7 +1,7 @@
 //! PE data-directory walk to the READYTORUN header and its section list.
 
 use object::pe::{IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_FILE_MACHINE_AMD64};
-use object::read::pe::{ImageNtHeaders, PeFile64};
+use object::read::pe::{ImageNtHeaders, PeFile, PeFile32, PeFile64};
 use std::ops::Range;
 
 /// `READYTORUN_HEADER.Signature`: "RTR\0".
@@ -35,6 +35,52 @@ fn u32_at(d: &[u8], o: usize) -> Option<u32> {
     Some(u32::from_le_bytes(d.get(o..o + 4)?.try_into().ok()?))
 }
 
+/// The CLI metadata directory of any managed PE image (ReadyToRun or IL only).
+pub fn cli_metadata(data: &[u8]) -> Option<Range<usize>> {
+    match PeFile64::parse(data) {
+        Ok(pe) => metadata_range(&pe, data),
+        Err(_) => metadata_range(&PeFile32::parse(data).ok()?, data),
+    }
+}
+
+fn metadata_range<P: ImageNtHeaders>(pe: &PeFile<'_, P>, data: &[u8]) -> Option<Range<usize>> {
+    let cor = cor_header(pe, data)?;
+    file_range(
+        pe,
+        data,
+        u32_at(cor, COR_METADATA)?,
+        u32_at(cor, COR_METADATA + 4)?,
+    )
+}
+
+/// Map an RVA range to a byte range of the file, clamped to its section.
+fn file_range<P: ImageNtHeaders>(
+    pe: &PeFile<'_, P>,
+    data: &[u8],
+    rva: u32,
+    size: u32,
+) -> Option<Range<usize>> {
+    let (off, avail) = pe.section_table().pe_file_range_at(rva)?;
+    let start = off as usize;
+    let end = start.checked_add(size.min(avail) as usize)?;
+    (end <= data.len()).then_some(start..end)
+}
+
+/// The `IMAGE_COR20_HEADER` bytes, when the image has a managed header.
+fn cor_header<'a, P: ImageNtHeaders>(pe: &PeFile<'_, P>, data: &'a [u8]) -> Option<&'a [u8]> {
+    let com = pe
+        .data_directories()
+        .get(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)?;
+    let (rva, size) = (
+        com.virtual_address.get(object::LittleEndian),
+        com.size.get(object::LittleEndian),
+    );
+    if size < 72 {
+        return None;
+    }
+    Some(&data[file_range(pe, data, rva, size)?])
+}
+
 /// Parse a ReadyToRun image (x64 only). `None` for anything else, including
 /// truncated or malformed input.
 pub fn open(data: &[u8]) -> Option<R2rImage<'_>> {
@@ -48,24 +94,8 @@ pub fn open(data: &[u8]) -> Option<R2rImage<'_>> {
     {
         return None;
     }
-    let sections = pe.section_table();
-    let range = |rva: u32, size: u32| -> Option<Range<usize>> {
-        let (off, avail) = sections.pe_file_range_at(rva)?;
-        let size = size.min(avail);
-        let start = off as usize;
-        let end = start.checked_add(size as usize)?;
-        (end <= data.len()).then_some(start..end)
-    };
-    let dirs = pe.data_directories();
-    let com = dirs.get(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)?;
-    let (com_rva, com_size) = (
-        com.virtual_address.get(object::LittleEndian),
-        com.size.get(object::LittleEndian),
-    );
-    if com_size < 72 {
-        return None;
-    }
-    let cor = &data[range(com_rva, com_size)?];
+    let range = |rva: u32, size: u32| file_range(&pe, data, rva, size);
+    let cor = cor_header(&pe, data)?;
     let native_rva = u32_at(cor, COR_MANAGED_NATIVE_HEADER)?;
     let native_size = u32_at(cor, COR_MANAGED_NATIVE_HEADER + 4)?;
     let meta_rva = u32_at(cor, COR_METADATA)?;
