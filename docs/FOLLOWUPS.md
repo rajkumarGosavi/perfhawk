@@ -62,3 +62,4 @@ Items found during reviews and deliberately deferred. ~~Struck through~~ items w
 - **Scheduler delay stack** reuses the resumed thread's blocked stack; the waker's stack from ReadyThread events does not match the woken thread and is not used.
 - **Linux (M4)** can reuse `sysevents::aggregate`, `build_artifacts` and `Symbolizer`; only the event source differs.
 - **Unverified here:** the real-trace e2e tests (`etw_real.rs`, `e2e.rs` `etw_*`) have to be run from an elevated shell with `PERFHAWK_ETW=1`.
+- **Go function names in ETW stacks.** Go syscalls run on the system stack, so ETW stacks stop at `runtime.asmcgocall` (see `docs/perf/etw-spike.md`). Attribute I/O and off-CPU time to goroutine stacks by correlating the kernel thread id with the Go agent's goroutine/thread data (or by walking the Go `g` pointer). Until then Go Block I/O profiles show the file but not the calling Go function.

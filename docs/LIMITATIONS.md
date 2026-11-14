@@ -58,3 +58,4 @@ Perfhawk v0.1 is a first release. This page lists what it does not do, so you ar
 ## Reporting gaps
 
 Missing something that blocks you? Open an issue and tell us what you were trying to find. The [roadmap](PLAN.md#7-roadmap) is driven by real use.
+- **Go:** Block I/O and off-CPU stacks name the file and the OS/runtime frames but not the Go function that made the call (Go makes syscalls on its system stack). Use the Go wall-clock or CPU profile to find the caller.

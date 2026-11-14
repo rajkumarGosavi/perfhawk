@@ -39,3 +39,7 @@ File paths come as NT device paths (`\Device\HarddiskVolume3\...`); `nt_to_dos` 
 ## Symbols
 
 Go 1.27 on Windows writes a COFF symbol table readable with the `object` crate (`main.main` and friends); a binary built with `-ldflags=-s -w` has none and is reported as stripped. No `.gopclntab` parser was needed. .NET JIT methods need ETW rundown events from `Microsoft-Windows-DotNETRuntime`; that part is not implemented yet (see FOLLOWUPS), so managed frames currently show as module+offset or `[unknown]`.
+
+## Go goroutine stacks are not reachable (found in the first e2e run)
+
+Go makes Windows syscalls on the thread's system stack (`g0`) through `runtime.asmcgocall` / `asmstdcall`. The kernel's stack walk therefore ends there: a Block I/O stack for the Go demo reads `ntdll.dll+0x...` / `KernelBase.dll+0x...` / `runtime.asmstdcall` / `runtime.asmcgocall` and never reaches `main.(*service).fileWorker`. File attribution (the `[file: ...]` leaf), timings and bytes are correct; the Go function that issued the I/O is not recoverable from the ETW stack alone. Fixing it needs the Go agent's goroutine-to-thread information (a FOLLOWUP). .NET managed code runs on the thread's own stack, so it does not have this problem once rundown names are added.
