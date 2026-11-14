@@ -4,6 +4,12 @@ All notable changes are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/) (while below 1.0, minor versions may change behaviour).
 
+## [Unreleased]
+
+### Added
+- GC analysis for Go: `perfhawk record` on a Go process running the perfhawk agent now captures GC data (collections, pauses, live heap, allocation rate), shown by `perfhawk gc`, `perfhawk doctor` and the web UI. Go reports no GC duration, reasons or generations, so the data is marked approximate. Needs the agent module `agents/go` v0.1.1 or later; an older agent gives a warning and no GC data.
+- `examples/go-demo -mode gc` workload and `-gogc` flag.
+
 ## [0.1.0] - 2026-11-15
 
 First public release (Windows x64).

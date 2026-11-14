@@ -37,7 +37,7 @@ Perfhawk v0.1 is a first release. This page lists what it does not do, so you ar
 - **CPU is approximate.** It is reconstructed from sampling events, so treat absolute values as estimates and compare *within* a capture. The fidelity badge shows this.
 - `perfhawk targets` does not show runtime version or command line.
 - Processes with diagnostics disabled, or running as another user, cannot be attached.
-- **GC analysis** (`perfhawk gc`, the GC section of the UI) is available for .NET only for now; Go has no GC data yet. The allocation rate is approximate (it comes from allocation events about 100 KB apart). A very small share of collections can show no pause when their suspension events fall outside the capture. A `.nettrace` imported with `perfhawk import --gc` needs the recording helper.
+- **GC analysis** (`perfhawk gc`, the GC section of the UI) is available for .NET and, with the perfhawk agent, for Go. Go GC data is approximate: no GC duration (it equals the pause), no reasons beyond `induced`, no generations or promoted bytes, and a process without the agent (or an older agent) records none, with a warning. On Windows short Go pauses can read 0 ns because the runtime clock is coarse. The allocation rate is approximate (it comes from allocation events about 100 KB apart). A very small share of collections can show no pause when their suspension events fall outside the capture. A `.nettrace` imported with `perfhawk import --gc` needs the recording helper.
 - The recording helper is a self-contained 35 MB executable. It must stay next to `perfhawk.exe`.
 
 ## Analysis and UI
