@@ -133,6 +133,7 @@ pub fn routes() -> Router<St> {
         .route("/api/series", get(series_h))
         .route("/api/history", get(history_h))
         .route("/api/diff", get(diff_h))
+        .route("/api/check", get(check_h))
         .route("/api/profiles/{reference}/flame", get(flame_h))
         .route("/api/profiles/{reference}/top", get(top_h))
         .route("/api/profiles/{reference}/sandwich", get(sandwich_h))
@@ -639,6 +640,68 @@ async fn record_and_profile(s: &St, reference: String) -> ApiResult<(ProfileReco
     let rec = blocking(move || store.resolve(&r2)).await?;
     let p = load_profile(s, rec.id.clone()).await?;
     Ok((rec, p))
+}
+
+#[derive(Deserialize)]
+struct CheckQuery {
+    base: Option<String>,
+    head: Option<String>,
+    st: Option<String>,
+    threshold: Option<f64>,
+    min_value: Option<f64>,
+}
+
+fn non_negative(name: &str, v: Option<f64>, default: f64) -> ApiResult<f64> {
+    let v = v.unwrap_or(default);
+    if v.is_finite() && v >= 0.0 {
+        Ok(v)
+    } else {
+        Err(ApiError::bad(format!(
+            "{name} must be a number that is not negative"
+        )))
+    }
+}
+
+/// The `perfhawk check` rule over two stored profiles.
+async fn check_h(State(s): State<St>, Q(q): Q<CheckQuery>) -> ApiResult<Response> {
+    let base_ref = q
+        .base
+        .ok_or_else(|| ApiError::bad("missing required query parameter 'base'"))?;
+    let head_ref = q
+        .head
+        .ok_or_else(|| ApiError::bad("missing required query parameter 'head'"))?;
+    let threshold = non_negative("threshold", q.threshold, 10.0)?;
+    let min_value = non_negative("min_value", q.min_value, 1.0)?;
+    let (brec, bp) = record_and_profile(&s, base_ref).await?;
+    let (hrec, hp) = record_and_profile(&s, head_ref).await?;
+    let st = q.st;
+    let (bn, hn) = (brec.name.clone(), hrec.name.clone());
+    let report = tokio::task::spawn_blocking(move || {
+        perfhawk_analysis::run_check(&perfhawk_analysis::CheckInput {
+            base: &bp,
+            head: &hp,
+            base_name: &bn,
+            head_name: &hn,
+            sample_type: st.as_deref(),
+            threshold,
+            min_value,
+        })
+    })
+    .await
+    .map_err(ApiError::internal)?
+    .map_err(ApiError::bad)?;
+    let unit = brec
+        .sample_types
+        .get(report.base_index)
+        .map(|t| t.unit.clone())
+        .unwrap_or_else(|| "count".into());
+    json_bytes(&json!({
+        "ok": report.ok,
+        "sampleType": { "name": report.sample_type_name, "unit": unit },
+        "baseTotal": report.base_total,
+        "headTotal": report.head_total,
+        "regressions": report.regressions,
+    }))
 }
 
 async fn diff_h(State(s): State<St>, Q(q): Q<DiffQuery>) -> ApiResult<Response> {
