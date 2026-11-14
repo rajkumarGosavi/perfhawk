@@ -158,6 +158,7 @@ impl SystemProvider for EtwProvider {
             .map_err(|_| CaptureError::Helper("trace consumer did not shut down".into()))?
             .into_inner()
             .map_err(|_| CaptureError::Helper("trace decoder failed".into()))?;
+        let dropped = decoder.dropped();
         let mut events = decoder.finish();
         let devices = os::dos_devices();
         for e in &mut events {
@@ -204,10 +205,16 @@ impl SystemProvider for EtwProvider {
             },
             &kinds,
         );
+        let mut warnings = Vec::new();
+        if dropped > 0 {
+            warnings.push(format!(
+                "{dropped} events were not recorded because the capture hit its event limit; numbers undercount. Use a shorter --duration"
+            ));
+        }
         Ok(CaptureOutcome {
             artifacts,
             end,
-            warnings: vec![],
+            warnings,
         })
     }
 }

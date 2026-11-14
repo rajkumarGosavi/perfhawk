@@ -19,6 +19,8 @@ pub const GUID_STACK_WALK: u128 = 0xdef2fe46_7bd6_4b80_bd94_f57fe20d0ce3;
 const KERNEL_BASE: u64 = 0xffff_8000_0000_0000;
 /// Bound on stacks that arrived before their event.
 const MAX_EARLY_STACKS: usize = 200_000;
+/// Default cap on kept events (about 1 GB worst case); the rest are counted, not stored.
+const DEFAULT_MAX_EVENTS: usize = 2_000_000;
 
 /// One record from the trace, in the shape the decoder needs.
 pub struct Record<'a> {
@@ -54,6 +56,8 @@ fn wstr_at(d: &[u8], o: usize) -> Option<String> {
 }
 
 pub struct Decoder {
+    limit: usize,
+    dropped: u64,
     target_pid: u32,
     tids: HashSet<u32>,
     events: Vec<RawEvent>,
@@ -72,7 +76,19 @@ pub struct Decoder {
 impl Decoder {
     /// `seed_tids`: the target's threads at capture start.
     pub fn new(target_pid: u32, seed_tids: impl IntoIterator<Item = u32>) -> Self {
+        Self::with_limit(target_pid, seed_tids, DEFAULT_MAX_EVENTS)
+    }
+
+    /// Like [`Decoder::new`], keeping at most `limit` events (stack walks, names
+    /// and images do not count).
+    pub fn with_limit(
+        target_pid: u32,
+        seed_tids: impl IntoIterator<Item = u32>,
+        limit: usize,
+    ) -> Self {
         Decoder {
+            limit,
+            dropped: 0,
             target_pid,
             tids: seed_tids.into_iter().collect(),
             events: Vec::new(),
@@ -97,9 +113,22 @@ impl Decoder {
         };
     }
 
-    fn push(&mut self, e: RawEvent) -> usize {
+    /// Store an event, or count it as dropped once the limit is reached. Image
+    /// loads and the process end are always kept: symbols and exit depend on them.
+    fn push(&mut self, e: RawEvent) -> Option<usize> {
+        if self.events.len() >= self.limit
+            && !matches!(e.kind, RawKind::ImageLoad | RawKind::ProcessEnd)
+        {
+            self.dropped += 1;
+            return None;
+        }
         self.events.push(e);
-        self.events.len() - 1
+        Some(self.events.len() - 1)
+    }
+
+    /// Events discarded because the limit was reached.
+    pub fn dropped(&self) -> u64 {
+        self.dropped
     }
 
     /// Register an event that gets its stack from a later (or earlier) stack-walk record.
@@ -130,7 +159,7 @@ impl Decoder {
                 e.bytes = u32_at(d, 36)? as u64;
                 let irp = u64_at(d, 8)?;
                 let (obj, key) = (u64_at(d, 16)?, u64_at(d, 24)?);
-                let idx = self.push(e);
+                let idx = self.push(e)?;
                 self.irps.insert(irp, idx);
                 self.file_refs.push((idx, key, obj));
                 self.expect_stack(idx, r.qpc, r.tid);
@@ -168,7 +197,7 @@ impl Decoder {
         e.bytes = u32_at(d, 8)? as u64;
         e.duration_qpc = u64_at(d, 40)? as i64;
         let obj = u64_at(d, 24)?;
-        let idx = self.push(e);
+        let idx = self.push(e)?;
         self.file_refs.push((idx, 0, obj));
         Some(())
     }
@@ -182,6 +211,12 @@ impl Decoder {
                     self.tids.insert(u32_at(d, 4)?);
                 }
             }
+            // end, rundown end: thread ids are reused, so forget the thread
+            2 | 4 => {
+                if u32_at(d, 0)? == self.target_pid {
+                    self.tids.remove(&u32_at(d, 4)?);
+                }
+            }
             36 => {
                 let (new, old) = (u32_at(d, 0)?, u32_at(d, 4)?);
                 let new_ours = self.tids.contains(&new);
@@ -193,7 +228,7 @@ impl Decoder {
                 e.new_tid = new;
                 e.old_tid = old;
                 e.wait_reason = *d.get(12)?;
-                let idx = self.push(e);
+                let idx = self.push(e)?;
                 if new_ours {
                     self.expect_stack(idx, r.qpc, new);
                 }
@@ -205,7 +240,7 @@ impl Decoder {
                 }
                 let mut e = RawEvent::new(RawKind::ReadyThread, r.qpc, self.target_pid, tid);
                 e.new_tid = tid;
-                self.push(e);
+                let _ = self.push(e);
             }
             _ => {}
         }
@@ -256,13 +291,13 @@ impl Decoder {
             size: u64_at(d, 8)?,
             path: wstr_at(d, 56)?,
         });
-        self.push(e);
+        let _ = self.push(e);
         Some(())
     }
 
     fn process(&mut self, r: &Record) -> Option<()> {
         if r.opcode == 2 && u32_at(r.data, 8)? == self.target_pid {
-            self.push(RawEvent::new(
+            let _ = self.push(RawEvent::new(
                 RawKind::ProcessEnd,
                 r.qpc,
                 self.target_pid,

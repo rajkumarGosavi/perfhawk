@@ -144,14 +144,16 @@ pub fn aggregate(input: &AggregateInput) -> Aggregated {
     let mut events: Vec<&RawEvent> = input.events.iter().collect();
     events.sort_by_key(|e| e.qpc);
 
-    // File events by thread, to tell whether a disk event is already counted.
+    // File events by thread, to tell whether a disk event is already counted:
+    // (start, latest end among spans starting at or before it). Events are
+    // sorted by time, so starts are non-decreasing and coverage is a binary search.
     let mut file_spans: HashMap<u32, Vec<(i64, i64)>> = HashMap::new();
     for e in &events {
         if e.pid == input.target_pid && matches!(e.kind, RawKind::FileRead | RawKind::FileWrite) {
-            file_spans
-                .entry(e.tid)
-                .or_default()
-                .push((e.qpc, e.qpc + e.duration_qpc));
+            let v = file_spans.entry(e.tid).or_default();
+            let end = e.qpc + e.duration_qpc;
+            let max_end = v.last().map_or(end, |&(_, m)| m.max(end));
+            v.push((e.qpc, max_end));
         }
     }
 
@@ -186,9 +188,10 @@ pub fn aggregate(input: &AggregateInput) -> Aggregated {
                 });
             }
             RawKind::DiskRead | RawKind::DiskWrite if e.pid == input.target_pid => {
-                let covered = file_spans
-                    .get(&e.tid)
-                    .is_some_and(|v| v.iter().any(|(s, f)| e.qpc >= *s && e.qpc <= *f));
+                let covered = file_spans.get(&e.tid).is_some_and(|v| {
+                    let i = v.partition_point(|&(start, _)| start <= e.qpc);
+                    i > 0 && v[i - 1].1 >= e.qpc
+                });
                 if !covered {
                     let mut stack = (input.symbolize)(e);
                     stack.push(file_leaf("[disk]"));

@@ -40,12 +40,29 @@ impl CancelToken {
         *g
     }
 
-    /// A token cancelled by Ctrl-C (SIGINT). Only the first call in a process
-    /// installs the handler; later calls return a token that is never fired.
+    /// A token cancelled by Ctrl-C (SIGINT). The process-wide handler is
+    /// installed once and fires the token of the latest call, so a command that
+    /// captures twice (Doctor, then its follow-up) can still be interrupted.
     pub fn install_ctrlc() -> CancelToken {
         let token = CancelToken::new();
-        let t = token.clone();
-        let _ = ctrlc::set_handler(move || t.cancel());
+        *current().lock().unwrap_or_else(|e| e.into_inner()) = Some(token.clone());
+        INSTALL.call_once(|| {
+            let _ = ctrlc::set_handler(fire_installed);
+        });
         token
+    }
+}
+
+static INSTALL: std::sync::Once = std::sync::Once::new();
+static CURRENT: Mutex<Option<CancelToken>> = Mutex::new(None);
+
+fn current() -> &'static Mutex<Option<CancelToken>> {
+    &CURRENT
+}
+
+/// What the Ctrl-C handler does: cancel the most recently installed token.
+pub fn fire_installed() {
+    if let Some(t) = current().lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        t.cancel();
     }
 }

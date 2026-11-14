@@ -330,3 +330,37 @@ fn nt_paths_map_to_drive_letters() {
     assert_eq!(nt_to_dos("\\Device\\Other\\a", &map), "\\Device\\Other\\a");
     assert_eq!(nt_to_dos("C:\\already", &map), "C:\\already");
 }
+
+#[test]
+fn thread_end_removes_the_tid_so_a_reused_tid_is_not_charged_to_the_target() {
+    let mut d = Decoder::new(TARGET, [444]);
+    // Thread end (2): ProcessId, TThreadId
+    let mut t = Vec::new();
+    t.extend(TARGET.to_le_bytes());
+    t.extend(444u32.to_le_bytes());
+    d.feed(&rec(GUID_THREAD, 2, TARGET, 1, 100, &t));
+    // the tid is reused by another process and switches in
+    d.feed(&rec(GUID_THREAD, 36, 0, 0, 3_000, &hex(CSWITCH)));
+    assert!(d.finish().is_empty());
+}
+
+#[test]
+fn thread_end_of_another_process_keeps_the_tid() {
+    let mut d = Decoder::new(TARGET, [444]);
+    let mut t = Vec::new();
+    t.extend(777u32.to_le_bytes());
+    t.extend(444u32.to_le_bytes());
+    d.feed(&rec(GUID_THREAD, 2, 777, 1, 100, &t));
+    d.feed(&rec(GUID_THREAD, 36, 0, 0, 3_000, &hex(CSWITCH)));
+    assert_eq!(d.finish().len(), 1);
+}
+
+#[test]
+fn event_limit_stops_recording_and_counts_the_overflow() {
+    let mut d = Decoder::with_limit(TARGET, [444], 3);
+    for i in 0..10 {
+        d.feed(&rec(GUID_THREAD, 50, TARGET, 1, i, &hex(READY)));
+    }
+    assert_eq!(d.dropped(), 7);
+    assert_eq!(d.finish().len(), 3);
+}

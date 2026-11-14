@@ -311,3 +311,37 @@ fn unresolved_frames_warning_has_count() {
     let w = a[0].warning.as_deref().unwrap();
     assert!(w.contains("42") && w.contains("unresolved"), "{w}");
 }
+
+#[test]
+fn disk_coverage_is_found_among_overlapping_file_spans() {
+    // a long read starts first and still covers a disk event after a short one
+    let long = file_write(TARGET, 7, 100, 50, 1, "C:/a");
+    let short = file_write(TARGET, 7, 110, 1, 1, "C:/a");
+    let mut d = RawEvent::new(RawKind::DiskWrite, at_ms(130), TARGET, 7);
+    d.duration_qpc = ticks_ms(1);
+    assert_eq!(run(&[long, short, d]).block_io.len(), 2);
+}
+
+#[test]
+fn many_disk_events_against_many_file_events_stay_fast() {
+    let mut ev = Vec::new();
+    for i in 0..100_000i64 {
+        let mut f = file_write(TARGET, 7, i / 20, 0, 1, "C:/a");
+        f.qpc += i; // distinct times
+        ev.push(f);
+    }
+    for i in 0..50_000i64 {
+        let mut d = RawEvent::new(RawKind::DiskWrite, at_ms(i / 10), TARGET, 7);
+        d.qpc += i;
+        d.duration_qpc = 1;
+        ev.push(d);
+    }
+    let t = std::time::Instant::now();
+    let a = run(&ev);
+    assert!(a.block_io.len() >= 100_000);
+    assert!(
+        t.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        t.elapsed()
+    );
+}

@@ -126,3 +126,18 @@ fn provider_captures_block_io_off_cpu_and_sched_for_this_process() {
     let text = format!("{:?}", p.strings);
     assert!(text.contains("perfhawk-etw-provider-test"), "{text}");
 }
+
+#[test]
+#[ignore = "needs an elevated shell and PERFHAWK_ETW=1"]
+fn dropping_a_trace_stops_the_session() {
+    if !enabled() || !is_elevated() {
+        eprintln!("skipped: needs PERFHAWK_ETW=1 and an elevated shell");
+        return;
+    }
+    let name = format!("perfhawk-test-drop-{}", std::process::id());
+    let first = RawTrace::start(&name, 0x2, &[], |_| {}).expect("first start");
+    drop(first); // no stop(): Drop must end the session
+    let second = RawTrace::start(&name, 0x2, &[], |_| {})
+        .expect("the same session name is free again after the drop");
+    second.stop();
+}

@@ -1,7 +1,7 @@
 //! Live capture: providers that profile running Go and .NET processes, and the
 //! session orchestration that imports their results into the store.
 
-mod cancel;
+pub mod cancel;
 pub mod dotnet;
 mod duration;
 #[cfg(windows)]

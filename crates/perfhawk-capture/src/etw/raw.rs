@@ -252,6 +252,10 @@ impl RawTrace {
 
     /// Stop the session, wait for the consumer to drain, and report losses.
     pub fn stop(mut self) -> TraceCounters {
+        self.shutdown()
+    }
+
+    fn shutdown(&mut self) -> TraceCounters {
         let mut out = TraceCounters::default();
         unsafe {
             let p = self.props.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES;
@@ -271,5 +275,15 @@ impl RawTrace {
             let _ = t.join();
         }
         out
+    }
+}
+
+impl Drop for RawTrace {
+    /// A panic or early return between `start` and `stop` must not leave a
+    /// system-wide kernel trace running.
+    fn drop(&mut self) {
+        if self.thread.is_some() {
+            self.shutdown();
+        }
     }
 }
