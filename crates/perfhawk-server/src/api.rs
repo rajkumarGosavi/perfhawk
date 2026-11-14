@@ -19,9 +19,12 @@ use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 
+mod capture;
+
 type St = Arc<AppState>;
 type ApiResult<T> = Result<T, ApiError>;
 
+#[derive(Debug)]
 pub struct ApiError {
     status: StatusCode,
     code: &'static str,
@@ -33,6 +36,20 @@ impl ApiError {
         ApiError {
             status: StatusCode::BAD_REQUEST,
             code: "bad_request",
+            message: message.into(),
+        }
+    }
+    fn bad_code(code: &'static str, message: impl Into<String>) -> Self {
+        ApiError {
+            status: StatusCode::BAD_REQUEST,
+            code,
+            message: message.into(),
+        }
+    }
+    fn conflict(message: impl Into<String>) -> Self {
+        ApiError {
+            status: StatusCode::CONFLICT,
+            code: "capture_running",
             message: message.into(),
         }
     }
@@ -134,6 +151,7 @@ pub fn routes() -> Router<St> {
         .route("/api/history", get(history_h))
         .route("/api/diff", get(diff_h))
         .route("/api/check", get(check_h))
+        .merge(capture::routes())
         .route("/api/profiles/{reference}/flame", get(flame_h))
         .route("/api/profiles/{reference}/top", get(top_h))
         .route("/api/profiles/{reference}/sandwich", get(sandwich_h))
