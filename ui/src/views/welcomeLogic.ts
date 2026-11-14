@@ -10,6 +10,6 @@ export function shouldShowWelcome(dismissed: string | null, itemCount: number | 
   return itemCount === 0
 }
 
-export function recordCommand(target: string): string {
-  return `perfhawk record ${target.trim() || '<target>'} --open`
+export function recordCommand(pid: string): string {
+  return `perfhawk record --pid ${pid.trim() || '<pid>'} --open`
 }

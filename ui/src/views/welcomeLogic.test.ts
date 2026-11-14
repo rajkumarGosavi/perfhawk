@@ -22,9 +22,9 @@ describe('shouldShowWelcome', () => {
 
 describe('recordCommand', () => {
   it('builds the copyable command', () => {
-    expect(recordCommand('./app')).toBe('perfhawk record ./app --open')
+    expect(recordCommand('1234')).toBe('perfhawk record --pid 1234 --open')
   })
   it('falls back to a placeholder', () => {
-    expect(recordCommand('')).toBe('perfhawk record <target> --open')
+    expect(recordCommand('')).toBe('perfhawk record --pid <pid> --open')
   })
 })

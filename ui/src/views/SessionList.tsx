@@ -93,7 +93,7 @@ export function SessionList({
         !error && <Skeleton />
       ) : sessions.length === 0 ? (
         <p className="muted">
-          No sessions yet. A session is one recording run: start one with <code>perfhawk record &lt;target&gt; --open</code>.
+          No sessions yet. A session is one recording run: start one with <code>perfhawk record --pid &lt;pid&gt; --open</code>.
         </p>
       ) : (
         <div className="table-wrap">

@@ -22,7 +22,7 @@ export function Welcome({ onImport, onDismiss }: { onImport: () => void; onDismi
       <div className="welcome-actions">
         <div className="card">
           <h3>Record a program</h3>
-          <p className="muted">Run this in a terminal, with the program or process id in place of the placeholder:</p>
+          <p className="muted">Run this in a terminal, with the id of the running process in place of the placeholder (`perfhawk targets` lists them):</p>
           <p>
             <code className="mono">{cmd}</code>{' '}
             <button type="button" onClick={() => void copy()}>Copy</button>
