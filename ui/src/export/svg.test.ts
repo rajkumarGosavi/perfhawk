@@ -37,4 +37,10 @@ describe('flameToSvg', () => {
   it('empty tree still yields a valid svg', () => {
     expect(flameToSvg(n('root', 0), opts)).toContain('</svg>')
   })
+  it('picks readable label text for dark and light fills', () => {
+    const dark = flameToSvg(root, { ...opts, colorOf: () => 'hsl(20 60% 30%)' })
+    const light = flameToSvg(root, { ...opts, colorOf: () => 'hsl(40 80% 80%)' })
+    expect(dark).toContain('fill="#ffffff">a&lt;b')
+    expect(light).toContain('fill="#000000">a&lt;b')
+  })
 })

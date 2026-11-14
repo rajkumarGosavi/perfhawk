@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ApiError, deleteProfile, listProfiles, uploadProfile, type ProfileRecord } from '../api'
+import { deleteProfile, listProfiles, uploadProfile, type ProfileRecord } from '../api'
+import { ConfirmDialog } from './ConfirmDialog'
+import { ErrorNotice } from './ErrorNotice'
 import { FidelityBadge } from './FidelityBadge'
 import { formatValue } from '../format'
+import { Skeleton } from './Skeleton'
 
 export function ProfileList({
   onOpen,
@@ -13,41 +16,45 @@ export function ProfileList({
   onChanged?: () => void
 }) {
   const [profiles, setProfiles] = useState<ProfileRecord[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
+  const [uploadErrors, setUploadErrors] = useState<{ file: string; error: unknown }[]>([])
   const [over, setOver] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(() => {
-    listProfiles().then(setProfiles, (e: ApiError) => setError(e.message))
+    listProfiles().then(setProfiles, setError)
   }, [])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [load, version])
 
+  const [pendingDelete, setPendingDelete] = useState<ProfileRecord | null>(null)
+
   const remove = async (p: ProfileRecord) => {
-    if (!window.confirm(`Delete ${p.name}? This removes the profile data and cannot be undone.`)) return
+    setPendingDelete(null)
     try {
       await deleteProfile(p.id)
       load()
       onChanged?.()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e))
+      setError(e)
     }
   }
 
   const upload = async (files: FileList | File[]) => {
     setBusy(true)
     setError(null)
-    const errors: string[] = []
+    setUploadErrors([])
+    const errors: { file: string; error: unknown }[] = []
     let last: ProfileRecord | null = null
     try {
       for (const f of Array.from(files)) {
         try {
           last = (await uploadProfile(f)).record
         } catch (e) {
-          errors.push(`${f.name}: ${e instanceof ApiError ? e.message : String(e)}`)
+          errors.push({ file: f.name, error: e })
         }
       }
-      if (errors.length) setError(errors.join('\n'))
+      if (errors.length) setUploadErrors(errors)
       if (last && files.length === 1 && !errors.length) onOpen(last.short_id)
     } finally {
       load()
@@ -57,7 +64,17 @@ export function ProfileList({
 
   return (
     <section aria-label="Profiles">
-      {error && <div className="banner" role="alert" style={{ whiteSpace: 'pre-line' }}>{error}</div>}
+      {pendingDelete && (
+        <ConfirmDialog
+          title={`Delete ${pendingDelete.name}?`}
+          message="This removes the profile data and cannot be undone."
+          confirmLabel="Delete"
+          onConfirm={() => void remove(pendingDelete)}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
+      <ErrorNotice error={error} onRetry={load} />
+      {uploadErrors.map((u) => <ErrorNotice key={u.file} error={u.error} context={u.file} />)}
       <div
         className={`dropzone${over ? ' over' : ''}`}
         onDragOver={(e) => { e.preventDefault(); setOver(true) }}
@@ -84,16 +101,16 @@ export function ProfileList({
         </label>
       </div>
       {profiles === null ? (
-        !error && <p className="muted">Loading...</p>
+        !error && <Skeleton />
       ) : profiles.length === 0 ? (
-        <p className="muted">No profiles yet. Import one above.</p>
+        <p className="muted">No profiles yet. Import a file above, or record one with <code>perfhawk record --pid &lt;pid&gt; --open</code>.</p>
       ) : (
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Name</th><th>Kind</th><th>Fidelity</th><th>Format</th>
-                <th className="num">Samples</th><th className="num">Total</th><th>Imported</th><th aria-label="Actions" />
+                <th className="num">Samples</th><th className="num">Total</th><th>Imported</th><th><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -112,7 +129,7 @@ export function ProfileList({
                     <td className="num">{formatValue(p.default_total, unit)}</td>
                     <td>{new Date(p.imported_at_unix_ms).toLocaleString()}</td>
                     <td>
-                      <button onClick={() => void remove(p)} aria-label={`Delete ${p.name}`}>Delete</button>
+                      <button onClick={() => setPendingDelete(p)} aria-label={`Delete ${p.name}`}>Delete</button>
                     </td>
                   </tr>
                 )

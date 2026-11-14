@@ -32,7 +32,7 @@ export function PivotPanel({ sessionId, functionName, currentProfileId, navigate
 
   return (
     <section className="card" aria-label="Same function in other profiles">
-      <h2>Same function in other profiles</h2>
+      <h3>Same function in other profiles</h3>
       <ul className="pivot">
         {others.map((r) => (
           <li key={r.profileId}>

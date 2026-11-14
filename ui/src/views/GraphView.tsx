@@ -4,6 +4,7 @@ import type { Transform } from '../analysis/transforms'
 import { formatPct, formatValue } from '../format'
 import { layoutGraph, type Route } from '../graph/layout'
 import { edgeWidth, heat, moveFocus, neighbours, nodeSize, type Dir } from '../graph/model'
+import { pinchScale, pointerDistance, type Point } from '../flame/gesture'
 
 type Props = {
   graph: CallGraph
@@ -38,6 +39,8 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
   const boxRef = useRef<HTMLDivElement>(null)
   const nodeRefs = useRef(new Map<number, SVGGElement>())
   const drag = useRef<{ px: number; py: number; x: number; y: number } | null>(null)
+  const pointers = useRef(new Map<number, Point>())
+  const pinch = useRef<{ dist: number; k: number } | null>(null)
 
   useEffect(() => setSlider(nodes), [nodes])
 
@@ -93,8 +96,13 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
 
   const placedById = new Map(layout.nodes.map((p) => [p.id, p]))
   const zoom = (f: number) => setView((v) => ({ ...v, k: Math.min(4, Math.max(0.1, v.k * f)) }))
-  const label = (n: GraphNode) =>
-    `${n.name}, self ${formatValue(n.selfValue, unit)} (${formatPct((n.selfValue / graph.totalValue) * 100)}), total ${formatValue(n.total, unit)} (${formatPct((n.total / graph.totalValue) * 100)})`
+  // The accessible name starts with exactly what is drawn on the node (WCAG 2.5.3 Label in Name),
+  // then adds the full name and the absolute values.
+  const label = (n: GraphNode) => {
+    const selfPct = formatPct((n.selfValue / graph.totalValue) * 100)
+    const totalPct = formatPct((n.total / graph.totalValue) * 100)
+    return `${clip(n.name)} self ${selfPct} · total ${totalPct}, full name ${n.name}, self ${formatValue(n.selfValue, unit)}, total ${formatValue(n.total, unit)}`
+  }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     const dir = ARROW_DIRS[e.key]
@@ -143,14 +151,38 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
         onKeyDown={onKeyDown}
         onPointerDown={(e) => {
           if ((e.target as Element).closest('[data-node]')) return
-          drag.current = { px: e.clientX, py: e.clientY, x: view.x, y: view.y }
+          pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+          if (pointers.current.size === 2) {
+            const [a, b] = [...pointers.current.values()]
+            pinch.current = { dist: pointerDistance(a, b), k: view.k }
+            drag.current = null
+          } else {
+            drag.current = { px: e.clientX, py: e.clientY, x: view.x, y: view.y }
+          }
           ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
         }}
         onPointerMove={(e) => {
+          if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+          const p = pinch.current
+          if (p && pointers.current.size === 2) {
+            const [a, b] = [...pointers.current.values()]
+            const k = Math.min(4, Math.max(0.1, p.k * pinchScale(p.dist, pointerDistance(a, b))))
+            setView((v) => ({ ...v, k }))
+            return
+          }
           const d = drag.current
           if (d) setView((v) => ({ ...v, x: d.x + e.clientX - d.px, y: d.y + e.clientY - d.py }))
         }}
-        onPointerUp={() => { drag.current = null }}
+        onPointerUp={(e) => {
+          pointers.current.delete(e.pointerId)
+          pinch.current = null
+          drag.current = null
+        }}
+        onPointerCancel={(e) => {
+          pointers.current.delete(e.pointerId)
+          pinch.current = null
+          drag.current = null
+        }}
       >
         <svg width="100%" height="100%" role="group" aria-label="Call graph nodes. Arrow keys move, Enter opens the function, f focuses its subtree.">
           <defs>
@@ -197,9 +229,9 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
                   onFocus={() => selected !== n.funcId && setSelected(n.funcId)}
                 >
                   <rect width={s.w} height={s.h} rx={4} fill={`hsl(24 78% ${Math.round(92 - 40 * h)}%)`} />
-                  <text x={6} y={15} className="graph-name">{clip(n.name)}</text>
-                  <text x={6} y={s.h - 9} className="graph-nums">
-                    self {formatPct((n.selfValue / graph.totalValue) * 100)} · total {formatPct((n.total / graph.totalValue) * 100)}
+                  <text x={6} y={15} className="graph-name" aria-hidden="true">{clip(n.name)}</text>
+                  <text x={6} y={s.h - 9} className="graph-nums" aria-hidden="true">
+                    {' '}self {formatPct((n.selfValue / graph.totalValue) * 100)} · total {formatPct((n.total / graph.totalValue) * 100)}
                   </text>
                 </g>
               )
@@ -209,7 +241,7 @@ export function GraphView({ graph, unit, nodes, onNodes, onOpenFunc, onTransform
       </div>
       {sel && nb && (
         <div className="graph-side card" aria-label="Selected function">
-          <h2 className="mono">{sel.name}</h2>
+          <h3 className="mono">{sel.name}</h3>
           <p className="muted">self {formatValue(sel.selfValue, unit)} · total {formatValue(sel.total, unit)}</p>
           <div>
             <strong>Callers</strong>

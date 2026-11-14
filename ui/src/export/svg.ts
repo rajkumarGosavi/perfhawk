@@ -1,5 +1,6 @@
 import type { FlameNode } from '../api'
 import { layoutFlame } from '../flame/layout'
+import { labelColorFor } from '../flame/color'
 
 export type SvgOptions = {
   width: number
@@ -37,7 +38,7 @@ export function flameToSvg(root: FlameNode, o: SvgOptions): string {
     const chars = Math.floor((r.w - 6) / CHAR_PX)
     if (chars >= 3) {
       const label = r.node.name.length > chars ? r.node.name.slice(0, chars - 1) + '…' : r.node.name
-      out.push(`<text x="${(r.x + 3).toFixed(2)}" y="${(y + o.rowHeight - 6).toFixed(2)}" fill="#000">${esc(label)}</text>`)
+      out.push(`<text x="${(r.x + 3).toFixed(2)}" y="${(y + o.rowHeight - 6).toFixed(2)}" fill="${labelColorFor(o.colorOf(r.node))}">${esc(label)}</text>`)
     }
     out.push('</g>')
   }

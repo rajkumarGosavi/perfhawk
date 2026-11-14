@@ -1,20 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { FlameNode } from '../api'
 import { formatPct, formatValue } from '../format'
+import { subscribeTheme } from '../theme'
+import { hashHue, labelColorFor } from './color'
+import { describeFrame, navigate, type NavDir } from './nav'
 import { layoutFlame, layoutHeight, maxCanvasRows, type Rect } from './layout'
 
 export const ROW_HEIGHT = 18
 const LABEL_MIN_W = 30
-
-function hashHue(name: string): number {
-  let h = 2166136261
-  for (let i = 0; i < name.length; i++) {
-    h ^= name.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  // Warm range: red to yellow (0..55 degrees).
-  return (h >>> 0) % 56
-}
 
 type Props = {
   root: FlameNode
@@ -33,6 +26,8 @@ type Props = {
   highlight?: ReadonlySet<FlameNode>
   /** Filled with export helpers (PNG of the canvas, literal colours); assigned, never state, so renders do not loop. */
   exportRef?: { current: FlameExportApi | null }
+  /** Offers the call tree as the accessible alternative to the canvas. */
+  onViewAsTree?: () => void
 }
 
 export type FlameExportApi = {
@@ -45,13 +40,19 @@ function resolveColor(cs: CSSStyleDeclaration, c: string): string {
   return m ? cs.getPropertyValue(m[1]).trim() || '#888' : c
 }
 
-export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf, tooltipExtra, depthLimit = 1000, highlight, exportRef }: Props) {
+export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf, tooltipExtra, depthLimit = 1000, highlight, exportRef, onViewAsTree }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [width, setWidth] = useState(0)
   const [zoom, setZoom] = useState<FlameNode | undefined>(undefined)
   const [hover, setHover] = useState<{ rect: Rect; px: number; py: number } | null>(null)
   const [theme, setTheme] = useState(0)
+  const [active, setActive] = useState<FlameNode | null>(null)
+  const [kbFocus, setKbFocus] = useState(false)
+  const [tipHidden, setTipHidden] = useState(false)
+  const [announce, setAnnounce] = useState('')
+  const press = useRef<number | undefined>(undefined)
+  const pressed = useRef(false)
 
   useEffect(() => {
     if (!exportRef) return
@@ -75,7 +76,10 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
   }, [exportRef, colorOf])
 
   // A new tree invalidates the zoom target.
-  useEffect(() => setZoom(undefined), [root])
+  useEffect(() => {
+    setZoom(undefined)
+    setActive(null)
+  }, [root])
 
   useEffect(() => {
     const el = wrapRef.current
@@ -87,10 +91,7 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
   }, [])
 
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const f = () => setTheme((t) => t + 1)
-    mq.addEventListener('change', f)
-    return () => mq.removeEventListener('change', f)
+    return subscribeTheme(() => setTheme((t) => t + 1))
   }, [])
 
   useEffect(() => {
@@ -107,6 +108,10 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
     () => layoutFlame(root, width, ROW_HEIGHT, inverted, zoom),
     [root, width, inverted, zoom],
   )
+  const visible = useMemo(() => new Set(rects.map((r) => r.node)), [rects])
+  const top = zoom ?? root
+  // A zoom or resize can remove the active frame from the drawing; then nothing is active.
+  const activeNode = active && visible.has(active) ? active : null
   const fullHeight = layoutHeight(rects, ROW_HEIGHT)
   // Browsers cap canvas size, so very deep trees are clipped (deepest rows first).
   const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1
@@ -129,7 +134,6 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
     const cs = getComputedStyle(canvas)
     const sat = cs.getPropertyValue('--flame-sat').trim() || '78%'
     const light = cs.getPropertyValue('--flame-light').trim() || '62%'
-    const text = cs.getPropertyValue('--flame-text').trim() || '#000'
     const match = cs.getPropertyValue('--match').trim() || '#1e6fe0'
     const hotColor = cs.getPropertyValue('--flame-hot').trim() || '#000'
     ctx.font = '11px ui-monospace, Consolas, monospace'
@@ -138,12 +142,18 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
       const y = r.y - shift
       if (y < 0 || y >= height) continue
       const isMatch = !!needle && r.node.name.toLowerCase().includes(needle)
-      ctx.fillStyle = isMatch
+      const fill = isMatch
         ? match
         : colorOf
           ? resolveColor(cs, colorOf(r.node))
           : `hsl(${hashHue(r.node.name)} ${sat} ${light})`
+      ctx.fillStyle = fill
       ctx.fillRect(r.x, y, Math.max(r.w - 1, 0.5), ROW_HEIGHT - 1)
+      if (kbFocus && activeNode === r.node) {
+        ctx.strokeStyle = cs.getPropertyValue('--accent').trim() || '#0b6bcb'
+        ctx.lineWidth = 2
+        ctx.strokeRect(r.x + 1, y + 1, Math.max(r.w - 3, 0.5), ROW_HEIGHT - 3)
+      }
       if (highlight?.has(r.node)) {
         ctx.strokeStyle = hotColor
         ctx.lineWidth = 2
@@ -166,7 +176,7 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
         ctx.restore()
       }
       if (r.w > LABEL_MIN_W) {
-        ctx.fillStyle = isMatch ? '#ffffff' : text
+        ctx.fillStyle = labelColorFor(fill)
         ctx.save()
         ctx.beginPath()
         ctx.rect(r.x, y, r.w - 1, ROW_HEIGHT)
@@ -175,7 +185,7 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
         ctx.restore()
       }
     }
-  }, [rects, width, height, shift, needle, theme, colorOf, dpr, highlight])
+  }, [rects, width, height, shift, needle, theme, colorOf, dpr, highlight, activeNode, kbFocus])
 
   const hit = useCallback(
     (e: { clientX: number; clientY: number }) => {
@@ -190,20 +200,64 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
     [rects, shift],
   )
 
-  const t = hover?.rect.node
+  const activeRect = kbFocus && activeNode ? rects.find((r) => r.node === activeNode) : undefined
+  const tip = hover ?? (activeRect ? { rect: activeRect, px: activeRect.x, py: activeRect.y - shift } : null)
+  const t = tipHidden ? undefined : tip?.rect.node
+
+  // In a flame graph the root is at the bottom, so "up" means toward the callees; in an icicle it is "down".
+  const move = (dir: NavDir) => {
+    const next = navigate(top, activeNode ?? top, dir, visible)
+    setActive(next)
+    setTipHidden(false)
+    setAnnounce(describeFrame(next, top, unit))
+  }
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const k = e.key
+    if (k === 'ArrowLeft') move('prev')
+    else if (k === 'ArrowRight') move('next')
+    else if (k === (inverted ? 'ArrowDown' : 'ArrowUp')) move('child')
+    else if (k === (inverted ? 'ArrowUp' : 'ArrowDown')) move('parent')
+    else if (k === 'Home') { setActive(top); setAnnounce(describeFrame(top, top, unit)) }
+    else if (k === 'Enter' && activeNode) setZoom(activeNode === root ? undefined : activeNode)
+    else if ((k === 's' || k === 'S') && activeNode && activeNode.funcId !== null && onSelectFunc) onSelectFunc(activeNode.funcId)
+    else if (k === 'Escape' && t) setTipHidden(true) // dismiss the tooltip first; a second Esc resets zoom
+    else return
+    if (k !== 'Escape' || t) e.preventDefault()
+    if (k === 'Escape' && t) e.stopPropagation()
+  }
   return (
     <div className="flame-wrap" ref={wrapRef}>
       <canvas
         ref={canvasRef}
-        role="img"
-        aria-label={`${inverted ? 'Icicle' : 'Flame'} graph of ${root.name}, ${formatValue(root.total, unit)} total. Click a frame to zoom, Escape to reset.${highlight ? ' Hot path highlighted.' : ''}`}
-        onMouseMove={(e) => setHover(hit(e))}
+        role="application"
+        tabIndex={0}
+        aria-label={`${inverted ? 'Icicle' : 'Flame'} graph of ${root.name}, ${formatValue(root.total, unit)} total. Arrow keys move between frames, Enter zooms, S opens the function in the sandwich view, Escape closes the tooltip then resets zoom.${highlight ? ' Hot path highlighted.' : ''}`}
+        onFocus={() => {
+          setKbFocus(true)
+          if (!activeNode) { setActive(top); setAnnounce(describeFrame(top, top, unit)) }
+        }}
+        onBlur={() => setKbFocus(false)}
+        onKeyDown={onKeyDown}
+        onMouseMove={(e) => { setTipHidden(false); setHover(hit(e)) }}
         onMouseLeave={() => setHover(null)}
         onClick={(e) => {
+          if (pressed.current) { pressed.current = false; return } // a long-press already acted
           const h = hit(e)
           if (h) setZoom(h.rect.node === root ? undefined : h.rect.node)
         }}
         onDoubleClick={() => setZoom(undefined)}
+        onPointerDown={(e) => {
+          if (e.pointerType !== 'touch') return
+          const h = hit(e)
+          clearTimeout(press.current)
+          if (h && h.rect.node.funcId !== null && onSelectFunc) {
+            const id = h.rect.node.funcId
+            press.current = window.setTimeout(() => { pressed.current = true; onSelectFunc(id) }, 600)
+          }
+        }}
+        onPointerUp={() => clearTimeout(press.current)}
+        onPointerCancel={() => clearTimeout(press.current)}
+        onPointerLeave={() => clearTimeout(press.current)}
         onContextMenu={(e) => {
           const h = hit(e)
           if (h && h.rect.node.funcId !== null && onSelectFunc) {
@@ -212,12 +266,12 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
           }
         }}
       />
-      {hover && t && (
+      {tip && t && (
         <div
           className="tooltip"
           style={{
-            left: Math.min(hover.px + 12, Math.max(width - 200, 0)),
-            top: hover.py + ROW_HEIGHT + 4,
+            left: Math.min(tip.px + 12, Math.max(width - 200, 0)),
+            top: tip.py + ROW_HEIGHT + 4,
           }}
         >
           <div className="fn">{t.name}</div>
@@ -228,6 +282,12 @@ export function FlameGraph({ root, unit, inverted, search, onSelectFunc, colorOf
           </div>
           {tooltipExtra?.(t)}
           {t.truncated && <div>deeper frames folded (depth limit {depthLimit})</div>}
+        </div>
+      )}
+      <div className="sr-only" aria-live="polite" role="status">{announce}</div>
+      {onViewAsTree && (
+        <div className="muted" style={{ padding: '2px 6px', fontSize: 12 }}>
+          <button type="button" className="linklike" onClick={onViewAsTree}>View as tree</button> for a keyboard- and screen-reader-friendly list of the same data.
         </div>
       )}
       {clipped && (

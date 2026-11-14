@@ -7,6 +7,7 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- Web UI: a first-run welcome on the home page explaining sessions and profiles, an in-app Help panel (`?`), hover/focus definitions for terms such as Self and Total, and a System/Light/Dark theme switch.
 - Windows OS-level tracing (ETW): `perfhawk record --kinds block_io,off_cpu,sched_delay` records Block I/O (by file), off-CPU time and scheduler delay for one process, with Go frames named from symbols. Needs an administrator shell; Perfhawk never elevates itself and prints the exact command to rerun.
 - Windows x64 release package: `perfhawk.exe` with the UI embedded, a self-contained `perfhawk-dotnet.exe` recording helper, checksums, and a PowerShell installer.
 - Third-party notices generated for each release.
@@ -14,6 +15,7 @@ All notable changes are recorded here. The format follows
 - Host-header check on the Go agent, matching the UI server (DNS-rebinding protection).
 
 ### Changed
+- Web UI errors now say what happened and what to try (for example when the server has stopped) instead of showing raw messages such as `Failed to fetch`; the original text is under "Technical details".
 - The Go agent module path is now `github.com/rajkumarGosavi/perfhawk/agents/go` (was `perfhawk.dev/agent`).
 - The ".NET helper not found" message now explains what to do for release-package users.
 

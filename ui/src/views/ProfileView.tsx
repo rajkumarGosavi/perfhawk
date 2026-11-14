@@ -3,8 +3,13 @@ import {
   ApiError, getFlame, getGraph, getGroups, getHeatmap, getProfile, getSandwich, getTop, listProfiles,
   type CallGraph, type FlameNode, type GroupRow, type Heatmap, type ProfileRecord, type Sandwich as SandwichData, type TopRow,
 } from '../api'
+import { ErrorNotice } from './ErrorNotice'
+import { reloadPage } from './reload'
 import { hotPath } from '../analysis/hotPath'
-import { SHORTCUTS, keyAction } from '../analysis/keys'
+import { useDocumentTitle } from '../a11y/announce'
+import { viewTitle } from '../a11y/title'
+import { keyAction } from '../analysis/keys'
+import { activeFilterCount, filtersToggleLabel } from './filters'
 import { effectiveExclude } from '../analysis/perfhawk'
 import { addTransform, decodeTx, encodeTx, type Transform } from '../analysis/transforms'
 import { FlameGraph, type FlameExportApi } from '../flame/FlameGraph'
@@ -25,6 +30,8 @@ import { Summary } from './Summary'
 import { FidelityBadge } from './FidelityBadge'
 import { TopTable } from './TopTable'
 import { TransformBar } from './TransformBar'
+import { Term } from '../help/Term'
+import { Skeleton } from './Skeleton'
 
 type Nav = (patch: Partial<ViewState>, mode?: 'push' | 'replace', reset?: boolean) => void
 type Data =
@@ -61,10 +68,9 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
   const ref = state.profile!
   const [record, setRecord] = useState<ProfileRecord | null>(null)
   const [data, setData] = useState<Data | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [loading, setLoading] = useState(false)
   const [others, setOthers] = useState<ProfileRecord[]>([])
-  const [helpOpen, setHelpOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const exportRef = useRef<FlameExportApi | null>(null)
   const [exportMsg, setExportMsg] = useState<string | null>(null)
@@ -76,7 +82,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
   const [search, setSearch] = useDebounced(state.search ?? '', (v) => replace({ search: v || undefined }))
 
   useEffect(() => {
-    getProfile(ref).then(setRecord, (e: ApiError) => setError(e.message))
+    getProfile(ref).then(setRecord, (e: ApiError) => setError(e))
   }, [ref])
   // Profiles of the same kind that this one can be compared with, newest first.
   useEffect(() => {
@@ -123,13 +129,16 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           : getFlame(ref, q).then((tree) => ({ kind: 'flame', tree }))
     p.then(
       (d) => { if (!stale) { setData(d); setError(null); setLoading(false) } },
-      (e: ApiError) => { if (!stale) { setData(null); setError(e.message); setLoading(false) } },
+      (e: ApiError) => { if (!stale) { setData(null); setError(e); setLoading(false) } },
     )
     return () => { stale = true }
   }, [record, ref, view, func, st, qf, qe, qh, sort, depth, tx, groupBy, state.graphNodes, t0, t1])
 
   const pushView = (patch: Partial<ViewState>) => navigate(patch, 'push')
   const hot = !!state.hot
+  const filterCount = activeFilterCount({ focus, exclude, hide, hidePh: state.hidePh })
+  const [filtersOpen, setFiltersOpen] = useState(true)
+  useDocumentTitle(viewTitle(state, record?.name))
   const onTransform = (t: Transform) => navigate({ tx: encodeTx(addTransform(decodeTx(tx), t)) }, 'push')
   const toggleHot = () => navigate({ hot: hot ? undefined : true }, 'replace')
 
@@ -142,18 +151,11 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       else if (a.type === 'search') {
         e.preventDefault()
         searchRef.current?.focus()
-      } else setHelpOpen((o) => !o)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [navigate, hot])
-
-  useEffect(() => {
-    if (!helpOpen) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setHelpOpen(false) }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [helpOpen])
 
   const stem = fileStem(record?.name ?? ref)
   const say = (m: string) => setExportMsg(m)
@@ -216,8 +218,8 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
     <section aria-label="Profile">
       <div className="toolbar">
         <button onClick={() => navigate({}, 'push', true)}>&larr; Profiles</button>
-        <strong className="mono">{record?.name ?? ref}</strong>
-        {record && <FidelityBadge fidelity={record.fidelity} />}
+        <h2 className="view-title mono">{record?.name ?? ref}</h2>
+        {record && <><FidelityBadge fidelity={record.fidelity} /><Term k="fidelity" icon /></>}
         <div className="tabs" role="group" aria-label="View">
           {VIEW_LABELS.filter(([v]) => v !== 'time' || hasTime).map(([v, label]) => (
             <button key={v} aria-pressed={view === v} onClick={() => pushView({ view: v })}>{label}</button>
@@ -229,10 +231,9 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           </button>
         )}
         <ExportMenu items={exportItems} />
-        <button onClick={() => setHelpOpen(true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
       </div>
       <div className="toolbar">
-        <label className="field">
+        <span className="field-wrap"><label className="field">
           Sample type
           <select
             value={st ?? ''}
@@ -243,7 +244,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
               <option key={i} value={i}>{t.name} ({t.unit})</option>
             ))}
           </select>
-        </label>
+        </label><Term k="sampleType" icon /></span>
         <label className="field">
           Compare with…
           <select
@@ -257,15 +258,27 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
             ))}
           </select>
         </label>
-        <label className="field">Focus<input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="regex" /></label>
-        <label className="field">Exclude<input value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder="regex" /></label>
-        <label className="field">Hide<input value={hide} onChange={(e) => setHide(e.target.value)} placeholder="regex" /></label>
+        <label className="field">Search<input ref={searchRef} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="highlight" /></label>
+        <button
+          type="button"
+          aria-expanded={filtersOpen}
+          aria-controls="profile-filters"
+          onClick={() => setFiltersOpen((o) => !o)}
+        >
+          <span aria-hidden="true">{filtersOpen ? '▾' : '▸'}</span> {filtersToggleLabel(filtersOpen, filterCount)}
+        </button>
+      </div>
+      {filtersOpen && (
+        <div className="toolbar" id="profile-filters" role="group" aria-label="Filters">
+          <span className="field-wrap"><label className="field">Focus<input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="regex" /></label><Term k="focus" icon /></span>
+        <span className="field-wrap"><label className="field">Exclude<input value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder="regex" /></label><Term k="exclude" icon /></span>
+        <span className="field-wrap"><label className="field">Hide<input value={hide} onChange={(e) => setHide(e.target.value)} placeholder="regex" /></label><Term k="hide" icon /></span>
         <label className="field check" title="Drop samples from Perfhawk's own in-process Go agent (agent, fgprof, pprof decoder), so percentages describe your app only.">
           <input type="checkbox" checked={!!state.hidePh} onChange={(e) => navigate({ hidePh: e.target.checked ? true : undefined }, 'push')} />
           Hide Perfhawk frames
         </label>
-        <label className="field">Search<input ref={searchRef} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="highlight" /></label>
-      </div>
+        </div>
+      )}
       {(t0 !== undefined || state.b0 !== undefined) && (
         <div className="toolbar" role="group" aria-label="Time selection">
           {t0 !== undefined && t1 !== undefined && (
@@ -287,8 +300,8 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
       )}
       <TransformBar tx={tx} onChange={(next) => navigate({ tx: next }, 'push')} />
       {exportMsg && <p className="muted" role="status">{exportMsg}</p>}
-      {error && <div className="banner" role="alert">{error}</div>}
-      {loading && !error && <p className="muted" role="status">Loading...</p>}
+      <ErrorNotice error={error} onRetry={reloadPage} />
+      {loading && !error && <Skeleton />}
       {view === 'sandwich' && func === undefined && (
         <p className="muted">Pick a function in the Top view to see its callers and callees.</p>
       )}
@@ -310,6 +323,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
           highlight={highlight}
           exportRef={exportRef}
           onSelectFunc={(f) => pushView({ view: 'sandwich', func: f })}
+          onViewAsTree={() => pushView({ view: 'tree' })}
         />
       )}
       {data?.kind === 'flame' && view === 'tree' && (
@@ -331,6 +345,7 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
             highlight={highlight}
             exportRef={exportRef}
             onSelectFunc={(f) => pushView({ view: 'sandwich', func: f })}
+            onViewAsTree={() => pushView({ view: 'tree' })}
           />
           <TopTable
             rows={data.rows}
@@ -385,28 +400,6 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         />
       )}
       </div>
-      {helpOpen && (
-        <div className="help-overlay" onClick={() => setHelpOpen(false)}>
-          <div
-            className="help-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Keyboard shortcuts"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ marginTop: 0 }}>Keyboard shortcuts</h2>
-            <dl>
-              {SHORTCUTS.map((k) => (
-                <div key={k.keys} style={{ display: 'contents' }}>
-                  <dt>{k.keys}</dt>
-                  <dd>{k.label}</dd>
-                </div>
-              ))}
-            </dl>
-            <button autoFocus onClick={() => setHelpOpen(false)}>Close (Esc)</button>
-          </div>
-        </div>
-      )}
     </section>
   )
 }

@@ -130,7 +130,6 @@ export function CallTree({ root, unit, hot, onSelectFunc, onTransform, extra }: 
             aria-level={r.depth + 1}
             aria-expanded={r.hasChildren ? r.expanded : undefined}
             aria-selected={r.key === selected}
-            aria-label={`${r.node.name}${isHot ? ', on the hot path' : ''}`}
             style={grid}
             onClick={() => setSelected(r.key)}
           >
@@ -139,7 +138,7 @@ export function CallTree({ root, unit, hot, onSelectFunc, onTransform, extra }: 
                 <button
                   className="tree-chevron"
                   tabIndex={-1}
-                  aria-label={r.expanded ? `Collapse ${r.node.name}` : `Expand ${r.node.name}`}
+                  aria-hidden="true"
                   onClick={(e) => {
                     e.stopPropagation()
                     setSelected(r.key)
@@ -153,10 +152,11 @@ export function CallTree({ root, unit, hot, onSelectFunc, onTransform, extra }: 
               )}
               <span className="mono">{r.node.name}</span>
               {r.node.truncated && <span className="muted"> (deeper frames folded)</span>}
+              {isHot && <span className="sr-only">, on the hot path</span>}
             </span>
-            <span className="num">{formatValue(r.node.selfValue, unit)}</span>
-            <span className="num">{formatValue(r.node.total, unit)}</span>
-            <span className="num">{pct(r.node.total)}</span>
+            <span className="num"><span className="sr-only">self </span>{formatValue(r.node.selfValue, unit)}</span>
+            <span className="num"><span className="sr-only">total </span>{formatValue(r.node.total, unit)}</span>
+            <span className="num"><span className="sr-only">of whole </span>{pct(r.node.total)}</span>
             {extra && <span className="num">{extra.cell(r.node)}</span>}
           </div>
         )

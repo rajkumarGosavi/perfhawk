@@ -3,6 +3,8 @@ import {
   ApiError, getDiffFlame, getDiffTop, getProfile, listProfiles,
   type DiffFlame, type DiffTop, type ProfileRecord,
 } from '../api'
+import { ErrorNotice } from './ErrorNotice'
+import { reloadPage } from './reload'
 import { diffColor } from '../flame/diffColor'
 import { FlameGraph, type FlameExportApi } from '../flame/FlameGraph'
 import { copyText, downloadBlob, downloadText, fileStem } from '../export/download'
@@ -10,13 +12,16 @@ import { flameToSvg } from '../export/svg'
 import { ExportMenu, type ExportItem } from './ExportMenu'
 import { formatPct, formatValue } from '../format'
 import type { ViewState } from '../url'
+import { useDocumentTitle } from '../a11y/announce'
+import { viewTitle } from '../a11y/title'
 import { formatRange } from '../time/range'
 import { CallTree } from './CallTree'
-import { diffStatus, filterDiffTree, filterRows, toSideTree } from './diffHelpers'
+import { diffStatus, directionMark, filterDiffTree, filterRows, toSideTree } from './diffHelpers'
 import { toFlameNodes, type DiffFlameNode } from './diffTree'
 import { effectiveExclude } from '../analysis/perfhawk'
 import { TransformBar } from './TransformBar'
 import { FidelityBadge } from './FidelityBadge'
+import { Skeleton } from './Skeleton'
 
 const PALETTE_KEY = 'perfhawk.palette'
 
@@ -51,7 +56,8 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
   const [stName, setStName] = useState<string | undefined>(undefined)
   const [flame, setFlame] = useState<DiffFlame | null>(null)
   const [top, setTop] = useState<DiffTop | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
+  useDocumentTitle(viewTitle(state, head?.name))
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<'flame' | 'tree'>('flame')
   const [cb, setCb] = useState(readPalette)
@@ -59,12 +65,12 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
   const [exportMsg, setExportMsg] = useState<string | null>(null)
 
   useEffect(() => {
-    getProfile(headRef).then(setHead, (e: ApiError) => setError(e.message))
+    getProfile(headRef).then(setHead, (e: ApiError) => setError(e))
     listProfiles().then(setCandidates, () => {})
   }, [headRef])
   useEffect(() => {
     setBase(null)
-    if (baseRef) getProfile(baseRef).then(setBase, (e: ApiError) => setError(e.message))
+    if (baseRef) getProfile(baseRef).then(setBase, (e: ApiError) => setError(e))
   }, [baseRef])
 
   const { focus, hide, depth, tx, diffFilter, diffSort, diffLayout, t0, t1, b0, b1 } = state
@@ -100,7 +106,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
         if (stale) return
         setFlame(null)
         setTop(null)
-        setError(e.message)
+        setError(e)
         setLoading(false)
       },
     )
@@ -165,7 +171,7 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
         <button onClick={() => navigate({ view: 'summary', base: undefined, normalize: undefined }, 'push')}>
           &larr; Profile
         </button>
-        <strong>Diff</strong>
+        <h2 className="view-title">Diff</h2>
         <button
           onClick={() => navigate({ profile: baseRef, base: headRef, t0: b0, t1: b1, b0: t0, b1: t1 }, 'push')}
           disabled={!baseRef}
@@ -241,13 +247,13 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
       <TransformBar tx={tx} onChange={(next) => navigate({ tx: next }, 'push')} />
       <div className="toolbar"><ExportMenu items={exportItems} /></div>
       {exportMsg && <p className="muted" role="status">{exportMsg}</p>}
-      {error && <div className="banner" role="alert">{error}</div>}
+      <ErrorNotice error={error} onRetry={reloadPage} />
       {!baseRef && <p className="muted">Pick a base profile to compare against.</p>}
-      {loading && !error && <p className="muted" role="status">Loading...</p>}
+      {loading && !error && <Skeleton />}
       <div className="diff-legend muted" aria-hidden="true">
-        <span className="swatch" style={{ background: 'var(--diff-down-4)' }} /> shrank
+        <span className="swatch" style={{ background: 'var(--diff-down-4)' }} /> ▼ shrank
         <span className="swatch" style={{ background: 'var(--diff-flat)' }} /> unchanged
-        <span className="swatch" style={{ background: 'var(--diff-up-4)' }} /> grew
+        <span className="swatch" style={{ background: 'var(--diff-up-4)' }} /> ▲ grew
         · width = larger of base and head
       </div>
       <div style={{ opacity: loading ? 0.5 : 1 }}>
@@ -291,10 +297,10 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
                   {rows.map((r, i) => (
                     <tr key={`${r.name}|${r.file}|${i}`}>
                       <td className="name" title={r.file ? `${r.name}\n${r.file}` : r.name}>{r.name}</td>
-                      <td className={`num ${r.deltaSelf > 0 ? 'up' : r.deltaSelf < 0 ? 'down' : ''}`}>{signed(r.deltaSelf, unit)}</td>
+                      <td className={`num ${r.deltaSelf > 0 ? 'up' : r.deltaSelf < 0 ? 'down' : ''}`}><span aria-hidden="true">{directionMark(r.deltaSelf)}</span> {signed(r.deltaSelf, unit)}</td>
                       <td className="num">{formatValue(r.baseSelf, unit)}</td>
                       <td className="num">{formatValue(r.headSelf, unit)}</td>
-                      <td className={`num ${r.deltaTotal > 0 ? 'up' : r.deltaTotal < 0 ? 'down' : ''}`}>{signed(r.deltaTotal, unit)}</td>
+                      <td className={`num ${r.deltaTotal > 0 ? 'up' : r.deltaTotal < 0 ? 'down' : ''}`}><span aria-hidden="true">{directionMark(r.deltaTotal)}</span> {signed(r.deltaTotal, unit)}</td>
                       <td className="num">{r.baseTotal > 0 ? formatPct((r.deltaTotal / r.baseTotal) * 100) : ''}</td>
                       <td>{(() => { const st = diffStatus(r.baseTotal, r.headTotal); return st === 'new' || st === 'gone' ? st : '' })()}</td>
                     </tr>

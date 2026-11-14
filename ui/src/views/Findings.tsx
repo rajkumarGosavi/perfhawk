@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { ErrorNotice } from './ErrorNotice'
+import { reloadPage } from './reload'
 import { getFindings, type AnalysisQuery, type ApiError, type Finding } from '../api'
 import { actionToPatch, loadDisabled, saveDisabled, visibleFindings } from '../analysis/findings'
 import { formatPct } from '../format'
@@ -14,7 +16,7 @@ const SEVERITY_LABEL = { info: 'Info', warn: 'Warning', high: 'High' } as const
 
 export function Findings({ profileRef, query, navigate }: Props) {
   const [all, setAll] = useState<Finding[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [disabled, setDisabled] = useState<Set<string>>(loadDisabled)
   const { st, focus, exclude, hide, tx, t0, t1 } = query
 
@@ -22,7 +24,7 @@ export function Findings({ profileRef, query, navigate }: Props) {
     let stale = false
     getFindings(profileRef, { st, focus, exclude, hide, tx, t0, t1 }).then(
       (f) => { if (!stale) { setAll(f); setError(null) } },
-      (e: ApiError) => { if (!stale) { setAll([]); setError(e.message) } },
+      (e: ApiError) => { if (!stale) { setAll([]); setError(e) } },
     )
     return () => { stale = true }
   }, [profileRef, st, focus, exclude, hide, tx, t0, t1])
@@ -39,8 +41,8 @@ export function Findings({ profileRef, query, navigate }: Props) {
 
   return (
     <section className="card findings" aria-label="Findings">
-      <h2>Findings</h2>
-      {error && <p className="muted" role="status">{error}</p>}
+      <h3>Findings</h3>
+      <ErrorNotice error={error} onRetry={reloadPage} />
       {shown.length === 0 ? (
         <p className="muted">No findings for this view.</p>
       ) : (
@@ -64,7 +66,7 @@ export function Findings({ profileRef, query, navigate }: Props) {
         <details>
           <summary>Manage rules</summary>
           {rules.map((r) => (
-            <label key={r} className="field" style={{ flexDirection: 'row', gap: 6 }}>
+            <label key={r} className="field field-row">
               <input type="checkbox" aria-label={r} checked={!disabled.has(r)} onChange={(e) => toggle(r, e.target.checked)} />
               {r}
             </label>

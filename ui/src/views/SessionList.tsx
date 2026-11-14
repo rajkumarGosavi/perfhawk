@@ -2,11 +2,15 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError, deleteSession, listProfiles, listSessions, type ProfileRecord, type SessionRecord,
 } from '../api'
+import { ConfirmDialog } from './ConfirmDialog'
+import { ErrorNotice } from './ErrorNotice'
+import { reloadPage } from './reload'
 import { formatValue } from '../format'
 import type { Range } from '../time/range'
 import { FidelityBadge } from './FidelityBadge'
 import { Doctor } from './Doctor'
 import { SessionTimeline } from './SessionTimeline'
+import { Skeleton } from './Skeleton'
 
 function target(s: SessionRecord): string {
   const t = s.target
@@ -33,7 +37,7 @@ export function SessionList({
 }) {
   const [sessions, setSessions] = useState<SessionRecord[] | null>(null)
   const [profiles, setProfiles] = useState<Map<string, ProfileRecord>>(new Map())
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const load = useCallback(() => {
@@ -47,7 +51,7 @@ export function SessionList({
           if (hit) setExpanded((e) => new Set(e).add(hit.id))
         }
       },
-      (e: ApiError) => setError(e.message),
+      (e: ApiError) => setError(e),
     )
   }, [initialExpanded])
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -61,24 +65,35 @@ export function SessionList({
       return n
     })
 
+  const [pendingDelete, setPendingDelete] = useState<SessionRecord | null>(null)
+
   const remove = async (s: SessionRecord) => {
-    if (!window.confirm(`Delete ${s.name}? This removes the profile data and cannot be undone.`)) return
+    setPendingDelete(null)
     try {
       await deleteSession(s.id)
       onChanged()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e))
+      setError(e)
     }
   }
 
   return (
     <section aria-label="Sessions">
-      {error && <div className="banner" role="alert">{error}</div>}
+      {pendingDelete && (
+        <ConfirmDialog
+          title={`Delete ${pendingDelete.name}?`}
+          message="This removes the profile data and cannot be undone."
+          confirmLabel="Delete"
+          onConfirm={() => void remove(pendingDelete)}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
+      <ErrorNotice error={error} onRetry={reloadPage} />
       {sessions === null ? (
-        !error && <p className="muted">Loading...</p>
+        !error && <Skeleton />
       ) : sessions.length === 0 ? (
         <p className="muted">
-          No sessions yet. Record one with <code>perfhawk record --pid &lt;pid&gt;</code>.
+          No sessions yet. A session is one recording run: start one with <code>perfhawk record --pid &lt;pid&gt; --open</code>.
         </p>
       ) : (
         <div className="table-wrap">
@@ -86,7 +101,7 @@ export function SessionList({
             <thead>
               <tr>
                 <th>Session</th><th>Status</th><th>Target</th><th>Started</th>
-                <th className="num">Duration</th><th className="num">Profiles</th><th aria-label="Actions" />
+                <th className="num">Duration</th><th className="num">Profiles</th><th><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -123,7 +138,7 @@ export function SessionList({
                       )}
                     </td>
                     <td>
-                      <button onClick={() => void remove(s)} aria-label={`Delete session ${s.name}`}>Delete</button>
+                      <button onClick={() => setPendingDelete(s)} aria-label={`Delete session ${s.name}`}>Delete</button>
                     </td>
                   </tr>,
                   open && (

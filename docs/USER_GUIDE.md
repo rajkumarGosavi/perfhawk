@@ -327,6 +327,11 @@ rest are still removed. This cannot be undone.
 
 ## 5. Using the UI
 
+> The app explains itself: press `?` (or click **Help**) for short guides on getting started,
+> reading a flame graph, Self vs Total, comparing runs and the keyboard shortcuts, and hover or
+> focus the small **?** marks next to terms such as Self and Total for their definitions. This
+> section is the full reference.
+
 ### Home: Sessions and Profiles
 The home page has two tabs. **Sessions** (the default when any exist) lists
 recordings with a status pill, target, start time, duration and profile count; a

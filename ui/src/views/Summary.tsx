@@ -3,6 +3,8 @@ import {
   getFlame, getSession, getTop,
   type AnalysisQuery, type ApiError, type FlameNode, type ProfileRecord, type SessionRecord, type TopRow,
 } from '../api'
+import { ErrorNotice } from './ErrorNotice'
+import { reloadPage } from './reload'
 import { concentration, headline, kindGuide } from '../analysis/guide'
 import { hotPath, hotPathEndsTruncated } from '../analysis/hotPath'
 import { formatPct, formatValue } from '../format'
@@ -10,6 +12,8 @@ import type { ViewState } from '../url'
 import { FidelityBadge, fidelityTip } from './FidelityBadge'
 import { Findings } from './Findings'
 import { PivotPanel } from './PivotPanel'
+import { Term } from '../help/Term'
+import { Skeleton } from './Skeleton'
 
 type Props = {
   profileRef: string
@@ -24,7 +28,7 @@ const MAX_FRAMES = 25
 
 export function Summary({ profileRef, record, query, navigate }: Props) {
   const [data, setData] = useState<Loaded | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [session, setSession] = useState<SessionRecord | null>(null)
 
   const { st, focus, exclude, hide, depth, tx, t0, t1 } = query
@@ -39,7 +43,7 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
       getFlame(profileRef, q),
     ]).then(
       ([bySelf, byTotal, tree]) => { if (!stale) { setData({ bySelf, byTotal, tree }); setError(null) } },
-      (e: ApiError) => { if (!stale) { setData(null); setError(e.message) } },
+      (e: ApiError) => { if (!stale) { setData(null); setError(e) } },
     )
     return () => { stale = true }
   }, [profileRef, st, focus, exclude, hide, depth, tx, t0, t1])
@@ -69,10 +73,10 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
 
   const table = (title: string, rows: TopRow[]) => (
     <section className="card" aria-label={title}>
-      <h2>{title}</h2>
+      <h3>{title}</h3>
       <table>
         <thead>
-          <tr><th>Function</th><th className="num">Self</th><th className="num">Total</th></tr>
+          <tr><th>Function</th><th className="num">Self <Term k="self" icon /></th><th className="num">Total <Term k="total" icon /></th></tr>
         </thead>
         <tbody>
           {rows.map((r) => (
@@ -91,14 +95,15 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
 
   return (
     <section aria-label="Summary">
-      {error && <div className="banner" role="alert">{error}</div>}
-      {!data && !error && <p className="muted" role="status">Loading...</p>}
+      <ErrorNotice error={error} onRetry={reloadPage} />
+      {!data && !error && <Skeleton lines={5} />}
       {data && (
         <>
+          <p className="muted summary-question">{guide.questions[0]}</p>
           <p className="summary-headline" role="heading" aria-level={2}>
             {headline(data.bySelf, unit)}
             {!empty && (
-              <span className="muted" style={{ fontSize: 13 }}>
+              <span className="muted headline-note">
                 {' '}
                 ({concentration(data.bySelf) === 'concentrated' ? 'concentrated in one function' : 'spread across many functions'})
               </span>
@@ -121,7 +126,7 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
               {table('Top 5 by self', data.bySelf)}
               {table('Top 5 by total', data.byTotal)}
               <section className="card" aria-label="Hottest path">
-                <h2>Hottest path</h2>
+                <h3>Hottest path</h3>
                 <ol className="hotpath">
                   {path.slice(0, MAX_FRAMES).map((n, i) => (
                     <li key={i}>
@@ -143,7 +148,7 @@ export function Summary({ profileRef, record, query, navigate }: Props) {
                 navigate={navigate}
               />
               <section className="card" aria-label="What to look at">
-                <h2>What to look at: {guide.title}</h2>
+                <h3>What to look at: {guide.title}</h3>
                 <ul>{guide.questions.map((q) => <li key={q}>{q}</li>)}</ul>
                 <p className="muted">How this was measured: {guide.measured}</p>
                 <div className="summary-actions">
