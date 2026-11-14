@@ -522,6 +522,37 @@ fn record_no_gc_flag_is_accepted() {
 }
 
 #[test]
+fn import_gc_from_nettrace_without_gc_events_explains_what_to_record() {
+    let home = tempfile::tempdir().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let trace = tmp.path().join("cpu-only.nettrace");
+    std::fs::write(&trace, b"nettrace").unwrap();
+    let empty = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../perfhawk-capture/tests/fixtures/gc-empty.json");
+    let line = format!(
+        r#"{{"type":"artifact","kind":"gc","fixture":"{}","samples":0}}"#,
+        empty.to_string_lossy().replace('\\', "/")
+    );
+    let s = script(
+        tmp.path(),
+        &[
+            HELLO.to_string(),
+            line,
+            r#"{"type":"done","end":"complete"}"#.to_string(),
+        ],
+    );
+    fake_perfhawk(home.path(), &s)
+        .args(["import", "--gc"])
+        .arg(&trace)
+        .assert()
+        .code(1)
+        .stderr(
+            predicate::str::contains("no GC events")
+                .and(predicate::str::contains("Microsoft-Windows-DotNETRuntime")),
+        );
+}
+
+#[test]
 fn import_gc_from_nettrace_uses_helper() {
     let home = tempfile::tempdir().unwrap();
     let tmp = tempfile::tempdir().unwrap();

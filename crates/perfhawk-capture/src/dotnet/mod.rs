@@ -151,7 +151,7 @@ pub fn convert_nettrace_gc_with(
     match gc {
         Some(g) if !g.events.is_empty() => Ok(g),
         Some(_) => Err(CaptureError::Target(format!(
-            "no GC events in {}",
+            "no GC events in {}; the trace must include the Microsoft-Windows-DotNETRuntime provider with the GC keyword (0x1)",
             path.display()
         ))),
         None => {
