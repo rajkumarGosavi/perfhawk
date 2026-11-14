@@ -17,7 +17,7 @@ Perfhawk v0.1 is a first release. This page lists what it does not do, so you ar
 
 ## OS-level tracing (Windows ETW)
 
-- .NET managed frames in these profiles are not named yet (they show as module+offset or `[unknown]`); Go frames are named unless the binary is stripped.
+- .NET frames in these profiles are named for JIT-compiled code and for precompiled (ReadyToRun) framework code such as `System.Private.CoreLib` (x64 only; composite and ARM64 images, and the cold halves of split methods, stay unnamed). Native frames in `coreclr.dll`, `ntdll.dll`, `kernel32.dll` and `KernelBase.dll` still show as module+offset until PDB support lands. Go frames are named unless the binary is stripped.
 - System DLL frames have no names (no PDB lookup): `module+0xoffset`.
 - A thread that is blocked for the whole capture and never wakes has no off-CPU row, because Windows records the blocked stack when the thread resumes.
 - Under heavy system load Windows drops trace events; the profile carries a warning with the counts and numbers undercount.
