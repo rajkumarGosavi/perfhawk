@@ -29,7 +29,7 @@ function Shares({ title, rows, unit }: { title: string; rows: ChildShare[]; unit
               <span className="mono inspector-fn">{r.name}</span>
               <span className="inspector-bar" aria-hidden="true"><span style={{ width: `${Math.min(100, r.pct)}%` }} /></span>
               <span className="num">{formatPct(r.pct)}</span>
-              <span className="visually-hidden"> ({formatValue(r.total, unit)})</span>
+              <span className="sr-only"> ({formatValue(r.total, unit)})</span>
             </li>
           ))}
         </ul>
