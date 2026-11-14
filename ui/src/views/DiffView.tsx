@@ -14,6 +14,7 @@ import { formatRange } from '../time/range'
 import { CallTree } from './CallTree'
 import { diffStatus, filterDiffTree, filterRows, toSideTree } from './diffHelpers'
 import { toFlameNodes, type DiffFlameNode } from './diffTree'
+import { effectiveExclude } from '../analysis/perfhawk'
 import { TransformBar } from './TransformBar'
 import { FidelityBadge } from './FidelityBadge'
 
@@ -66,7 +67,8 @@ export function DiffView({ state, navigate }: { state: ViewState; navigate: Nav 
     if (baseRef) getProfile(baseRef).then(setBase, (e: ApiError) => setError(e.message))
   }, [baseRef])
 
-  const { focus, exclude, hide, depth, tx, diffFilter, diffSort, diffLayout, t0, t1, b0, b1 } = state
+  const { focus, hide, depth, tx, diffFilter, diffSort, diffLayout, t0, t1, b0, b1 } = state
+  const exclude = effectiveExclude(state.exclude, state.hidePh)
   useEffect(() => {
     if (cb) document.documentElement.setAttribute('data-palette', 'cb')
     else document.documentElement.removeAttribute('data-palette')

@@ -82,6 +82,8 @@ button[aria-pressed='true'] { background: var(--accent); color: var(--accent-fg)
 .linklike { background: none; border: none; padding: 0; min-height: 0; color: var(--accent); text-align: left; cursor: pointer; }
 label.field { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); gap: 2px; }
 label.field input, label.field select { font-size: 13px; }
+label.field.check { flex-direction: row; align-items: center; align-self: flex-end; gap: 6px; font-size: 12px; }
+label.field.check input { margin: 0; }
 
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; margin-bottom: 10px; }
 .tabs { display: flex; gap: 4px; }

@@ -5,6 +5,7 @@ import {
 } from '../api'
 import { hotPath } from '../analysis/hotPath'
 import { SHORTCUTS, keyAction } from '../analysis/keys'
+import { effectiveExclude } from '../analysis/perfhawk'
 import { addTransform, decodeTx, encodeTx, type Transform } from '../analysis/transforms'
 import { FlameGraph, type FlameExportApi } from '../flame/FlameGraph'
 import { toCollapsed } from '../export/collapsed'
@@ -88,7 +89,8 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
 
   const st = state.st ?? record?.default_sample_type
   const unit = record && st !== undefined ? record.sample_types[st]?.unit ?? 'count' : 'count'
-  const { view, func, focus: qf, exclude: qe, hide: qh, depth, tx, t0, t1 } = state
+  const { view, func, focus: qf, hide: qh, depth, tx, t0, t1 } = state
+  const qe = effectiveExclude(state.exclude, state.hidePh)
   const hasTime = !!record?.has_timeline
   const groupBy = state.groupBy ?? defaultGroupBy(record?.kind ?? '')
   const sort = state.sort ?? 'self'
@@ -258,6 +260,10 @@ export function ProfileView({ state, navigate }: { state: ViewState; navigate: N
         <label className="field">Focus<input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="regex" /></label>
         <label className="field">Exclude<input value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder="regex" /></label>
         <label className="field">Hide<input value={hide} onChange={(e) => setHide(e.target.value)} placeholder="regex" /></label>
+        <label className="field check" title="Drop samples from Perfhawk's own in-process Go agent (agent, fgprof, pprof decoder), so percentages describe your app only.">
+          <input type="checkbox" checked={!!state.hidePh} onChange={(e) => navigate({ hidePh: e.target.checked ? true : undefined }, 'push')} />
+          Hide Perfhawk frames
+        </label>
         <label className="field">Search<input ref={searchRef} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="highlight" /></label>
       </div>
       {(t0 !== undefined || state.b0 !== undefined) && (
