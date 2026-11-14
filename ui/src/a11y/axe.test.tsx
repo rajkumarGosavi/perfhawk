@@ -2,8 +2,8 @@
 import axe from 'axe-core'
 import { act, type ReactElement } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, describe, expect, it } from 'vitest'
-import type { Fidelity, TopRow } from '../api'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Fidelity, RecordJob, TopRow } from '../api'
 import { Term } from '../help/Term'
 import { ErrorNotice } from '../views/ErrorNotice'
 import { ConfirmDialog } from '../views/ConfirmDialog'
@@ -14,6 +14,8 @@ import { Panel } from '../views/Panel'
 import { ThemeSwitch } from '../views/ThemeSwitch'
 import { TopTable } from '../views/TopTable'
 import { Welcome } from '../views/Welcome'
+import { RecordProgress } from '../views/RecordProgress'
+import { RecordTab } from '../views/RecordTab'
 import { ApiError } from '../api'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -68,6 +70,50 @@ describe('axe: no serious or critical violations', () => {
       expect(v.map((x) => `${x.id}: ${x.nodes.map((n) => n.html.slice(0, 80)).join(' | ')}`)).toEqual([])
     })
   }
+})
+
+const RUNNING: RecordJob = {
+  job_id: 'j1', state: 'running', started_ms: 0, duration_ms: 4000, session_id: null, error: null,
+  progress: ['[go] capturing cpu for 30s (pid 7)'],
+}
+
+function stubRecordApi(current: RecordJob | null) {
+  vi.stubGlobal('fetch', async (url: string) => {
+    const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (url.startsWith('/api/targets')) {
+      return json({ targets: [{ kind: 'pid', label: 'go pid 7', pid: 7, runtime: 'go', version: 'go1.22', agent: true, command: null }], warning: null })
+    }
+    if (url.startsWith('/api/record/current')) return current ? json(current) : new Response(null, { status: 204 })
+    return json({})
+  })
+}
+
+describe('axe: record', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('RecordProgress announces through one polite status region and has Cancel', async () => {
+    const el = await render(<RecordProgress job={RUNNING} onCancel={() => {}} />)
+    const status = el.querySelector('[role="status"]')
+    expect(status?.getAttribute('aria-live')).toBe('polite')
+    expect(status?.textContent).toMatch(/recording/i)
+    expect(el.textContent).toMatch(/cancel/i)
+    expect((await violations(el)).map((x) => x.id)).toEqual([])
+  })
+
+  it('RecordTab (idle) has no serious violations', async () => {
+    stubRecordApi(null)
+    const el = await render(<RecordTab onOpenSession={() => {}} />)
+    expect(el.textContent).toMatch(/go pid 7/)
+    expect((await violations(el)).map((x) => `${x.id}: ${x.nodes.map((n) => n.html.slice(0, 80)).join(' | ')}`)).toEqual([])
+  })
+
+  it('RecordTab re-attaches to a running capture after a reload', async () => {
+    stubRecordApi(RUNNING)
+    const el = await render(<RecordTab onOpenSession={() => {}} />)
+    expect(el.querySelector('[role="status"]')?.textContent).toMatch(/recording/i)
+    expect(el.textContent).toMatch(/cancel/i)
+    expect((await violations(el)).map((x) => x.id)).toEqual([])
+  })
 })
 
 describe('axe harness', () => {

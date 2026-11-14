@@ -307,3 +307,50 @@ export const uploadProfile = async (file: File) => {
   )
   return r
 }
+
+export type RecordTarget = {
+  kind: 'pid'
+  label: string
+  pid: number
+  runtime: string
+  version: string | null
+  agent: boolean
+  command: string | null
+}
+export type TargetsResponse = { targets: RecordTarget[]; warning: string | null }
+export type CapabilityInfo = { kind: string; available: boolean; fidelity: Fidelity; note: string | null }
+export type Capabilities = { runtime: string; kinds: CapabilityInfo[] }
+export type RecordJobState = 'running' | 'done' | 'failed' | 'cancelled'
+export type RecordJob = {
+  job_id: string
+  state: RecordJobState
+  started_ms: number
+  duration_ms: number
+  progress: string[]
+  session_id: string | null
+  error: { code: string; message: string } | null
+}
+export type RecordRequest = {
+  pid?: number
+  url?: string
+  kinds?: string[]
+  duration_secs: number
+  name?: string
+  tags?: string[]
+  timeline?: boolean
+}
+
+export const getTargets = () => request<TargetsResponse>('/api/targets')
+export const getCapabilities = (q: { pid?: number; url?: string }) =>
+  request<Capabilities>(`/api/capabilities${qs(q)}`)
+export const startRecord = (r: RecordRequest) =>
+  request<{ job_id: string }>('/api/record', {
+    method: 'POST',
+    headers: { 'X-Perfhawk-Request': '1', 'Content-Type': 'application/json' },
+    body: JSON.stringify(r),
+  })
+/** The running or most recent capture, or null when none has run since the server started. */
+export const getRecordCurrent = async (): Promise<RecordJob | null> =>
+  (await request<RecordJob | undefined>('/api/record/current')) ?? null
+export const cancelRecord = (jobId: string) =>
+  request<void>(`/api/record/${encodeURIComponent(jobId)}`, DELETE_INIT)
