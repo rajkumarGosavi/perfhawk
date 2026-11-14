@@ -1,0 +1,288 @@
+//! GC analysis over [`perfhawk_model::GcData`]: summary numbers, chart series
+//! and findings. Runtime-neutral; nothing here names a language.
+
+use perfhawk_model::{GcData, GcEvent, HeapPoint};
+use serde::Serialize;
+
+#[derive(Debug, Clone)]
+pub struct GcConfig {
+    /// A single pause at least this long (ms) is a finding.
+    pub long_pause_ms: f64,
+    /// Pause time as a share of wall time (%) that is a finding.
+    pub pause_share_pct: f64,
+    /// Share of all GCs (%) that are generation 2 before it is a finding.
+    pub gen2_share_pct: f64,
+    /// Minimum number of GCs before gen2-heavy and LOH-driven can fire.
+    pub gen2_min_gcs: usize,
+    /// Minimum number of gen2 GCs before heap growth is reported.
+    pub growth_min_gen2: usize,
+    /// Growth (%) of the post-gen2 heap, second half against first half.
+    pub growth_pct: f64,
+    /// Share of GCs (%) caused by large-object allocation that is a finding.
+    pub loh_share_pct: f64,
+    /// Upper bound on points in each chart series.
+    pub max_points: usize,
+}
+
+impl Default for GcConfig {
+    fn default() -> Self {
+        GcConfig {
+            long_pause_ms: 50.0,
+            pause_share_pct: 5.0,
+            gen2_share_pct: 30.0,
+            gen2_min_gcs: 10,
+            growth_min_gen2: 4,
+            growth_pct: 20.0,
+            loh_share_pct: 20.0,
+            max_points: 500,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PauseStats {
+    pub count: u64,
+    pub total_ns: u64,
+    pub mean_ns: u64,
+    pub p50_ns: u64,
+    pub p95_ns: u64,
+    pub p99_ns: u64,
+    pub max_ns: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenCount {
+    /// `None` for runtimes without generations.
+    pub generation: Option<u8>,
+    pub count: u64,
+    pub pause: PauseStats,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NamedCount {
+    pub name: String,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GcSummary {
+    pub total_gcs: u64,
+    /// Ascending by generation; the generation-less group comes last.
+    pub by_generation: Vec<GenCount>,
+    /// Most frequent first.
+    pub by_reason: Vec<NamedCount>,
+    pub by_kind: Vec<NamedCount>,
+    pub induced_count: u64,
+    pub pause: PauseStats,
+    /// Total pause time as a share of the capture's wall time (0 when the duration is unknown).
+    pub pause_share_pct: f64,
+    pub peak_heap_bytes: Option<u64>,
+    pub min_post_gc_heap_bytes: Option<u64>,
+    /// Heap size after each generation-2 GC, in order.
+    pub post_gen2_heap_bytes: Vec<u64>,
+    pub alloc_total_bytes: u64,
+    pub alloc_mean_bytes_per_s: f64,
+    pub alloc_peak_bytes_per_s: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RatePoint {
+    pub t_ns: u64,
+    pub bytes_per_s: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PausePoint {
+    pub id: u32,
+    pub start_ns: u64,
+    pub pause_ns: u64,
+    pub generation: Option<u8>,
+}
+
+/// Chart data, each series reduced to at most `GcConfig::max_points` points.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GcSeries {
+    pub heap: Vec<HeapPoint>,
+    pub alloc_rate: Vec<RatePoint>,
+    pub pauses: Vec<PausePoint>,
+}
+
+/// Nearest-rank percentile of an ascending slice: index `ceil(p/100 * n) - 1`.
+fn percentile(sorted: &[u64], p: f64) -> u64 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    let rank = ((p / 100.0) * sorted.len() as f64).ceil() as usize;
+    sorted[rank.clamp(1, sorted.len()) - 1]
+}
+
+fn pause_stats(mut pauses: Vec<u64>) -> PauseStats {
+    if pauses.is_empty() {
+        return PauseStats::default();
+    }
+    pauses.sort_unstable();
+    let total: u64 = pauses.iter().sum();
+    PauseStats {
+        count: pauses.len() as u64,
+        total_ns: total,
+        mean_ns: total / pauses.len() as u64,
+        p50_ns: percentile(&pauses, 50.0),
+        p95_ns: percentile(&pauses, 95.0),
+        p99_ns: percentile(&pauses, 99.0),
+        max_ns: *pauses.last().expect("non-empty"),
+    }
+}
+
+fn counted(map: std::collections::BTreeMap<String, u64>) -> Vec<NamedCount> {
+    let mut v: Vec<NamedCount> = map
+        .into_iter()
+        .map(|(name, count)| NamedCount { name, count })
+        .collect();
+    // Stable sort over the name-ordered map: ties stay alphabetical.
+    v.sort_by(|a, b| b.count.cmp(&a.count));
+    v
+}
+
+fn bucket_secs(d: &GcData) -> f64 {
+    d.alloc.bucket_ns as f64 / 1e9
+}
+
+pub fn summarize(d: &GcData, _cfg: &GcConfig) -> GcSummary {
+    let mut gens: std::collections::BTreeMap<Option<u8>, Vec<u64>> = Default::default();
+    let mut reasons = std::collections::BTreeMap::new();
+    let mut kinds = std::collections::BTreeMap::new();
+    let mut induced = 0u64;
+    let mut all_pauses = Vec::with_capacity(d.events.len());
+    for e in &d.events {
+        gens.entry(e.generation).or_default().push(e.pause_ns);
+        *reasons.entry(e.reason.clone()).or_insert(0u64) += 1;
+        *kinds.entry(e.kind.clone()).or_insert(0u64) += 1;
+        induced += u64::from(e.induced);
+        all_pauses.push(e.pause_ns);
+    }
+    // `Option<u8>` orders `None` first; the report wants it last.
+    let mut by_generation: Vec<GenCount> = gens
+        .into_iter()
+        .map(|(generation, pauses)| GenCount {
+            generation,
+            count: pauses.len() as u64,
+            pause: pause_stats(pauses),
+        })
+        .collect();
+    by_generation.sort_by_key(|g| (g.generation.is_none(), g.generation));
+
+    let pause = pause_stats(all_pauses);
+    let pause_share_pct = if d.duration_ns == 0 {
+        0.0
+    } else {
+        pause.total_ns as f64 / d.duration_ns as f64 * 100.0
+    };
+
+    let peak_heap_bytes = d
+        .heap
+        .iter()
+        .map(|h| h.total_bytes)
+        .chain(d.events.iter().filter_map(|e| e.heap_before_bytes))
+        .max();
+    let min_post_gc_heap_bytes = d.events.iter().filter_map(|e| e.heap_after_bytes).min();
+    let post_gen2_heap_bytes = d
+        .events
+        .iter()
+        .filter(|e| e.generation == Some(2))
+        .filter_map(|e| e.heap_after_bytes)
+        .collect();
+
+    let alloc_total_bytes: u64 = d.alloc.bytes.iter().sum();
+    let secs = d.duration_ns as f64 / 1e9;
+    let alloc_mean_bytes_per_s = if secs > 0.0 {
+        alloc_total_bytes as f64 / secs
+    } else {
+        0.0
+    };
+    let bs = bucket_secs(d);
+    let alloc_peak_bytes_per_s = if bs > 0.0 {
+        d.alloc.bytes.iter().map(|b| *b as f64 / bs).fold(0.0, f64::max)
+    } else {
+        0.0
+    };
+
+    GcSummary {
+        total_gcs: d.events.len() as u64,
+        by_generation,
+        by_reason: counted(reasons),
+        by_kind: counted(kinds),
+        induced_count: induced,
+        pause,
+        pause_share_pct,
+        peak_heap_bytes,
+        min_post_gc_heap_bytes,
+        post_gen2_heap_bytes,
+        alloc_total_bytes,
+        alloc_mean_bytes_per_s,
+        alloc_peak_bytes_per_s,
+    }
+}
+
+/// Keeps at most `max` items by splitting the time-ordered input into `max`
+/// consecutive windows and keeping each window's item with the largest `key`
+/// (the first on ties), so peaks survive.
+fn downsample_max<T: Clone>(items: &[T], max: usize, key: impl Fn(&T) -> f64) -> Vec<T> {
+    if max == 0 {
+        return Vec::new();
+    }
+    if items.len() <= max {
+        return items.to_vec();
+    }
+    let window = items.len().div_ceil(max);
+    items
+        .chunks(window)
+        .map(|c| {
+            let mut best = &c[0];
+            for it in &c[1..] {
+                if key(it) > key(best) {
+                    best = it;
+                }
+            }
+            best.clone()
+        })
+        .collect()
+}
+
+pub fn series(d: &GcData, cfg: &GcConfig) -> GcSeries {
+    let bs = bucket_secs(d);
+    let rates: Vec<RatePoint> = if bs > 0.0 {
+        d.alloc
+            .bytes
+            .iter()
+            .enumerate()
+            .map(|(i, b)| RatePoint {
+                t_ns: i as u64 * d.alloc.bucket_ns,
+                bytes_per_s: *b as f64 / bs,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let pauses: Vec<PausePoint> = d
+        .events
+        .iter()
+        .map(|e: &GcEvent| PausePoint {
+            id: e.id,
+            start_ns: e.start_ns,
+            pause_ns: e.pause_ns,
+            generation: e.generation,
+        })
+        .collect();
+    GcSeries {
+        heap: downsample_max(&d.heap, cfg.max_points, |h| h.total_bytes as f64),
+        alloc_rate: downsample_max(&rates, cfg.max_points, |r| r.bytes_per_s),
+        pauses: downsample_max(&pauses, cfg.max_points, |p| p.pause_ns as f64),
+    }
+}
