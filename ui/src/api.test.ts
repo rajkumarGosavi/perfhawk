@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   ApiError, deleteProfile, deleteSession, getDiffFlame, getDiffTop, getFlame, getFindings, getGraph, getHeatmap, getHistory, getSeries, getGroups, getPivot, getDoctor, listSessions,
+  startRecord, cancelRecord, getRecordCurrent, getCapabilities, getTargets,
 } from './api'
 
 function stub(status: number, body?: unknown) {
@@ -166,5 +167,41 @@ describe('heatmap cell format', () => {
     const f = stub(200, { verdict: 'idle', summary: '', busyThreads: 0, findings: [], notes: [] })
     await getDoctor('a b')
     expect((f.mock.calls[0] as unknown as [string])[0]).toBe('/api/sessions/a%20b/doctor')
+  })
+
+  it('startRecord POSTs JSON with the custom header', async () => {
+    const f = stub(202, { job_id: 'j1' })
+    expect(await startRecord({ pid: 7, duration_secs: 5 })).toEqual({ job_id: 'j1' })
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('/api/record')
+    expect(init.method).toBe('POST')
+    const h = init.headers as Record<string, string>
+    expect(h['X-Perfhawk-Request']).toBe('1')
+    expect(h['Content-Type']).toBe('application/json')
+    expect(JSON.parse(init.body as string)).toEqual({ pid: 7, duration_secs: 5 })
+  })
+
+  it('cancelRecord sends DELETE with the header', async () => {
+    const f = stub(204)
+    await cancelRecord('j 1')
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('/api/record/j%201')
+    expect(init.method).toBe('DELETE')
+    expect((init.headers as Record<string, string>)['X-Perfhawk-Request']).toBe('1')
+  })
+
+  it('getRecordCurrent is null when no job has run (204)', async () => {
+    stub(204)
+    expect(await getRecordCurrent()).toBeNull()
+  })
+
+  it('capabilities and targets use their query strings', async () => {
+    const f = stub(200, {})
+    await getCapabilities({ pid: 9 })
+    expect(f.mock.calls[0][0]).toBe('/api/capabilities?pid=9')
+    await getCapabilities({ url: 'http://127.0.0.1:1' })
+    expect(f.mock.calls[1][0]).toBe('/api/capabilities?url=http%3A%2F%2F127.0.0.1%3A1')
+    await getTargets()
+    expect(f.mock.calls[2][0]).toBe('/api/targets')
   })
 })

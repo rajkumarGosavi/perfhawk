@@ -9,11 +9,13 @@ license.workspace = true
 perfhawk-model = { path = "../perfhawk-model" }
 perfhawk-store = { path = "../perfhawk-store" }
 perfhawk-analysis = { path = "../perfhawk-analysis" }
+perfhawk-capture = { path = "../perfhawk-capture" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros"] }
 rust-embed = "8"
 mime_guess = "2"
 lru = "0.12"
+url = "2"
 serde.workspace = true
 serde_json.workspace = true
 

@@ -1,6 +1,7 @@
 //! Analysis engine: flame graph, inverted flame graph, top table and sandwich
 //! views over a [`perfhawk_model::Profile`], with pprof-compatible filters.
 
+mod check;
 mod diff;
 mod doctor;
 mod filter;
@@ -15,6 +16,7 @@ mod top;
 mod transform;
 mod tree;
 
+pub use check::{growth_pct, run_check, CheckInput, CheckReport, Regression};
 pub use diff::{
     diff_flame, diff_flame_sides, diff_top, diff_top_sorted, diff_top_sorted_sides,
     match_sample_type, DiffError, DiffInput, DiffNode, DiffNormalize, DiffRow, DiffSort,

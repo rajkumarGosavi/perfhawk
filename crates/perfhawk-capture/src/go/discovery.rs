@@ -97,14 +97,24 @@ pub fn list_in(dir: &Path) -> Vec<Discovery> {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return vec![];
     };
-    let mut out: Vec<Discovery> = rd
+    let pids: Vec<u32> = rd
         .filter_map(|e| e.ok())
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
-            let pid: u32 = name.strip_suffix(".json")?.parse().ok()?;
-            discover_in(dir, pid)
+            name.strip_suffix(".json")?.parse().ok()
         })
         .collect();
+    // Each stale file costs up to the probe timeout, so probe them all at once.
+    let mut out: Vec<Discovery> = std::thread::scope(|scope| {
+        let handles: Vec<_> = pids
+            .iter()
+            .map(|&pid| scope.spawn(move || discover_in(dir, pid)))
+            .collect();
+        handles
+            .into_iter()
+            .filter_map(|h| h.join().ok().flatten())
+            .collect()
+    });
     out.sort_by_key(|d| d.pid);
     out
 }

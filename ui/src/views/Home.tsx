@@ -3,12 +3,13 @@ import { listProfiles, listSessions } from '../api'
 import { getPref, setPref } from '../storage'
 import type { Range } from '../time/range'
 import { ProfileList } from './ProfileList'
+import { RecordTab } from './RecordTab'
 import { SessionList } from './SessionList'
 import { Welcome } from './Welcome'
 import { WELCOME_KEY, shouldShowWelcome } from './welcomeLogic'
 import { Term } from '../help/Term'
 
-type Tab = 'sessions' | 'profiles'
+type Tab = 'sessions' | 'profiles' | 'record'
 
 export function Home({
   session,
@@ -23,6 +24,8 @@ export function Home({
   onHistory?: () => void
 }) {
   const [tab, setTab] = useState<Tab | null>(session ? 'sessions' : null)
+  // Session to expand: from the link, or the one a recording just produced.
+  const [focusSession, setFocusSession] = useState(session)
   const [version, setVersion] = useState(0)
   const changed = () => setVersion((v) => v + 1)
   const [itemCount, setItemCount] = useState<number | null>(null)
@@ -44,6 +47,11 @@ export function Home({
     setPref(WELCOME_KEY, '1')
     setDismissed('1')
     setWelcomeOpen(false)
+  }
+  const openRecorded = (shortId: string) => {
+    setFocusSession(shortId)
+    setTab('sessions')
+    changed()
   }
   const importFile = () => {
     setTab('profiles')
@@ -70,22 +78,26 @@ export function Home({
         <div className="tabs" role="group" aria-label="Home">
           <button aria-pressed={tab === 'sessions'} onClick={() => setTab('sessions')}>Sessions</button><Term k="session" icon />
           <button aria-pressed={tab === 'profiles'} onClick={() => setTab('profiles')}>Profiles</button><Term k="profile" icon />
+          <button aria-pressed={tab === 'record'} onClick={() => setTab('record')}>Record</button>
         </div>
         {onHistory && <button onClick={onHistory}>History</button>}
         <button onClick={() => setWelcomeOpen((o) => !o)} aria-expanded={showWelcome}>What is Perfhawk?</button>
       </div>
-      {showWelcome && <Welcome onImport={importFile} onDismiss={dismiss} />}
+      {showWelcome && <Welcome onImport={importFile} onRecord={() => setTab('record')} onDismiss={dismiss} />}
       <p className="muted tab-desc">
         {tab === 'sessions'
           ? 'Sessions: recordings Perfhawk captured for you. Each holds one or more profiles.'
           : tab === 'profiles'
             ? 'Profiles: every set of measurements, recorded or imported. Open one to see where the time goes.'
-            : ''}
+            : tab === 'record'
+              ? 'Record: capture a running Go or .NET process on this computer, then see where its time goes.'
+              : ''}
       </p>
       {tab === 'sessions' && (
-        <SessionList version={version} initialExpanded={session} onOpenProfile={onOpen} onOpenWindow={onOpenWindow} onChanged={changed} />
+        <SessionList version={version} initialExpanded={focusSession} onOpenProfile={onOpen} onOpenWindow={onOpenWindow} onChanged={changed} />
       )}
       {tab === 'profiles' && <ProfileList version={version} onOpen={onOpen} onChanged={changed} />}
+      {tab === 'record' && <RecordTab onOpenSession={openRecorded} />}
     </>
   )
 }

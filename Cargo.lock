@@ -1137,6 +1137,7 @@ dependencies = [
  "perfhawk-import",
  "perfhawk-model",
  "perfhawk-store",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror",
@@ -1197,6 +1198,7 @@ dependencies = [
  "lru",
  "mime_guess",
  "perfhawk-analysis",
+ "perfhawk-capture",
  "perfhawk-import",
  "perfhawk-model",
  "perfhawk-store",
@@ -1206,6 +1208,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "url",
 ]
 
 [[package]]
