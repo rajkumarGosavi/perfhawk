@@ -115,27 +115,51 @@ impl RawTrace {
         if !is_elevated() {
             return Err(EtwError::NotElevated);
         }
-        let name_w = wide(name);
+        // First a private, uniquely named system-logger session; some Windows
+        // builds reject that (error 87), so fall back to the classic
+        // "NT Kernel Logger", which only one tool can hold at a time.
+        let mut classic = false;
+        let mut name_w = wide(name);
         let header = std::mem::size_of::<EVENT_TRACE_PROPERTIES>();
-        let total = header + name_w.len() * 2;
-        // u64 storage keeps the properties block 8-byte aligned.
-        let mut props = vec![0u64; total.div_ceil(8)];
-        let p = props.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES;
-        unsafe {
-            (*p).Wnode.BufferSize = total as u32;
-            (*p).Wnode.Guid = SystemTraceControlGuid;
-            (*p).Wnode.ClientContext = 1; // QPC timestamps
-            (*p).Wnode.Flags = WNODE_FLAG_TRACED_GUID;
-            (*p).BufferSize = 256; // KB
-            (*p).MinimumBuffers = 64;
-            (*p).MaximumBuffers = 256;
-            (*p).LogFileMode = EVENT_TRACE_REAL_TIME_MODE | SYSTEM_LOGGER_MODE;
-            (*p).LoggerNameOffset = header as u32;
-            let name_dst = (props.as_mut_ptr() as *mut u8).add(header) as *mut u16;
-            std::ptr::copy_nonoverlapping(name_w.as_ptr(), name_dst, name_w.len());
-
+        let (mut props, handle) = loop {
+            let total = header + name_w.len() * 2;
+            // u64 storage keeps the properties block 8-byte aligned.
+            let mut props = vec![0u64; total.div_ceil(8)];
+            let p = props.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES;
             let mut handle = CONTROLTRACE_HANDLE::default();
-            let err = StartTraceW(&mut handle, PCWSTR(name_w.as_ptr()), p);
+            let err = unsafe {
+                (*p).Wnode.BufferSize = total as u32;
+                (*p).Wnode.Guid = if classic {
+                    SystemTraceControlGuid
+                } else {
+                    // A system-logger session needs its own GUID, not the kernel's.
+                    GUID::from_u128(
+                        0x7065_7266_6861_776b_0000_0000_0000_0000u128 | std::process::id() as u128,
+                    )
+                };
+                (*p).Wnode.ClientContext = 1; // QPC timestamps
+                (*p).Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+                (*p).BufferSize = 256; // KB
+                (*p).MinimumBuffers = 64;
+                (*p).MaximumBuffers = 256;
+                (*p).LogFileMode = if classic {
+                    EVENT_TRACE_REAL_TIME_MODE
+                } else {
+                    EVENT_TRACE_REAL_TIME_MODE | SYSTEM_LOGGER_MODE
+                };
+                if classic {
+                    (*p).EnableFlags = EVENT_TRACE_FLAG(flags);
+                }
+                (*p).LoggerNameOffset = header as u32;
+                let name_dst = (props.as_mut_ptr() as *mut u8).add(header) as *mut u16;
+                std::ptr::copy_nonoverlapping(name_w.as_ptr(), name_dst, name_w.len());
+                StartTraceW(&mut handle, PCWSTR(name_w.as_ptr()), p)
+            };
+            if err.0 == 87 && !classic {
+                classic = true;
+                name_w = wide("NT Kernel Logger");
+                continue;
+            }
             if err == ERROR_ACCESS_DENIED {
                 return Err(EtwError::NotElevated);
             }
@@ -148,7 +172,9 @@ impl RawTrace {
                     err.0
                 )));
             }
-
+            break (props, handle);
+        };
+        unsafe {
             let stop_on_error = |what: &str, code: u32, props: &mut Vec<u64>| {
                 let p = props.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES;
                 let _ = ControlTraceW(handle, PCWSTR::null(), p, EVENT_TRACE_CONTROL_STOP);
@@ -157,16 +183,18 @@ impl RawTrace {
 
             // Which kernel events to log: the legacy flag word is element 0 of
             // the group mask array.
-            let mut masks = [0u32; 8];
-            masks[0] = flags;
-            let err = TraceSetInformation(
-                handle,
-                TraceSystemTraceEnableFlagsInfo,
-                masks.as_ptr() as *const c_void,
-                std::mem::size_of_val(&masks) as u32,
-            );
-            if err.0 != 0 {
-                return Err(stop_on_error("enabling kernel events", err.0, &mut props));
+            if !classic {
+                let mut masks = [0u32; 8];
+                masks[0] = flags;
+                let err = TraceSetInformation(
+                    handle,
+                    TraceSystemTraceEnableFlagsInfo,
+                    masks.as_ptr() as *const c_void,
+                    std::mem::size_of_val(&masks) as u32,
+                );
+                if err.0 != 0 {
+                    return Err(stop_on_error("enabling kernel events", err.0, &mut props));
+                }
             }
 
             if !stack_events.is_empty() {
