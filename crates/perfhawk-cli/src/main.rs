@@ -36,6 +36,15 @@ enum Command {
         /// Tag to attach (repeatable)
         #[arg(long = "tag")]
         tags: Vec<String>,
+        /// Import GC data (a gc.json file or a .nettrace file) as a session instead of a profile
+        #[arg(long)]
+        gc: bool,
+        /// With --gc: attach the GC data to this existing session instead of creating one
+        #[arg(long, value_name = "REF", requires = "gc")]
+        session: Option<String>,
+        /// With --session: replace GC data the session already has
+        #[arg(long, requires = "session")]
+        replace: bool,
     },
     /// List imported profiles
     Ls {
@@ -261,6 +270,22 @@ async fn main() -> ExitCode {
     let cli = Cli::parse();
     if let Command::Import {
         files,
+        session: Some(_),
+        ..
+    } = &cli.command
+    {
+        if files.len() > 1 {
+            let _ = Cli::command()
+                .error(
+                    clap::error::ErrorKind::ArgumentConflict,
+                    "--session can only be used with a single file",
+                )
+                .print();
+            return ExitCode::from(2);
+        }
+    }
+    if let Command::Import {
+        files,
         name: Some(_),
         ..
     } = &cli.command
@@ -354,8 +379,18 @@ async fn main() -> ExitCode {
         Command::Import {
             files,
             name,
+            tags,
+            gc: true,
+            session,
+            replace,
+            ..
+        } => ExitCode::from(cmd::import::run_gc(&store, files, name, tags, session, replace) as u8),
+        Command::Import {
+            files,
+            name,
             kind,
             tags,
+            ..
         } => ExitCode::from(cmd::import::run(&store, files, name, kind, tags) as u8),
         Command::Ls { json } => done(cmd::ls::run(&store, json)),
         Command::Show {

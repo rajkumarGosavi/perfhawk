@@ -508,7 +508,11 @@ fn record_stores_gc_data_with_the_session() {
     let caps = vec![cap(ProfileKind::Cpu, true)];
     let (_t, store, reg) = setup_gc(
         caps,
-        |_| Ok(cpu_outcome(Some(perfhawk_model::GcData::from_json(GC_JSON).unwrap()))),
+        |_| {
+            Ok(cpu_outcome(Some(
+                perfhawk_model::GcData::from_json(GC_JSON).unwrap(),
+            )))
+        },
         true,
     );
     let s = record(&store, &reg, &gc_req(true), &CancelToken::new(), &|_| {}).unwrap();
@@ -522,7 +526,11 @@ fn record_warns_when_gc_supported_but_missing() {
     let caps = vec![cap(ProfileKind::Cpu, true)];
     let (_t, store, reg) = setup_gc(caps, |_| Ok(cpu_outcome(None)), true);
     let s = record(&store, &reg, &gc_req(true), &CancelToken::new(), &|_| {}).unwrap();
-    assert!(s.warnings.iter().any(|w| w.contains("no GC data")), "{:?}", s.warnings);
+    assert!(
+        s.warnings.iter().any(|w| w.contains("no GC data")),
+        "{:?}",
+        s.warnings
+    );
     assert!(!s.has_gc);
 }
 
@@ -531,7 +539,11 @@ fn record_does_not_warn_when_gc_not_requested() {
     let caps = vec![cap(ProfileKind::Cpu, true)];
     let (_t, store, reg) = setup_gc(caps, |_| Ok(cpu_outcome(None)), true);
     let s = record(&store, &reg, &gc_req(false), &CancelToken::new(), &|_| {}).unwrap();
-    assert!(s.warnings.iter().all(|w| !w.contains("GC")), "{:?}", s.warnings);
+    assert!(
+        s.warnings.iter().all(|w| !w.contains("GC")),
+        "{:?}",
+        s.warnings
+    );
 }
 
 #[test]
@@ -539,5 +551,9 @@ fn record_does_not_warn_when_provider_does_not_support_gc() {
     let caps = vec![cap(ProfileKind::Cpu, true)];
     let (_t, store, reg) = setup_gc(caps, |_| Ok(cpu_outcome(None)), false);
     let s = record(&store, &reg, &gc_req(true), &CancelToken::new(), &|_| {}).unwrap();
-    assert!(s.warnings.iter().all(|w| !w.contains("GC")), "{:?}", s.warnings);
+    assert!(
+        s.warnings.iter().all(|w| !w.contains("GC")),
+        "{:?}",
+        s.warnings
+    );
 }

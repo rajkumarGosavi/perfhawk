@@ -463,6 +463,40 @@ fn import_nettrace_uses_helper() {
         .stdout(predicate::str::contains("fidelity: approximate"));
 }
 
+#[test]
+fn import_gc_from_nettrace_uses_helper() {
+    let home = tempfile::tempdir().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let trace = tmp.path().join("run.nettrace");
+    std::fs::write(&trace, b"nettrace").unwrap();
+    let gc_json =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../perfhawk-capture/tests/fixtures/gc.json");
+    let line = format!(
+        r#"{{"type":"artifact","kind":"gc","fixture":"{}","samples":3}}"#,
+        gc_json.to_string_lossy().replace('\\', "/")
+    );
+    let s = script(
+        tmp.path(),
+        &[
+            HELLO.to_string(),
+            line,
+            r#"{"type":"done","end":"complete"}"#.to_string(),
+        ],
+    );
+    fake_perfhawk(home.path(), &s)
+        .args(["import", "--gc"])
+        .arg(&trace)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("run").and(predicate::str::contains("(3 collections)")));
+    let out = perfhawk(home.path())
+        .args(["sessions", "--json"])
+        .output()
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v[0]["has_gc"], true);
+}
+
 #[cfg(unix)]
 #[test]
 fn record_ctrl_c_exit_130() {

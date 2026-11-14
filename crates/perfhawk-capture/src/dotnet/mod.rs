@@ -118,7 +118,51 @@ pub fn convert_nettrace(path: &Path) -> Result<Vec<Artifact>, CaptureError> {
     convert_nettrace_with(&locate_helper()?, path)
 }
 
-pub fn convert_nettrace_with(h: &HelperPath, path: &Path) -> Result<Vec<Artifact>, CaptureError> {
+/// Extracts the GC data from a `.nettrace` file using the helper.
+pub fn convert_nettrace_gc(path: &Path) -> Result<perfhawk_model::GcData, CaptureError> {
+    convert_nettrace_gc_with(&locate_helper()?, path)
+}
+
+pub fn convert_nettrace_gc_with(
+    h: &HelperPath,
+    path: &Path,
+) -> Result<perfhawk_model::GcData, CaptureError> {
+    let dir = convert_dir()?;
+    let args = vec![
+        "convert".to_string(),
+        "--in".into(),
+        path.to_string_lossy().into_owned(),
+        "--out".into(),
+        dir.0.to_string_lossy().into_owned(),
+        "--kinds".into(),
+        "gc".into(),
+    ];
+    let mut gc = None;
+    let mut warnings = Vec::new();
+    let mut error = None;
+    run_helper(h, &args, &CancelToken::new(), &mut |ev| match ev {
+        HelperEvent::Gc { path, .. } => gc = read_gc(&path, &mut warnings),
+        HelperEvent::Error { code, message } => error = Some((code, message)),
+        _ => {}
+    })?;
+    if let Some((code, message)) = error {
+        return Err(CaptureError::Target(explain_error(&code, &message, None)));
+    }
+    match gc {
+        Some(g) if !g.events.is_empty() => Ok(g),
+        Some(_) => Err(CaptureError::Target(format!(
+            "no GC events in {}",
+            path.display()
+        ))),
+        None => {
+            Err(CaptureError::Target(warnings.pop().unwrap_or_else(|| {
+                format!("no GC data in {}", path.display())
+            })))
+        }
+    }
+}
+
+fn convert_dir() -> Result<TempDir, CaptureError> {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_nanos())
@@ -127,6 +171,11 @@ pub fn convert_nettrace_with(h: &HelperPath, path: &Path) -> Result<Vec<Artifact
         std::env::temp_dir().join(format!("perfhawk-nettrace-{}-{nanos}", std::process::id())),
     );
     std::fs::create_dir_all(&dir.0)?;
+    Ok(dir)
+}
+
+pub fn convert_nettrace_with(h: &HelperPath, path: &Path) -> Result<Vec<Artifact>, CaptureError> {
+    let dir = convert_dir()?;
     let args = vec![
         "convert".to_string(),
         "--in".into(),
