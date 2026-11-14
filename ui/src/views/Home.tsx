@@ -8,6 +8,8 @@ import { SessionList } from './SessionList'
 import { Welcome } from './Welcome'
 import { WELCOME_KEY, shouldShowWelcome } from './welcomeLogic'
 import { Term } from '../help/Term'
+import { Button } from '../ui/Button'
+import { Tabs } from '../ui/Tabs'
 
 type Tab = 'sessions' | 'profiles' | 'record'
 
@@ -72,33 +74,37 @@ export function Home({
     }
   }, [tab])
 
+  const desc =
+    tab === 'sessions'
+      ? 'Sessions: recordings Perfhawk captured for you. Each holds one or more profiles.'
+      : tab === 'profiles'
+        ? 'Profiles: every set of measurements, recorded or imported. Open one to see where the time goes.'
+        : tab === 'record'
+          ? 'Record: capture a running Go or .NET process on this computer, then see where its time goes.'
+          : ''
+  const term = tab === 'sessions' ? <Term k="session" icon /> : tab === 'profiles' ? <Term k="profile" icon /> : null
+
   return (
-    <>
-      <h2 className="sr-only">Sessions and profiles</h2>
-      <div className="toolbar">
-        <div className="tabs" role="group" aria-label="Home">
-          <button aria-pressed={tab === 'sessions'} onClick={() => setTab('sessions')}>Sessions</button><Term k="session" icon />
-          <button aria-pressed={tab === 'profiles'} onClick={() => setTab('profiles')}>Profiles</button><Term k="profile" icon />
-          <button aria-pressed={tab === 'record'} onClick={() => setTab('record')}>Record</button>
+    <div className="home">
+      <header className="page-head">
+        <h2 className="page-title">Sessions and profiles</h2>
+        <div className="page-actions">
+          {onHistory && <Button size="sm" onClick={onHistory}>History</Button>}
+          <Button size="sm" variant="ghost" onClick={() => setWelcomeChoice(!showWelcome)} aria-expanded={showWelcome}>What is Perfhawk?</Button>
         </div>
-        {onHistory && <button onClick={onHistory}>History</button>}
-        <button onClick={() => setWelcomeChoice(!showWelcome)} aria-expanded={showWelcome}>What is Perfhawk?</button>
-      </div>
+      </header>
       {showWelcome && <Welcome onImport={importFile} onRecord={() => setTab('record')} onDismiss={dismiss} />}
-      <p className="muted tab-desc">
-        {tab === 'sessions'
-          ? 'Sessions: recordings Perfhawk captured for you. Each holds one or more profiles.'
-          : tab === 'profiles'
-            ? 'Profiles: every set of measurements, recorded or imported. Open one to see where the time goes.'
-            : tab === 'record'
-              ? 'Record: capture a running Go or .NET process on this computer, then see where its time goes.'
-              : ''}
-      </p>
-      {tab === 'sessions' && (
-        <SessionList version={version} initialExpanded={focusSession} onOpenProfile={onOpen} onOpenWindow={onOpenWindow} onChanged={changed} />
-      )}
-      {tab === 'profiles' && <ProfileList version={version} onOpen={onOpen} onChanged={changed} />}
-      {tab === 'record' && <RecordTab onOpenSession={openRecorded} />}
-    </>
+      <Tabs
+        label="Home"
+        value={tab ?? ''}
+        onValueChange={(v) => setTab(v as Tab)}
+        between={<p className="muted tab-desc">{desc} {term}</p>}
+        tabs={[
+          { value: 'sessions', label: 'Sessions', panel: <SessionList version={version} initialExpanded={focusSession} onOpenProfile={onOpen} onOpenWindow={onOpenWindow} onChanged={changed} /> },
+          { value: 'profiles', label: 'Profiles', panel: <ProfileList version={version} onOpen={onOpen} onChanged={changed} /> },
+          { value: 'record', label: 'Record', panel: <RecordTab onOpenSession={openRecorded} /> },
+        ]}
+      />
+    </div>
   )
 }

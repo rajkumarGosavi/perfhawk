@@ -5,6 +5,7 @@ import { getFindings, type AnalysisQuery, type ApiError, type Finding } from '..
 import { actionToPatch, loadDisabled, saveDisabled, visibleFindings } from '../analysis/findings'
 import { formatPct } from '../format'
 import type { ViewState } from '../url'
+import { Button } from '../ui/Button'
 
 type Props = {
   profileRef: string
@@ -55,9 +56,9 @@ export function Findings({ profileRef, query, navigate }: Props) {
                 {f.evidence.name ? `${f.evidence.name}: ` : ''}
                 {formatPct(f.evidence.pct)}
               </p>
-              <button aria-label={`${f.action.label}: ${f.title}`} onClick={() => navigate(actionToPatch(f.action))}>
+              <Button size="sm" aria-label={`${f.action.label}: ${f.title}`} onClick={() => navigate(actionToPatch(f.action))}>
                 {f.action.label}
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

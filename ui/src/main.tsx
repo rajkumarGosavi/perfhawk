@@ -5,6 +5,7 @@ import './styles/base.css'
 import './styles/components.css'
 import './styles/shell.css'
 import './styles/workbench.css'
+import './styles/pages.css'
 import App from './App.tsx'
 import { initTheme } from './theme'
 
