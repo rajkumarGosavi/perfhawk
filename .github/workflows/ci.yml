@@ -1,7 +1,6 @@
 name: CI
+# Manual only: Actions -> CI -> Run workflow, or `gh workflow run ci.yml --ref <branch>`.
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 jobs:
   test:
