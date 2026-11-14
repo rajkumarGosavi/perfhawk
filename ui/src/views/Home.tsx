@@ -83,7 +83,7 @@ export function Home({
         {onHistory && <button onClick={onHistory}>History</button>}
         <button onClick={() => setWelcomeOpen((o) => !o)} aria-expanded={showWelcome}>What is Perfhawk?</button>
       </div>
-      {showWelcome && <Welcome onImport={importFile} onDismiss={dismiss} />}
+      {showWelcome && <Welcome onImport={importFile} onRecord={() => setTab('record')} onDismiss={dismiss} />}
       <p className="muted tab-desc">
         {tab === 'sessions'
           ? 'Sessions: recordings Perfhawk captured for you. Each holds one or more profiles.'

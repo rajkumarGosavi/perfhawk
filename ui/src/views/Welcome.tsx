@@ -5,7 +5,7 @@ import { useHelp } from '../help/HelpContext'
 import { recordCommand } from './welcomeLogic'
 
 /** First-run panel: what Perfhawk is for, what sessions and profiles are, and two ways to start. */
-export function Welcome({ onImport, onDismiss }: { onImport: () => void; onDismiss: () => void }) {
+export function Welcome({ onImport, onRecord, onDismiss }: { onImport: () => void; onRecord?: () => void; onDismiss: () => void }) {
   const help = useHelp()
   const [copied, setCopied] = useState<string | null>(null)
   const cmd = recordCommand('')
@@ -22,7 +22,12 @@ export function Welcome({ onImport, onDismiss }: { onImport: () => void; onDismi
       <div className="welcome-actions">
         <div className="card">
           <h3>Record a program</h3>
-          <p className="muted">Run this in a terminal, with the id of the running process in place of the placeholder (`perfhawk targets` lists them):</p>
+          {onRecord && (
+            <p>
+              <button type="button" onClick={onRecord}>Record from the browser</button>
+            </p>
+          )}
+          <p className="muted">Or from a terminal, with the id of the running process in place of the placeholder (`perfhawk targets` lists them):</p>
           <p>
             <code className="mono">{cmd}</code>{' '}
             <button type="button" onClick={() => void copy()}>Copy</button>

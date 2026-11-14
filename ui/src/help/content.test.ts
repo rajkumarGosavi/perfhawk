@@ -28,6 +28,12 @@ describe('help topics', () => {
       expect(ids).toContain(id)
     }
   })
+  it('getting started leads with the Record tab and keeps the terminal command second', () => {
+    const body = HELP_TOPICS.find((t) => t.id === 'getting-started')!.body.join(' ')
+    expect(body).toContain('Record tab')
+    expect(body.indexOf('Record tab')).toBeLessThan(body.indexOf('perfhawk record'))
+    expect(body).not.toContain('-- <program>')
+  })
   it('maps every view to an existing topic', () => {
     const ids = HELP_TOPICS.map((t) => t.id)
     for (const v of VIEWS) expect(ids).toContain(topicForView(v))

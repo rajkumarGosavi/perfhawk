@@ -80,7 +80,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     body: [
       'Perfhawk shows where your application spends CPU, memory and waiting time, so you can find what to fix.',
       'A session is one recording run. It holds one or more profiles, for example CPU and memory for the same run. A profile is one set of measurements; open it to see the graphs.',
-      'Record a running process with `perfhawk record --pid <pid> --open`. Use `--url <url>` for a Go net/http/pprof endpoint, or `-- <program>` to launch one; `perfhawk targets` lists what can be recorded. Or import a profile file with the Import box on the Profiles tab.',
+      'Record a running Go or .NET process from the Record tab: pick it from the list, choose how long to record, and press Start recording (or Record and diagnose to see a plain-language verdict when it finishes). Or from a terminal: `perfhawk record --pid <pid> --open` (`--url <url>` for a Go net/http/pprof endpoint; `perfhawk targets` lists what can be recorded). You can also import a profile file with the Import box on the Profiles tab.',
       'Open a profile and start on the Summary tab: it names the most expensive function and suggests where to look next.',
     ],
   },

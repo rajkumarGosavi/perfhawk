@@ -89,6 +89,18 @@ function stubRecordApi(current: RecordJob | null) {
   })
 }
 
+describe('Welcome', () => {
+  it('offers the Record tab first and calls onRecord', async () => {
+    let called = 0
+    const el = await render(<Welcome onImport={() => {}} onRecord={() => { called++ }} onDismiss={() => {}} />)
+    const btn = [...el.querySelectorAll('button')].find((b) => /record from the browser/i.test(b.textContent ?? ''))!
+    await act(async () => { btn.click() })
+    expect(called).toBe(1)
+    expect(el.textContent).toContain('perfhawk record')
+    expect((await violations(el)).map((x) => x.id)).toEqual([])
+  })
+})
+
 describe('axe: record', () => {
   afterEach(() => vi.unstubAllGlobals())
 
