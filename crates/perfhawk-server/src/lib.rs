@@ -4,6 +4,7 @@ mod api;
 mod assets;
 pub mod doctor;
 mod guard;
+mod jobs;
 
 use axum::Router;
 use perfhawk_capture::ProviderRegistry;
@@ -17,6 +18,7 @@ use tokio::task::JoinHandle;
 pub(crate) struct AppState {
     pub store: Arc<Store>,
     pub registry: Arc<ProviderRegistry>,
+    pub jobs: jobs::JobManager,
     pub port: Option<u16>,
     pub cache: Mutex<lru::LruCache<String, Arc<Profile>>>,
     /// Timeline sidecars (None = the profile has no usable timeline).
@@ -36,6 +38,7 @@ fn router_with_port(
     let state = Arc::new(AppState {
         store,
         registry,
+        jobs: jobs::JobManager::default(),
         port,
         cache: Mutex::new(lru::LruCache::new(NonZeroUsize::new(2).unwrap())),
         timelines: Mutex::new(lru::LruCache::new(NonZeroUsize::new(8).unwrap())),
