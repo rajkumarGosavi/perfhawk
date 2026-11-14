@@ -6,7 +6,8 @@ pub mod raw;
 pub use raw::{is_elevated, EtwError, RawRecord, RawTrace, TraceCounters, UserTrace};
 
 use crate::symbolize::{
-    decode_method_event, DOTNET_KEYWORDS, GUID_DOTNET_RUNDOWN, GUID_DOTNET_RUNTIME,
+    decode_method_event, DOTNET_KEYWORDS, DOTNET_RUNDOWN_KEYWORDS, GUID_DOTNET_RUNDOWN,
+    GUID_DOTNET_RUNTIME,
 };
 use crate::sysevents::MethodInfo;
 
@@ -148,7 +149,10 @@ impl SystemProvider for EtwProvider {
                 &format!("perfhawk-dotnet-{}", std::process::id()),
                 &[
                     (GUID::from_u128(GUID_DOTNET_RUNTIME), DOTNET_KEYWORDS),
-                    (GUID::from_u128(GUID_DOTNET_RUNDOWN), DOTNET_KEYWORDS),
+                    (
+                        GUID::from_u128(GUID_DOTNET_RUNDOWN),
+                        DOTNET_RUNDOWN_KEYWORDS,
+                    ),
                 ],
                 pid,
                 move |r: &RawRecord| {

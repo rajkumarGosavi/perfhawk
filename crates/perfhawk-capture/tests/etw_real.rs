@@ -155,7 +155,8 @@ fn dropping_a_trace_stops_the_session() {
 fn dotnet_session_reports_method_names_for_a_running_process() {
     use perfhawk_capture::etw::UserTrace;
     use perfhawk_capture::symbolize::{
-        decode_method_event, DOTNET_KEYWORDS, GUID_DOTNET_RUNDOWN, GUID_DOTNET_RUNTIME,
+        decode_method_event, DOTNET_KEYWORDS, DOTNET_RUNDOWN_KEYWORDS, GUID_DOTNET_RUNDOWN,
+        GUID_DOTNET_RUNTIME,
     };
     use std::sync::Mutex;
 
@@ -183,7 +184,10 @@ fn dotnet_session_reports_method_names_for_a_running_process() {
         &format!("perfhawk-test-dotnet-{}", std::process::id()),
         &[
             (GUID::from_u128(GUID_DOTNET_RUNTIME), DOTNET_KEYWORDS),
-            (GUID::from_u128(GUID_DOTNET_RUNDOWN), DOTNET_KEYWORDS),
+            (
+                GUID::from_u128(GUID_DOTNET_RUNDOWN),
+                DOTNET_RUNDOWN_KEYWORDS,
+            ),
         ],
         pid,
         move |r| {
@@ -206,4 +210,93 @@ fn dotnet_session_reports_method_names_for_a_running_process() {
         names.len(),
         names.iter().take(5).collect::<Vec<_>>()
     );
+}
+
+/// Diagnostic, not an assertion: prints which event ids the .NET runtime and
+/// rundown providers deliver for a running process, so the decoder can match
+/// the real ids. Run with --nocapture from an elevated shell.
+#[test]
+#[ignore = "needs an elevated shell, PERFHAWK_ETW=1 and a built examples/dotnet-demo (Release)"]
+fn dotnet_event_id_histogram() {
+    use perfhawk_capture::etw::UserTrace;
+    use perfhawk_capture::symbolize::{GUID_DOTNET_RUNDOWN, GUID_DOTNET_RUNTIME};
+    use std::collections::BTreeMap;
+    use std::sync::Mutex;
+
+    if !enabled() || !is_elevated() {
+        eprintln!("skipped: needs PERFHAWK_ETW=1 and an elevated shell");
+        return;
+    }
+    let dll = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/dotnet-demo/bin/Release/net8.0/dotnet-demo.dll");
+    let mut child = std::process::Command::new("dotnet")
+        .arg(&dll)
+        .args(["all", "10"])
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .expect("dotnet starts");
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let pid = child.id();
+    // (provider, id, opcode, version) -> (count, payload length range, first name-like string)
+    type Key = (&'static str, u16, u8, u8);
+    let seen = Arc::new(Mutex::new(
+        BTreeMap::<Key, (u64, usize, usize, String)>::new(),
+    ));
+    let sink = seen.clone();
+    // Rundown keywords: Loader | JIT | NGen | StartRundown (0x40) | EndRundown (0x100).
+    let runtime_kw: u64 = 0x8 | 0x10 | 0x20;
+    let rundown_kw: u64 = 0x8 | 0x10 | 0x20 | 0x40 | 0x100;
+    let trace = UserTrace::start(
+        &format!("perfhawk-test-hist-{}", std::process::id()),
+        &[
+            (GUID::from_u128(GUID_DOTNET_RUNTIME), runtime_kw),
+            (GUID::from_u128(GUID_DOTNET_RUNDOWN), rundown_kw),
+        ],
+        pid,
+        move |r| {
+            if r.pid != pid {
+                return;
+            }
+            let prov = if r.provider == GUID::from_u128(GUID_DOTNET_RUNTIME) {
+                "runtime"
+            } else if r.provider == GUID::from_u128(GUID_DOTNET_RUNDOWN) {
+                "rundown"
+            } else {
+                return;
+            };
+            // First UTF-16 run of printable characters after byte 36, as a hint.
+            let hint: String = r
+                .data
+                .get(36..)
+                .map(|d| {
+                    d.as_chunks::<2>()
+                        .0
+                        .iter()
+                        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                        .take_while(|&u| u != 0)
+                        .filter_map(|u| char::from_u32(u as u32))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let mut m = sink.lock().unwrap();
+            let e = m.entry((prov, r.id, r.opcode, r.version)).or_insert((
+                0,
+                usize::MAX,
+                0,
+                hint.clone(),
+            ));
+            e.0 += 1;
+            e.1 = e.1.min(r.data.len());
+            e.2 = e.2.max(r.data.len());
+        },
+    )
+    .expect("user trace starts when elevated");
+    std::thread::sleep(std::time::Duration::from_secs(6));
+    trace.stop();
+    let _ = child.kill();
+    let _ = child.wait();
+    eprintln!("provider id opcode version | count | payload bytes min..max | string at byte 36");
+    for ((p, id, op, v), (n, lo, hi, hint)) in seen.lock().unwrap().iter() {
+        eprintln!("{p:<8} {id:>4} {op:>3} v{v} | {n:>6} | {lo}..{hi} | {hint:?}");
+    }
 }

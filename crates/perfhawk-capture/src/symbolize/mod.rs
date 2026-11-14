@@ -5,8 +5,8 @@ mod dotnet;
 mod go;
 
 pub use dotnet::{
-    decode_method_event, load_methods, method_name, DOTNET_KEYWORDS, GUID_DOTNET_RUNDOWN,
-    GUID_DOTNET_RUNTIME,
+    decode_method_event, load_methods, method_name, DOTNET_KEYWORDS, DOTNET_RUNDOWN_KEYWORDS,
+    GUID_DOTNET_RUNDOWN, GUID_DOTNET_RUNTIME,
 };
 pub use go::{go_symbols, GoSym};
 

@@ -28,13 +28,17 @@ pub const GUID_DOTNET_RUNTIME: u128 = 0xe13c0d23_ccbc_4e12_931b_d9cc2eee27e4;
 /// `Microsoft-Windows-DotNETRuntimeRundown`: replays the methods that were
 /// already compiled when the session started.
 pub const GUID_DOTNET_RUNDOWN: u128 = 0xa669021c_c450_4609_a035_5af59af4df18;
-/// Runtime keywords: Loader | JIT | NGen. Enough for MethodLoad/DCStart events.
+/// Runtime provider keywords: Loader | JIT | NGen.
 pub const DOTNET_KEYWORDS: u64 = 0x8 | 0x10 | 0x20;
+/// Rundown provider keywords: the above plus StartRundown (0x40) and EndRundown
+/// (0x100), which make it replay the methods that already exist.
+pub const DOTNET_RUNDOWN_KEYWORDS: u64 = DOTNET_KEYWORDS | 0x40 | 0x100;
 
-/// `MethodLoadVerbose` (runtime provider, a method compiled during the capture).
-const EVENT_METHOD_LOAD_VERBOSE: u16 = 141;
-/// `MethodDCStartVerbose` (rundown provider, a method that already existed).
-const EVENT_METHOD_DC_START_VERBOSE: u16 = 143;
+/// `MethodLoadVerbose` on the runtime provider (a method compiled during the
+/// capture) and `MethodDCStartVerbose` on the rundown provider (a method that
+/// already existed) share event id 143 (confirmed on a live trace; the plain,
+/// nameless `MethodLoad` is 141).
+const EVENT_METHOD_VERBOSE: u16 = 143;
 
 fn u32_at(d: &[u8], o: usize) -> Option<u32> {
     Some(u32::from_le_bytes(d.get(o..o + 4)?.try_into().ok()?))
@@ -60,12 +64,11 @@ fn wstr_at(d: &[u8], o: usize) -> Option<(String, usize)> {
     None
 }
 
-/// Decode a `MethodLoadVerbose` or `MethodDCStartVerbose` payload (event id
-/// 141 or 143). Layout: MethodId u64, ModuleId u64, StartAddress u64, Size u32,
+/// Decode a `MethodLoadVerbose` or `MethodDCStartVerbose` payload (event id 143). Layout: MethodId u64, ModuleId u64, StartAddress u64, Size u32,
 /// Token u32, Flags u32, then Namespace, Name and Signature as UTF-16 strings.
 /// Any other event id, or a short payload, gives `None`.
 pub fn decode_method_event(event_id: u16, data: &[u8]) -> Option<crate::sysevents::MethodInfo> {
-    if event_id != EVENT_METHOD_LOAD_VERBOSE && event_id != EVENT_METHOD_DC_START_VERBOSE {
+    if event_id != EVENT_METHOD_VERBOSE {
         return None;
     }
     let start = u64_at(data, 16)?;
@@ -109,21 +112,21 @@ mod tests {
     #[test]
     fn decodes_load_and_rundown_events() {
         let d = payload(0x7ff8_1000, 0x80, "Demo.Worker", "Run", "instance void ()");
-        for id in [141, 143] {
-            let m = decode_method_event(id, &d).unwrap();
-            assert_eq!(m.start, 0x7ff8_1000);
-            assert_eq!(m.size, 0x80);
-            assert_eq!(m.name, "Demo.Worker::Run");
-        }
+        let m = decode_method_event(143, &d).unwrap();
+        assert_eq!(m.start, 0x7ff8_1000);
+        assert_eq!(m.size, 0x80);
+        assert_eq!(m.name, "Demo.Worker::Run");
     }
 
     #[test]
     fn empty_namespace_and_other_ids_and_short_payloads() {
         let d = payload(0x1000, 16, "", "DynamicStub", "");
-        assert_eq!(decode_method_event(141, &d).unwrap().name, "DynamicStub");
+        assert_eq!(decode_method_event(143, &d).unwrap().name, "DynamicStub");
+        // 141 is the nameless MethodLoad; 142 is unload.
+        assert!(decode_method_event(141, &d).is_none());
         assert!(decode_method_event(142, &d).is_none());
-        assert!(decode_method_event(141, &d[..30]).is_none());
+        assert!(decode_method_event(143, &d[..30]).is_none());
         // Strings cut off before the name's terminator.
-        assert!(decode_method_event(141, &d[..40]).is_none());
+        assert!(decode_method_event(143, &d[..40]).is_none());
     }
 }
