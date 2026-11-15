@@ -169,6 +169,31 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Take a heap snapshot of a running .NET process (pauses it for one full GC)
+    Snapshot {
+        /// Process id of a .NET 8+ process
+        #[arg(long)]
+        pid: u32,
+        /// Name for the session
+        #[arg(long)]
+        name: Option<String>,
+        /// Tag to attach (repeatable)
+        #[arg(long = "tag")]
+        tags: Vec<String>,
+        /// Give up after this many seconds
+        #[arg(long, default_value_t = 60)]
+        timeout: u64,
+    },
+    /// List the types holding the most memory in a heap snapshot
+    Heap {
+        #[arg(default_value = "last")]
+        reference: String,
+        /// How many types to show
+        #[arg(long, default_value_t = 25)]
+        top: usize,
+        #[arg(long)]
+        json: bool,
+    },
     /// List recording sessions
     Sessions {
         #[arg(long)]
@@ -551,6 +576,23 @@ async fn main() -> ExitCode {
         }
         Command::Targets { json } => done(cmd::targets::run(json)),
         Command::Gc { reference, json } => done(cmd::gc::run(&store, &reference, json)),
+        Command::Snapshot {
+            pid,
+            name,
+            tags,
+            timeout,
+        } => done(cmd::heap::snapshot(
+            &store,
+            pid,
+            name,
+            tags,
+            timeout.saturating_mul(1000),
+        )),
+        Command::Heap {
+            reference,
+            top,
+            json,
+        } => done(cmd::heap::run(&store, &reference, top, json)),
         Command::Sessions { json } => done(cmd::sessions::run(&store, json)),
         Command::Diff {
             base,

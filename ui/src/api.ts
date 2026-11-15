@@ -39,6 +39,8 @@ export type SessionRecord = {
   profile_ids: string[]
   /** Whether the session has GC data (additive; absent on older servers). */
   has_gc?: boolean
+  /** Whether the session has a heap snapshot (additive; absent on older servers). */
+  has_heap?: boolean
 }
 export type FlameNode = {
   funcId: number | null
@@ -352,6 +354,26 @@ export type GcReport = {
   findings: GcFinding[]
   events: GcEvent[]
 }
+// ---- Heap snapshot (analysis types are camelCase, as the server serves them)
+export type HeapTypeRow = { name: string; count: number; shallowBytes: number; sharePct: number }
+export type HeapRootCount = { kind: string; count: number }
+export type HeapSummary = {
+  available: true
+  runtime: string
+  takenUnixNs: number
+  complete: boolean
+  objects: number
+  references: number
+  totalBytes: number
+  typeCount: number
+  types: HeapTypeRow[]
+  roots: HeapRootCount[]
+}
+export const getHeap = (sessionRef: string, top = 50) =>
+  request<HeapSummary | { available: false; reason: string }>(
+    `/api/sessions/${encodeURIComponent(sessionRef)}/heap?top=${top}`,
+  )
+
 export type GcUnavailable = { available: false; reason: string }
 export const getGc = (sessionRef: string) =>
   request<GcReport | GcUnavailable>(`/api/sessions/${encodeURIComponent(sessionRef)}/gc`)

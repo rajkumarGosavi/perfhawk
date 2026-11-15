@@ -162,6 +162,56 @@ pub fn convert_nettrace_gc_with(
     }
 }
 
+/// Takes a heap snapshot of a running .NET process using the helper.
+///
+/// This forces a full (gen2) GC in the target, which pauses it for as long as the heap walk
+/// takes. `timeout_ms` bounds the wait; a snapshot cut short comes back with `complete == false`.
+pub fn capture_heap_snapshot(
+    pid: u32,
+    timeout_ms: u64,
+    cancel: &CancelToken,
+) -> Result<perfhawk_model::HeapSnapshot, CaptureError> {
+    capture_heap_snapshot_with(&locate_helper()?, pid, timeout_ms, cancel)
+}
+
+pub fn capture_heap_snapshot_with(
+    h: &HelperPath,
+    pid: u32,
+    timeout_ms: u64,
+    cancel: &CancelToken,
+) -> Result<perfhawk_model::HeapSnapshot, CaptureError> {
+    let dir = convert_dir()?;
+    let out = dir.0.join("heap.bin");
+    let args = vec![
+        "snapshot".to_string(),
+        "--pid".into(),
+        pid.to_string(),
+        "--out".into(),
+        out.to_string_lossy().into_owned(),
+        "--timeout-ms".into(),
+        timeout_ms.to_string(),
+    ];
+    let mut heap = None;
+    let mut error = None;
+    run_helper(h, &args, cancel, &mut |ev| match ev {
+        HelperEvent::Heap { path, .. } => heap = Some(path),
+        HelperEvent::Error { code, message } => error = Some((code, message)),
+        _ => {}
+    })?;
+    if let Some((code, message)) = error {
+        return Err(CaptureError::Target(explain_error(
+            &code,
+            &message,
+            Some(pid),
+        )));
+    }
+    let path =
+        heap.ok_or_else(|| CaptureError::Helper("the helper wrote no heap snapshot".into()))?;
+    let bytes = std::fs::read(&path)?;
+    perfhawk_model::HeapSnapshot::from_bytes(&bytes)
+        .map_err(|e| CaptureError::Helper(format!("unusable heap snapshot from the helper: {e}")))
+}
+
 fn convert_dir() -> Result<TempDir, CaptureError> {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -389,7 +439,7 @@ impl Provider for DotnetProvider {
             HelperEvent::Gc { path, .. } => gc = read_gc(&path, &mut warnings),
             HelperEvent::Error { code, message } => error = Some((code, message)),
             HelperEvent::Done { end: e } => end = Some(e),
-            HelperEvent::Hello { .. } | HelperEvent::Process { .. } => {}
+            HelperEvent::Hello { .. } | HelperEvent::Process { .. } | HelperEvent::Heap { .. } => {}
         })?;
 
         if let Some((code, message)) = error {

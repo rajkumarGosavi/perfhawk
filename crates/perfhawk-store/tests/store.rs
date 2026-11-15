@@ -279,3 +279,54 @@ mod pick_home {
         );
     }
 }
+
+#[test]
+fn heap_snapshot_roundtrip_and_removed_with_session() {
+    use perfhawk_model::{HeapRoot, HeapSnapshot, HEAP_SCHEMA};
+    use perfhawk_store::{SessionStatus, TargetInfo};
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path()).unwrap();
+    let rec = store
+        .create_session(
+            "heap",
+            TargetInfo {
+                runtime: "dotnet".into(),
+                pid: Some(1),
+                command: None,
+                url: None,
+                runtime_version: None,
+            },
+            &[],
+            &[],
+        )
+        .unwrap();
+    assert!(!store.has_heap(&rec.id));
+    assert!(store.load_heap(&rec.id).unwrap().is_none());
+    let h = HeapSnapshot {
+        schema: HEAP_SCHEMA,
+        runtime: "dotnet".into(),
+        taken_unix_ns: 9,
+        complete: true,
+        types: vec!["A".into()],
+        node_type: vec![0, 0],
+        node_size: vec![8, 16],
+        edge_offsets: vec![0, 1, 1],
+        edge_targets: vec![1],
+        roots: vec![HeapRoot {
+            node: 0,
+            kind: "Stack".into(),
+        }],
+    };
+    store.save_heap(&rec.id, &h).unwrap();
+    store
+        .finish_session(&rec.id, SessionStatus::Complete, 1, &[])
+        .unwrap();
+    assert!(store.has_heap(&rec.id));
+    assert_eq!(store.load_heap(&rec.id).unwrap().unwrap(), h);
+    // an invalid snapshot is refused, not stored
+    let mut bad = h.clone();
+    bad.edge_targets[0] = 7;
+    assert!(store.save_heap(&rec.id, &bad).is_err());
+    store.remove_session(&rec.id).unwrap();
+    assert!(!store.has_heap(&rec.id));
+}
