@@ -10,6 +10,7 @@ import type { Range } from '../time/range'
 import { FidelityBadge } from './FidelityBadge'
 import { Doctor } from './Doctor'
 import { GcView } from './GcView'
+import { HeapView } from './HeapView'
 import { SessionTimeline } from './SessionTimeline'
 import { Skeleton } from './Skeleton'
 import { EmptyState } from '../ui/EmptyState'
@@ -145,6 +146,7 @@ export function SessionList({
                     <tr key={`${s.id}-details`} id={`sess-${s.id}`}>
                       <td colSpan={7} className="session-detail">
                         {s.profile_ids.length === 0 ? (
+                          s.has_heap || s.has_gc ? null :
                           <span className="muted">No profiles were captured.</span>
                         ) : (
                           <ul className="session-profiles">
@@ -168,6 +170,7 @@ export function SessionList({
                         )}
                         <Doctor sessionId={s.id} onOpenProfile={onOpenProfile} />
                         {s.has_gc && <GcView sessionId={s.id} />}
+                        {s.has_heap && <HeapView sessionId={s.id} />}
                         {onOpenWindow && <SessionTimeline sessionId={s.id} onOpenWindow={onOpenWindow} />}
                         {s.warnings.map((w, i) => (
                           <div key={i} className="muted">⚠ {w}</div>

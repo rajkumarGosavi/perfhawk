@@ -144,6 +144,7 @@ pub fn routes() -> Router<St> {
         .route("/api/sessions/{reference}/pivot", get(pivot_h))
         .route("/api/sessions/{reference}/doctor", get(doctor_h))
         .route("/api/sessions/{reference}/gc", get(gc_h))
+        .route("/api/sessions/{reference}/heap", get(heap_h))
         .route(
             "/api/sessions/{reference}/timeline",
             get(session_timeline_h),
@@ -901,6 +902,40 @@ async fn gc_h(State(s): State<St>, Path(r): Path<String>) -> ApiResult<Response>
             v
         }
         None => serde_json::json!({"available": false, "reason": "no GC data for this session"}),
+    };
+    Ok(Json(body).into_response())
+}
+
+#[derive(Deserialize, Default)]
+struct HeapQuery {
+    top: Option<usize>,
+}
+
+/// Heap snapshot summary for a session: `{"available": false, "reason"}` or
+/// `{"available": true, ...summary}`. `top` caps the type rows (default 50, max 500).
+async fn heap_h(
+    State(s): State<St>,
+    Path(r): Path<String>,
+    Q(q): Q<HeapQuery>,
+) -> ApiResult<Response> {
+    let top = q.top.unwrap_or(50).clamp(1, 500);
+    let store = s.store.clone();
+    let summary = blocking(move || {
+        let sess = store.resolve_session(&r)?;
+        Ok(store
+            .load_heap(&sess.id)?
+            .map(|h| perfhawk_analysis::heap::summarize(&h, top)))
+    })
+    .await?;
+    let body = match summary {
+        Some(sum) => {
+            let mut v = serde_json::to_value(&sum).map_err(ApiError::internal)?;
+            v["available"] = true.into();
+            v
+        }
+        None => {
+            serde_json::json!({"available": false, "reason": "no heap snapshot for this session"})
+        }
     };
     Ok(Json(body).into_response())
 }

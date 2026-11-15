@@ -6,6 +6,7 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct TypeRow {
     pub name: String,
     pub count: u64,
@@ -16,12 +17,14 @@ pub struct TypeRow {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct RootCount {
     pub kind: String,
     pub count: u64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct HeapSummary {
     pub runtime: String,
     pub taken_unix_ns: i64,

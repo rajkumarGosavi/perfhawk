@@ -135,6 +135,9 @@ pub struct SessionRecord {
     pub profile_ids: Vec<String>,
     /// Whether the session has a GC data sidecar (computed, not stored in the database).
     pub has_gc: bool,
+    /// Whether the session has a heap snapshot sidecar (computed, not stored in the database).
+    #[serde(default)]
+    pub has_heap: bool,
 }
 
 pub struct Store {
@@ -274,6 +277,7 @@ fn row_to_session(row: &Row) -> rusqlite::Result<SessionRecord> {
         tags: json_col(row, 9)?,
         profile_ids: Vec::new(),
         has_gc: false,
+        has_heap: false,
     })
 }
 
@@ -799,6 +803,7 @@ impl Store {
             tags: tags.to_vec(),
             profile_ids: Vec::new(),
             has_gc: false,
+            has_heap: false,
         };
         self.conn().execute(
             &format!(
@@ -840,6 +845,7 @@ impl Store {
 
     fn fill_profile_ids(&self, mut s: SessionRecord) -> Result<SessionRecord, StoreError> {
         s.has_gc = self.has_gc(&s.id);
+        s.has_heap = self.has_heap(&s.id);
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id FROM profiles WHERE session_id = ?1 ORDER BY imported_at_unix_ms, rowid",
