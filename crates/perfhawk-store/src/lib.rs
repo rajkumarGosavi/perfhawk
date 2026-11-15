@@ -31,6 +31,8 @@ pub enum StoreError {
     InvalidTimeline(String),
     #[error("invalid GC data: {0}")]
     InvalidGc(String),
+    #[error("invalid heap snapshot: {0}")]
+    InvalidHeap(String),
 }
 
 /// UTC `YYYY-MM-DD HH:MM` from unix milliseconds.
@@ -432,6 +434,69 @@ impl Store {
             .and_then(|raw| perfhawk_model::GcData::from_json(&raw).ok());
         if decoded.is_none() {
             eprintln!("perfhawk-store: ignoring unreadable GC data for {session_id}");
+        }
+        Ok(decoded)
+    }
+
+    fn heap_path(&self, id: &str) -> PathBuf {
+        self.root
+            .join("blobs")
+            .join(&id[..2])
+            .join(format!("{id}.heap.zst"))
+    }
+
+    /// Writes a session's heap snapshot as a zstd-compressed sidecar (atomic rename).
+    pub fn save_heap(
+        &self,
+        session_id: &str,
+        h: &perfhawk_model::HeapSnapshot,
+    ) -> Result<(), StoreError> {
+        if session_id.len() < 2 || !session_id.is_ascii() {
+            return Err(StoreError::NotFound(session_id.to_string()));
+        }
+        h.validate()
+            .map_err(|e| StoreError::InvalidHeap(e.to_string()))?;
+        let packed = zstd::encode_all(&h.to_bytes()[..], 3)?;
+        let path = self.heap_path(session_id);
+        let dir = path.parent().expect("heap path has parent");
+        std::fs::create_dir_all(dir)?;
+        let tmp = dir.join(format!("{session_id}.heap.tmp-{}", std::process::id()));
+        {
+            use std::io::Write;
+            let mut f = std::fs::File::create(&tmp)?;
+            f.write_all(&packed)?;
+            f.sync_all()?;
+        }
+        if let Err(e) = std::fs::rename(&tmp, &path) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e.into());
+        }
+        Ok(())
+    }
+
+    /// True when a heap snapshot sidecar exists (it is not decoded or validated).
+    pub fn has_heap(&self, session_id: &str) -> bool {
+        session_id.len() >= 2 && session_id.is_ascii() && self.heap_path(session_id).exists()
+    }
+
+    /// `Ok(None)` when there is no sidecar or it is unreadable or invalid (a warning is logged).
+    pub fn load_heap(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<perfhawk_model::HeapSnapshot>, StoreError> {
+        if session_id.len() < 2 || !session_id.is_ascii() {
+            return Ok(None);
+        }
+        let packed = match std::fs::read(self.heap_path(session_id)) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+        let decoded = zstd::decode_all(&packed[..])
+            .ok()
+            .and_then(|raw| perfhawk_model::HeapSnapshot::from_bytes(&raw).ok());
+        if decoded.is_none() {
+            eprintln!("perfhawk-store: ignoring unreadable heap snapshot for {session_id}");
         }
         Ok(decoded)
     }
@@ -864,6 +929,7 @@ impl Store {
             .execute("DELETE FROM sessions WHERE id = ?1", params![s.id])?;
         if s.id.len() >= 2 && s.id.is_ascii() {
             let _ = std::fs::remove_file(self.gc_path(&s.id));
+            let _ = std::fs::remove_file(self.heap_path(&s.id));
         }
         Ok(s.profile_ids.len())
     }

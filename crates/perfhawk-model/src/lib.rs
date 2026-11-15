@@ -1,8 +1,10 @@
 //! Unified profile model shared by importers, analysis, store and server.
 
 mod gc;
+mod heap;
 mod timeline;
 pub use gc::*;
+pub use heap::*;
 pub use timeline::Timeline;
 
 use rustc_hash::FxHashMap as HashMap;

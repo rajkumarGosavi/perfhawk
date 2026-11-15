@@ -111,6 +111,11 @@ pub enum HelperEvent {
         path: PathBuf,
         events: u64,
     },
+    /// The `heap` artifact: a heap snapshot in the binary format of `perfhawk_model::HeapSnapshot`.
+    Heap {
+        path: PathBuf,
+        nodes: u64,
+    },
     Warning(String),
     Error {
         code: String,
@@ -152,6 +157,10 @@ fn parse_event(line: &str) -> Result<HelperEvent, CaptureError> {
         "artifact" if s("kind").as_deref() == Some("gc") => HelperEvent::Gc {
             path: PathBuf::from(req("path")?),
             events: v.get("samples").and_then(|p| p.as_u64()).unwrap_or(0),
+        },
+        "artifact" if s("kind").as_deref() == Some("heap") => HelperEvent::Heap {
+            path: PathBuf::from(req("path")?),
+            nodes: v.get("samples").and_then(|p| p.as_u64()).unwrap_or(0),
         },
         "artifact" => HelperEvent::Artifact {
             kind: ProfileKind::parse(&req("kind")?).ok_or_else(malformed)?,

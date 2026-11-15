@@ -28,7 +28,7 @@ public static class Program
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(external);
         try
         {
-            if (args.Length == 0) throw new HelperException("internal", "usage: perfhawk-dotnet <list|collect|launch|convert> ...");
+            if (args.Length == 0) throw new HelperException("internal", "usage: perfhawk-dotnet <list|collect|snapshot|launch|convert> ...");
             var (flags, rest) = ParseArgs(args.Skip(1).ToArray());
             switch (args[0])
             {
@@ -59,6 +59,20 @@ public static class Program
                     protocol.Progress($"attaching to pid {pid}");
                     var result = await Collector.CollectAsync(new DiagnosticsClient(pid), duration, kinds, outDir, stop.Token, protocol.Progress, bucketMs: BucketMs(flags));
                     Finish(protocol, result);
+                    return 0;
+                }
+
+                case "snapshot":
+                {
+                    int pid = int.Parse(Required(flags, "pid"));
+                    int timeout = flags.TryGetValue("timeout-ms", out var t) ? int.Parse(t) : 60_000;
+                    var outPath = Required(flags, "out");
+                    ProcessList.EnsureAttachable(pid);
+                    WatchStdin(stdin, stop);
+                    protocol.Progress($"attaching to pid {pid}");
+                    int nodes = await Task.Run(() => Snapshotter.Capture(new DiagnosticsClient(pid), outPath, timeout, stop.Token, protocol.Progress));
+                    protocol.Artifact("heap", outPath, nodes);
+                    protocol.Done(stop.IsCancellationRequested ? "cancelled" : "complete");
                     return 0;
                 }
 

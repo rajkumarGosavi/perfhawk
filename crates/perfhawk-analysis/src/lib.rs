@@ -9,6 +9,7 @@ mod findings;
 pub mod gc;
 mod graph;
 mod groups;
+pub mod heap;
 mod heatmap;
 mod history;
 mod pivot;
