@@ -37,6 +37,13 @@ function report(over: Partial<GcReport> = {}): GcReport {
       allocTotalBytes: 3_000_000,
       allocMeanBytesPerS: 1_500_000,
       allocPeakBytesPerS: 2_000_000,
+      gcsPerMin: 90,
+      meanIntervalNs: 550_000_000,
+      sinceLastGcNs: 100_000_000,
+      badPauseCount: 0,
+      badPausePct: 0,
+      gcCpuPct: null,
+      peakHeapGoalBytes: null,
     },
     series: {
       heap: [{ t_ns: 100_000_000, total_bytes: 4_000_000, gen0: 0, gen1: 1_000_000, gen2: 2_000_000, loh: 1_000_000 }],
@@ -95,6 +102,23 @@ describe('GcView', () => {
     // The charts and the table live on their own tabs, so the section stays short.
     expect(host.querySelector('svg[aria-label^="Heap size"]')).toBeNull()
     expect(host.querySelector('table.gc-table')).toBeNull()
+  })
+
+  it('shows rate, long pauses, GC CPU, heap goal and Go settings when reported', async () => {
+    const r = report()
+    r.summary = { ...r.summary, gcCpuPct: 2.5, peakHeapGoalBytes: 8_000_000, badPauseCount: 1, badPausePct: 33.3 }
+    r.config = { gogc: 100, mem_limit_bytes: 1_000_000_000 }
+    r.series = { ...r.series, heap: r.series.heap.map((h) => ({ ...h, goal_bytes: 8_000_000 })) }
+    await show(r)
+    const text = host.textContent ?? ''
+    expect(text).toContain('90.0/min')
+    expect(text).toContain('1 (33.3%)')
+    expect(text).toContain('2.5% of CPU')
+    expect(text).toContain('Peak heap goal')
+    expect(text).toContain('GOGC 100')
+    expect(text).toContain('GOMEMLIMIT')
+    await openTab('Heap')
+    expect(host.textContent).toContain('dashed line is the heap goal')
   })
 
   it('shows heap and allocation charts with data tables on the second tab', async () => {

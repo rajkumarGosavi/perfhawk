@@ -166,6 +166,9 @@ enum Command {
     Gc {
         #[arg(default_value = "last")]
         reference: String,
+        /// Compare against a second session: REFERENCE is the baseline, this one the new run
+        #[arg(long, value_name = "REF")]
+        against: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -575,7 +578,14 @@ async fn main() -> ExitCode {
             ))
         }
         Command::Targets { json } => done(cmd::targets::run(json)),
-        Command::Gc { reference, json } => done(cmd::gc::run(&store, &reference, json)),
+        Command::Gc {
+            reference,
+            against,
+            json,
+        } => done(match against {
+            Some(b) => cmd::gc::run_diff(&store, &reference, &b, json),
+            None => cmd::gc::run(&store, &reference, json),
+        }),
         Command::Snapshot {
             pid,
             name,

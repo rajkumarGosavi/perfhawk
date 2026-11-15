@@ -602,3 +602,44 @@ func TestGCEndpointConflictAndCancel(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+func TestGCEndpointReportsGoalCPUAndConfig(t *testing.T) {
+	a := start(t, Options{DisableDiscovery: true})
+	go func() {
+		for i := 0; i < 3; i++ {
+			time.Sleep(100 * time.Millisecond)
+			runtime.GC()
+		}
+	}()
+	raw := get(t, "http://"+a.Addr()+"/debug/perfhawk/gc?seconds=1")
+	var d struct {
+		Heap []struct {
+			GoalBytes *uint64 `json:"goal_bytes"`
+		} `json:"heap"`
+		CPU *struct {
+			GCNs    uint64 `json:"gc_ns"`
+			TotalNs uint64 `json:"total_ns"`
+		} `json:"cpu"`
+		Config *struct {
+			GOGC *int64 `json:"gogc"`
+		} `json:"config"`
+	}
+	if err := json.Unmarshal(raw, &d); err != nil {
+		t.Fatalf("not json: %v\n%s", err, raw)
+	}
+	goals := 0
+	for _, h := range d.Heap {
+		if h.GoalBytes != nil && *h.GoalBytes > 0 {
+			goals++
+		}
+	}
+	if goals == 0 {
+		t.Fatal("no heap goal reported")
+	}
+	if d.CPU == nil || d.CPU.TotalNs == 0 || d.CPU.GCNs > d.CPU.TotalNs {
+		t.Fatalf("cpu = %+v", d.CPU)
+	}
+	if d.Config == nil || d.Config.GOGC == nil {
+		t.Fatalf("config = %+v", d.Config)
+	}
+}

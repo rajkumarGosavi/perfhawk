@@ -35,6 +35,8 @@ fn data(events: Vec<GcEvent>) -> GcData {
             bytes: vec![],
         },
         notes: vec![],
+        config: None,
+        cpu: None,
     }
 }
 
@@ -144,6 +146,7 @@ fn heap_numbers_when_present() {
     d.heap = vec![HeapPoint {
         t_ns: 5,
         total_bytes: 1_200,
+        goal_bytes: None,
         gen0: None,
         gen1: None,
         gen2: None,
@@ -201,6 +204,7 @@ fn series_downsamples_but_summary_uses_all() {
         .map(|i| HeapPoint {
             t_ns: i,
             total_bytes: i,
+            goal_bytes: None,
             gen0: None,
             gen1: None,
             gen2: None,
@@ -223,4 +227,64 @@ fn series_downsamples_but_summary_uses_all() {
         (n - 1) as u64,
         "peak heap survives"
     );
+}
+
+#[test]
+fn rate_interval_and_bad_pauses() {
+    // Starts at 100, 300, 500 ms in a 1 s capture; pauses 1, 60, 2 ms; bad >= 50 ms.
+    let evs = vec![
+        ev(1, 100, Some(0), 1, 2),
+        ev(2, 300, Some(0), 60, 70),
+        ev(3, 500, Some(0), 2, 3),
+    ];
+    let s = summarize(&data(evs), &GcConfig::default());
+    assert!((s.gcs_per_min - 180.0).abs() < 1e-9);
+    assert_eq!(s.mean_interval_ns, 200 * MS);
+    assert_eq!(s.since_last_gc_ns, Some(500 * MS));
+    assert_eq!(s.bad_pause_count, 1);
+    assert!((s.bad_pause_pct - 100.0 / 3.0).abs() < 1e-9);
+}
+
+#[test]
+fn no_events_has_no_rate_numbers() {
+    let s = summarize(&data(vec![]), &GcConfig::default());
+    assert_eq!(s.mean_interval_ns, 0);
+    assert_eq!(s.since_last_gc_ns, None);
+    assert_eq!(s.bad_pause_count, 0);
+    assert_eq!(s.gc_cpu_pct, None);
+    assert_eq!(s.peak_heap_goal_bytes, None);
+}
+
+#[test]
+fn cpu_share_and_heap_goal() {
+    let mut d = data(vec![ev(1, 1, Some(0), 1, 2)]);
+    d.cpu = Some(perfhawk_model::GcCpu {
+        gc_ns: 25,
+        total_ns: 1000,
+    });
+    d.heap = vec![
+        HeapPoint {
+            t_ns: 0,
+            total_bytes: 10,
+            goal_bytes: Some(40),
+            gen0: None,
+            gen1: None,
+            gen2: None,
+            loh: None,
+            poh: None,
+        },
+        HeapPoint {
+            t_ns: 1,
+            total_bytes: 12,
+            goal_bytes: Some(60),
+            gen0: None,
+            gen1: None,
+            gen2: None,
+            loh: None,
+            poh: None,
+        },
+    ];
+    let s = summarize(&d, &GcConfig::default());
+    assert!((s.gc_cpu_pct.unwrap() - 2.5).abs() < 1e-9);
+    assert_eq!(s.peak_heap_goal_bytes, Some(60));
 }

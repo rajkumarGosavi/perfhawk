@@ -33,6 +33,7 @@ fn sample() -> GcData {
             HeapPoint {
                 t_ns: 110_000_000,
                 total_bytes: 4000,
+                goal_bytes: None,
                 gen0: Some(100),
                 gen1: None,
                 gen2: Some(300),
@@ -42,6 +43,7 @@ fn sample() -> GcData {
             HeapPoint {
                 t_ns: 910_000_000,
                 total_bytes: 5000,
+                goal_bytes: None,
                 gen0: None,
                 gen1: None,
                 gen2: None,
@@ -54,6 +56,8 @@ fn sample() -> GcData {
             bytes: vec![100, 200],
         },
         notes: vec!["n".into()],
+        config: None,
+        cpu: None,
     }
 }
 

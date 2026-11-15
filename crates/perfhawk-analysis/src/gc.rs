@@ -2,7 +2,7 @@
 //! and findings. Runtime-neutral; nothing here names a language.
 
 use crate::findings::Severity;
-use perfhawk_model::{GcData, GcEvent, HeapPoint};
+use perfhawk_model::{GcConfigInfo, GcData, GcEvent, HeapPoint};
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
@@ -88,6 +88,19 @@ pub struct GcSummary {
     pub alloc_total_bytes: u64,
     pub alloc_mean_bytes_per_s: f64,
     pub alloc_peak_bytes_per_s: f64,
+    /// Collections per minute of capture (0 when the duration is unknown).
+    pub gcs_per_min: f64,
+    /// Mean gap between consecutive collection starts (0 with fewer than two GCs).
+    pub mean_interval_ns: u64,
+    /// Time from the last collection to the end of the capture (`None` with no GCs or no duration).
+    pub since_last_gc_ns: Option<u64>,
+    /// Pauses at or above `GcConfig::long_pause_ms`.
+    pub bad_pause_count: u64,
+    pub bad_pause_pct: f64,
+    /// GC CPU as a share of all CPU time (`None` when the runtime does not report it).
+    pub gc_cpu_pct: Option<f64>,
+    /// Largest heap goal seen (`None` when the runtime does not report it).
+    pub peak_heap_goal_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -155,7 +168,7 @@ fn bucket_secs(d: &GcData) -> f64 {
     d.alloc.bucket_ns as f64 / 1e9
 }
 
-pub fn summarize(d: &GcData, _cfg: &GcConfig) -> GcSummary {
+pub fn summarize(d: &GcData, cfg: &GcConfig) -> GcSummary {
     let mut gens: std::collections::BTreeMap<Option<u8>, Vec<u64>> = Default::default();
     let mut reasons = std::collections::BTreeMap::new();
     let mut kinds = std::collections::BTreeMap::new();
@@ -218,8 +231,40 @@ pub fn summarize(d: &GcData, _cfg: &GcConfig) -> GcSummary {
         0.0
     };
 
+    let total = d.events.len() as u64;
+    let gcs_per_min = if secs > 0.0 {
+        total as f64 / secs * 60.0
+    } else {
+        0.0
+    };
+    let mean_interval_ns = match (d.events.first(), d.events.last()) {
+        (Some(a), Some(b)) if total > 1 => (b.start_ns - a.start_ns) / (total - 1),
+        _ => 0,
+    };
+    let since_last_gc_ns = d
+        .events
+        .last()
+        .filter(|_| d.duration_ns > 0)
+        .map(|e| d.duration_ns.saturating_sub(e.start_ns));
+    let bad_pause_count = d
+        .events
+        .iter()
+        .filter(|e| ms(e.pause_ns) >= cfg.long_pause_ms)
+        .count() as u64;
+    let bad_pause_pct = if total > 0 {
+        bad_pause_count as f64 / total as f64 * 100.0
+    } else {
+        0.0
+    };
+    let gc_cpu_pct = d
+        .cpu
+        .as_ref()
+        .filter(|c| c.total_ns > 0)
+        .map(|c| c.gc_ns as f64 / c.total_ns as f64 * 100.0);
+    let peak_heap_goal_bytes = d.heap.iter().filter_map(|h| h.goal_bytes).max();
+
     GcSummary {
-        total_gcs: d.events.len() as u64,
+        total_gcs: total,
         by_generation,
         by_reason: counted(reasons),
         by_kind: counted(kinds),
@@ -232,6 +277,13 @@ pub fn summarize(d: &GcData, _cfg: &GcConfig) -> GcSummary {
         alloc_total_bytes,
         alloc_mean_bytes_per_s,
         alloc_peak_bytes_per_s,
+        gcs_per_min,
+        mean_interval_ns,
+        since_last_gc_ns,
+        bad_pause_count,
+        bad_pause_pct,
+        gc_cpu_pct,
+        peak_heap_goal_bytes,
     }
 }
 
@@ -312,6 +364,8 @@ pub struct GcReport {
     /// Capture length in nanoseconds (the x-axis extent of every chart).
     pub duration_ns: u64,
     pub notes: Vec<String>,
+    /// Runtime settings (GOGC, GOMEMLIMIT) when the provider reported them.
+    pub config: Option<GcConfigInfo>,
     pub summary: GcSummary,
     pub series: GcSeries,
     pub findings: Vec<GcFinding>,
@@ -479,6 +533,7 @@ pub fn report(d: &GcData, cfg: &GcConfig) -> GcReport {
         runtime: d.runtime.clone(),
         duration_ns: d.duration_ns,
         notes: d.notes.clone(),
+        config: d.config.clone(),
         series: series(d, cfg),
         summary,
         findings,

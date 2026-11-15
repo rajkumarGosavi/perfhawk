@@ -574,6 +574,8 @@ fn gc_summary(share_pct: f64) -> perfhawk_analysis::gc::GcSummary {
             bytes: vec![],
         },
         notes: vec![],
+        config: None,
+        cpu: None,
     };
     perfhawk_analysis::gc::summarize(&d, &perfhawk_analysis::gc::GcConfig::default())
 }

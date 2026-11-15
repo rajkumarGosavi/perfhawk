@@ -105,7 +105,9 @@ export function HeapChart({
 }: { points: GcHeapPoint[]; durationNs: number; range: GcRange | null }) {
   if (points.length === 0) return <p className="muted">This runtime reported no heap sizes.</p>
   const st = stackedHeap(points)
-  const peak = Math.max(...points.map((p) => p.total_bytes), 1)
+  const live = Math.max(...points.map((p) => p.total_bytes), 1)
+  const goalPts = points.filter((p) => p.goal_bytes !== undefined)
+  const peak = Math.max(live, ...goalPts.map((p) => p.goal_bytes as number))
   const layers = st.keys.map((k, i) => {
     const top = st.rows.map((r) => `${x(r.tNs, durationNs, LW)},${y(r.cum[i], peak, LH)}`)
     const bottom = st.rows.map((r) => `${x(r.tNs, durationNs, LW)},${y(i === 0 ? 0 : r.cum[i - 1], peak, LH)}`).reverse()
@@ -115,8 +117,8 @@ export function HeapChart({
   const last = st.rows[st.rows.length - 1]
   return (
     <figure className="gc-chart">
-      <figcaption>Heap size over time <span className="muted">(bytes in use by the program; largest sample {formatValue(peak, 'bytes')})</span></figcaption>
-      <svg viewBox={`0 0 ${LW} ${LH}`} role="img" aria-label={`Heap size over time, largest sample ${formatValue(peak, 'bytes')}. A data table follows.`}>
+      <figcaption>Heap size over time <span className="muted">(bytes in use by the program; largest sample {formatValue(live, 'bytes')}{goalPts.length > 0 && '; dashed line is the heap goal the collector aims for'})</span></figcaption>
+      <svg viewBox={`0 0 ${LW} ${LH}`} role="img" aria-label={`Heap size over time, largest sample ${formatValue(live, 'bytes')}. A data table follows.`}>
         <Axes w={LW} h={LH} durationNs={durationNs} max={peak} fmt={(v) => formatValue(v, 'bytes')} yTitle="Heap size" />
         <RangeBand range={range} durationNs={durationNs} w={LW} h={LH} />
         {layers.map((l, i) => (
@@ -124,6 +126,10 @@ export function HeapChart({
             strokeWidth={1} strokeDasharray={i % 2 ? '4 2' : undefined} vectorEffect="non-scaling-stroke" />
         ))}
         <path d={`M${line}`} fill="none" stroke="currentColor" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+        {goalPts.length > 0 && (
+          <path d={`M${goalPts.map((p) => `${x(p.t_ns, durationNs, LW)},${y(p.goal_bytes as number, peak, LH)}`).join(' L')}`}
+            fill="none" stroke="currentColor" strokeWidth={1.5} strokeDasharray="6 3" vectorEffect="non-scaling-stroke" />
+        )}
         {last && st.keys.map((k, i) => (
           <text key={k} x={LW - MR - 4} y={y((last.cum[i] + (i === 0 ? 0 : last.cum[i - 1])) / 2, peak, LH)}
             textAnchor="end" className="gc-label">{k}</text>
@@ -133,13 +139,14 @@ export function HeapChart({
         <summary>Data table</summary>
         <table className="gc-table">
           <thead>
-            <tr><th scope="col">Time</th><th scope="col">Total</th>{st.keys.map((k) => <th key={k} scope="col">{k}</th>)}</tr>
+            <tr><th scope="col">Time</th><th scope="col">Total</th>{goalPts.length > 0 && <th scope="col">Goal</th>}{st.keys.map((k) => <th key={k} scope="col">{k}</th>)}</tr>
           </thead>
           <tbody>
             {points.map((p) => (
               <tr key={p.t_ns}>
                 <td>{seconds(p.t_ns)}</td>
                 <td>{formatValue(p.total_bytes, 'bytes')}</td>
+                {goalPts.length > 0 && <td>{p.goal_bytes === undefined ? '–' : formatValue(p.goal_bytes, 'bytes')}</td>}
                 {st.keys.map((k) => <td key={k}>{p[k] === undefined ? '–' : formatValue(p[k] as number, 'bytes')}</td>)}
               </tr>
             ))}
