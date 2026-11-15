@@ -86,10 +86,13 @@ fn download(server: &str, cv: &CodeView, sig: &str, dest: &Path) -> Option<()> {
         cv.name,
         cv.name
     );
+    // Large PDBs (coreclr is about 50 MB) take a while: only a stalled
+    // connection gives up, not a slow one.
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_secs(5))
-        .timeout(Duration::from_secs(60))
+        .timeout_read(Duration::from_secs(30))
         .build();
+    eprintln!("[symbols] downloading {} ...", cv.name);
     let resp = agent.get(&url).call().ok()?;
     std::fs::create_dir_all(dest.parent()?).ok()?;
     // Write to a temp name so a cut-off download is never mistaken for a PDB.

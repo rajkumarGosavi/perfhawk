@@ -16,8 +16,9 @@ pub use pdb::{pdb_symbols, SymbolOptions, DEFAULT_SERVER};
 pub use pe::pe_export_symbols;
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SymbolizeError {
@@ -48,8 +49,37 @@ struct Image {
     base: u64,
     size: u64,
     module: String,
-    /// Sorted by `start` (an RVA); `size` of each ends at the next start.
-    syms: Vec<GoSym>,
+    path: PathBuf,
+    /// Read on the first address that falls in the image, so images no stack
+    /// touches cost nothing (no file reads, no PDB downloads). Sorted by
+    /// `start` (an RVA); `size` of each ends at the next start.
+    syms: OnceLock<Vec<GoSym>>,
+}
+
+fn load_symbols(path: &Path, size: u64, options: &SymbolOptions) -> Vec<GoSym> {
+    let mut syms = go_symbols(path).unwrap_or_default();
+    if syms.is_empty() {
+        // Precompiled .NET code (System.Private.CoreLib and friends).
+        syms = r2r::r2r_symbols_for_image(path, size)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| GoSym {
+                start: s.start,
+                size: s.size,
+                name: s.name,
+            })
+            .collect();
+    }
+    if syms.is_empty() {
+        // Native DLLs (ntdll, coreclr, ...): PDB names when a PDB is
+        // available, otherwise exported function names.
+        syms = pdb_symbols(path, options).unwrap_or_default();
+    }
+    if syms.is_empty() {
+        syms = pe_export_symbols(path).unwrap_or_default();
+    }
+    syms.sort_by_key(|s| s.start);
+    syms
 }
 
 #[derive(Default)]
@@ -75,32 +105,10 @@ impl Symbolizer {
 
     /// Register a loaded image. Symbols are read from `path` when the file has
     /// them (Go and other unstripped binaries, ReadyToRun .NET images whose
-    /// on-disk size matches `size`, or the export table of a native PE);
-    /// otherwise addresses in it resolve to
-    /// `module+offset`.
+    /// on-disk size matches `size`, a PDB, or the export table of a native PE),
+    /// but only when the first address inside the image is resolved; otherwise
+    /// addresses in it resolve to `module+offset`.
     pub fn add_image(&mut self, base: u64, size: u64, path: &Path) {
-        let mut syms = go_symbols(path).unwrap_or_default();
-        if syms.is_empty() {
-            // Precompiled .NET code (System.Private.CoreLib and friends).
-            syms = r2r::r2r_symbols_for_image(path, size)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|s| GoSym {
-                    start: s.start,
-                    size: s.size,
-                    name: s.name,
-                })
-                .collect();
-        }
-        if syms.is_empty() {
-            // Native DLLs (ntdll, coreclr, ...): PDB names when a PDB is
-            // available, otherwise exported function names.
-            syms = pdb_symbols(path, &self.options).unwrap_or_default();
-        }
-        if syms.is_empty() {
-            syms = pe_export_symbols(path).unwrap_or_default();
-        }
-        syms.sort_by_key(|s| s.start);
         let module = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -109,7 +117,8 @@ impl Symbolizer {
             base,
             size,
             module,
-            syms,
+            path: path.to_path_buf(),
+            syms: OnceLock::new(),
         });
     }
 
@@ -130,10 +139,13 @@ impl Symbolizer {
                 continue;
             }
             let rva = addr - img.base;
-            let i = img.syms.partition_point(|s| s.start <= rva);
+            let syms = img
+                .syms
+                .get_or_init(|| load_symbols(&img.path, img.size, &self.options));
+            let i = syms.partition_point(|s| s.start <= rva);
             if i > 0 {
-                let s = &img.syms[i - 1];
-                let end = img.syms.get(i).map_or(u64::MAX, |n| n.start);
+                let s = &syms[i - 1];
+                let end = syms.get(i).map_or(u64::MAX, |n| n.start);
                 if rva < end && (s.size == 0 || rva < s.start + s.size) {
                     return Frame::Named(s.name.clone());
                 }
