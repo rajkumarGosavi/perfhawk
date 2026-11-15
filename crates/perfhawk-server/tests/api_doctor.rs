@@ -168,6 +168,8 @@ async fn doctor_uses_stored_gc_data_as_native_evidence() {
             bytes: vec![],
         },
         notes: vec![],
+        config: None,
+        cpu: None,
     };
     store.save_gc(&s.id, &gc).unwrap();
     let (st, v) = get(addr, &format!("/api/sessions/{}/doctor", s.short_id)).await;

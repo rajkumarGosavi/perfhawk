@@ -263,3 +263,49 @@ fn sessions_table_shows_gc_column() {
         .success()
         .stdout(predicate::str::contains("GC").and(predicate::str::contains("yes")));
 }
+
+#[test]
+fn gc_report_shows_rate_and_long_pauses() {
+    let home = tempfile::tempdir().unwrap();
+    import_fixture(home.path());
+    perfhawk(home.path())
+        .arg("gc")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("GCs/min"))
+        .stdout(predicate::str::contains("long pause"));
+}
+
+#[test]
+fn gc_against_prints_a_comparison() {
+    let home = tempfile::tempdir().unwrap();
+    for _ in 0..2 {
+        import_fixture(home.path());
+    }
+    let ids: Vec<String> = sessions(home.path())
+        .iter()
+        .map(|s| s["short_id"].as_str().unwrap().to_string())
+        .collect();
+    perfhawk(home.path())
+        .args(["gc", &ids[0], "--against", &ids[1]])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("GC diff"))
+        .stdout(predicate::str::contains("pause p99"))
+        .stdout(predicate::str::contains("BASELINE"));
+    perfhawk(home.path())
+        .args(["gc", &ids[0], "--against", &ids[1], "--json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"baseline\""));
+}
+
+#[test]
+fn gc_against_unknown_session_is_an_error() {
+    let home = tempfile::tempdir().unwrap();
+    import_fixture(home.path());
+    perfhawk(home.path())
+        .args(["gc", "last", "--against", "nope"])
+        .assert()
+        .failure();
+}

@@ -72,6 +72,134 @@ pub fn run(store: &Store, reference: &str, json: bool) -> Result<(), String> {
     Ok(())
 }
 
+fn load_report(
+    store: &Store,
+    reference: &str,
+) -> Result<(perfhawk_store::SessionRecord, GcReport), String> {
+    let session = store
+        .resolve_session(reference)
+        .map_err(|e| e.to_string())?;
+    let report = perfhawk_server::gc::report_for_session(store, &session)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| {
+            format!(
+                "session {} has no GC data; record a .NET or Go target or run perfhawk import --gc <file>",
+                session.short_id
+            )
+        })?;
+    Ok((session, report))
+}
+
+/// One comparison row: a label, both values and the change from baseline to new run.
+fn diff_row(label: &str, a: f64, b: f64, fmt: impl Fn(f64) -> String) -> Vec<String> {
+    let delta = b - a;
+    let sign = if delta > 0.0 {
+        "+"
+    } else if delta < 0.0 {
+        "-"
+    } else {
+        ""
+    };
+    let pct = if a != 0.0 {
+        format!(" ({sign}{:.0}%)", (delta / a * 100.0).abs())
+    } else {
+        String::new()
+    };
+    vec![
+        label.to_string(),
+        fmt(a),
+        fmt(b),
+        format!("{sign}{}{pct}", fmt(delta.abs())),
+    ]
+}
+
+pub fn run_diff(store: &Store, a_ref: &str, b_ref: &str, json: bool) -> Result<(), String> {
+    let (sa, ra) = load_report(store, a_ref)?;
+    let (sb, rb) = load_report(store, b_ref)?;
+    if json {
+        let v = serde_json::json!({
+            "baseline": { "session": sa.short_id, "name": sa.name, "report": ra },
+            "new": { "session": sb.short_id, "name": sb.name, "report": rb },
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?
+        );
+        return Ok(());
+    }
+    println!(
+        "GC diff: {} ({}) -> {} ({})",
+        sa.name, sa.short_id, sb.name, sb.short_id
+    );
+    let (a, b) = (&ra.summary, &rb.summary);
+    let n = |v: f64| ns(v as u64);
+    let by = |v: f64| bytes(v as u64);
+    let cnt = |v: f64| format!("{v:.0}");
+    let one = |v: f64| format!("{v:.1}");
+    let mut rows = vec![["METRIC", "BASELINE", "NEW", "CHANGE"]
+        .map(String::from)
+        .to_vec()];
+    rows.push(diff_row(
+        "collections",
+        a.total_gcs as f64,
+        b.total_gcs as f64,
+        cnt,
+    ));
+    rows.push(diff_row(
+        "GCs per minute",
+        a.gcs_per_min,
+        b.gcs_per_min,
+        one,
+    ));
+    rows.push(diff_row(
+        "pause p50",
+        a.pause.p50_ns as f64,
+        b.pause.p50_ns as f64,
+        n,
+    ));
+    rows.push(diff_row(
+        "pause p99",
+        a.pause.p99_ns as f64,
+        b.pause.p99_ns as f64,
+        n,
+    ));
+    rows.push(diff_row(
+        "pause max",
+        a.pause.max_ns as f64,
+        b.pause.max_ns as f64,
+        n,
+    ));
+    rows.push(diff_row(
+        "pause share %",
+        a.pause_share_pct,
+        b.pause_share_pct,
+        one,
+    ));
+    rows.push(diff_row(
+        "long pauses",
+        a.bad_pause_count as f64,
+        b.bad_pause_count as f64,
+        cnt,
+    ));
+    if let (Some(x), Some(y)) = (a.peak_heap_bytes, b.peak_heap_bytes) {
+        rows.push(diff_row("peak heap", x as f64, y as f64, by));
+    }
+    if let (Some(x), Some(y)) = (a.peak_heap_goal_bytes, b.peak_heap_goal_bytes) {
+        rows.push(diff_row("peak heap goal", x as f64, y as f64, by));
+    }
+    if let (Some(x), Some(y)) = (a.gc_cpu_pct, b.gc_cpu_pct) {
+        rows.push(diff_row("GC CPU %", x, y, one));
+    }
+    rows.push(diff_row(
+        "alloc mean/s",
+        a.alloc_mean_bytes_per_s,
+        b.alloc_mean_bytes_per_s,
+        by,
+    ));
+    print_table(&rows, &[1, 2, 3]);
+    Ok(())
+}
+
 fn print_report(name: &str, short_id: &str, duration_ms: Option<i64>, r: &GcReport) {
     let s = &r.summary;
     println!(
@@ -115,6 +243,19 @@ fn print_report(name: &str, short_id: &str, duration_ms: Option<i64>, r: &GcRepo
         ns(s.pause.total_ns),
         s.pause_share_pct
     );
+    println!(
+        "  {:.1} GCs/min, one every {}, {} long pause(s) ({:.1}%)",
+        s.gcs_per_min,
+        ns(s.mean_interval_ns),
+        s.bad_pause_count,
+        s.bad_pause_pct
+    );
+    if let Some(since) = s.since_last_gc_ns {
+        println!("  last GC {} before the capture ended", ns(since));
+    }
+    if let Some(c) = s.gc_cpu_pct {
+        println!("  GC used {c:.1}% of CPU time");
+    }
     println!("  pause = time application threads were stopped (not the GC's own running time)");
 
     println!();
@@ -128,6 +269,25 @@ fn print_report(name: &str, short_id: &str, duration_ms: Option<i64>, r: &GcRepo
             println!();
         }
         None => println!("  heap sizes are not available from this runtime"),
+    }
+    if let Some(g) = s.peak_heap_goal_bytes {
+        println!("  peak heap goal {}", bytes(g));
+    }
+    if let Some(c) = &r.config {
+        let mut parts = Vec::new();
+        if let Some(g) = c.gogc {
+            parts.push(if g < 0 {
+                "GOGC off".to_string()
+            } else {
+                format!("GOGC {g}")
+            });
+        }
+        if let Some(m) = c.mem_limit_bytes {
+            parts.push(format!("GOMEMLIMIT {}", bytes(m)));
+        }
+        if !parts.is_empty() {
+            println!("  settings: {}", parts.join(", "));
+        }
     }
     if let (Some(first), Some(last)) = (
         s.post_gen2_heap_bytes.first(),
@@ -219,6 +379,8 @@ mod tests {
                 bytes: vec![],
             },
             notes: vec![],
+            config: None,
+            cpu: None,
         }
     }
 
@@ -237,6 +399,7 @@ mod tests {
         let heap = vec![HeapPoint {
             t_ns: 1,
             total_bytes: 220_000_000,
+            goal_bytes: None,
             gen0: None,
             gen1: None,
             gen2: None,

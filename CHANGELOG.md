@@ -7,6 +7,7 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- GC: GCs per minute, mean interval, time since the last GC and long-pause count (pauses at or above 50 ms) for every runtime. For Go also the heap goal (dashed line on the heap chart), GC share of CPU, and GOGC / GOMEMLIMIT; these need the agent module `agents/go` v0.1.2 or later and are hidden with an older agent. `perfhawk gc <A> --against <B>` compares two sessions (pauses, heap, GC CPU, allocation) with the change from A to B. Go's sweep/mark pause split and pacer assist data are not available because the Go runtime only prints them to `GODEBUG=gctrace` at process start.
 - GC analysis for Go: `perfhawk record` on a Go process running the perfhawk agent now captures GC data (collections, pauses, live heap, allocation rate), shown by `perfhawk gc`, `perfhawk doctor` and the web UI. Go reports no GC duration, reasons or generations, so the data is marked approximate. Needs the agent module `agents/go` v0.1.1 or later; an older agent gives a warning and no GC data.
 - `examples/go-demo -mode gc` workload and `-gogc` flag.
 - Windows ETW profiles name native DLL frames (ntdll, coreclr, kernel32, ...) from PE exports, and from PDBs when one is found next to the image or in the symbol cache (`%LOCALAPPDATA%\perfhawk\symbols`, override with `PERFHAWK_SYMBOL_CACHE`). Set `PERFHAWK_SYMBOL_SERVER=1` (or a symbol server URL) to download missing PDBs into the cache; nothing is downloaded by default.

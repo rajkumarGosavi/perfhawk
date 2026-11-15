@@ -307,6 +307,7 @@ export type GcEvent = {
 export type GcHeapPoint = {
   t_ns: number
   total_bytes: number
+  goal_bytes?: number
   gen0?: number
   gen1?: number
   gen2?: number
@@ -332,6 +333,13 @@ export type GcSummary = {
   allocTotalBytes: number
   allocMeanBytesPerS: number
   allocPeakBytesPerS: number
+  gcsPerMin: number
+  meanIntervalNs: number
+  sinceLastGcNs: number | null
+  badPauseCount: number
+  badPausePct: number
+  gcCpuPct: number | null
+  peakHeapGoalBytes: number | null
 }
 export type GcPausePoint = { id: number; startNs: number; pauseNs: number; generation: number | null }
 export type GcRatePoint = { tNs: number; bytesPerS: number }
@@ -349,6 +357,7 @@ export type GcReport = {
   /** Capture length: the x-axis extent of every chart. */
   durationNs: number
   notes: string[]
+  config?: { gogc?: number; mem_limit_bytes?: number } | null
   summary: GcSummary
   series: { heap: GcHeapPoint[]; allocRate: GcRatePoint[]; pauses: GcPausePoint[] }
   findings: GcFinding[]

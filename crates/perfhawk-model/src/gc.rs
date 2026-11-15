@@ -39,6 +39,29 @@ pub struct GcData {
     pub heap: Vec<HeapPoint>,
     pub alloc: AllocSeries,
     pub notes: Vec<String>,
+    /// Runtime settings at capture time (Go: GOGC, GOMEMLIMIT); absent when unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<GcConfigInfo>,
+    /// CPU time spent in GC against all CPU time during the capture; absent when unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu: Option<GcCpu>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GcConfigInfo {
+    /// GOGC percent; negative means the collector is off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gogc: Option<i64>,
+    /// GOMEMLIMIT in bytes; absent when no limit is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mem_limit_bytes: Option<u64>,
+}
+
+/// Deltas over the capture, in CPU nanoseconds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GcCpu {
+    pub gc_ns: u64,
+    pub total_ns: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -83,6 +106,9 @@ pub struct GenSizes {
 pub struct HeapPoint {
     pub t_ns: u64,
     pub total_bytes: u64,
+    /// Size the pacer is aiming for before the next collection (Go heap goal).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal_bytes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gen0: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

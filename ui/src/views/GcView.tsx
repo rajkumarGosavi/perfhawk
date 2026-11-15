@@ -111,6 +111,11 @@ function Report({ r }: { r: GcReport }) {
             <Card label="Longest pause" value={formatPause(s.pause.maxNs)} sub={`p99 ${formatPause(s.pause.p99Ns)}`} />
             <Card label="Paused" value={`${s.pauseSharePct.toFixed(1)}% of time`} sub={`${formatPause(s.pause.totalNs)} in total`} />
             <Card label="Peak heap" value={s.peakHeapBytes === null ? 'unknown' : formatValue(s.peakHeapBytes, 'bytes')} />
+            <Card label="GC rate" value={`${s.gcsPerMin.toFixed(1)}/min`}
+              sub={s.sinceLastGcNs === null ? undefined : `every ${formatPause(s.meanIntervalNs)}, last one ${formatPause(s.sinceLastGcNs)} before the end`} />
+            <Card label="Long pauses" value={`${s.badPauseCount.toLocaleString('en-US')} (${s.badPausePct.toFixed(1)}%)`} sub="at or above 50 ms" />
+            {s.gcCpuPct !== null && <Card label="GC CPU" value={`${s.gcCpuPct.toFixed(1)}% of CPU`} />}
+            {s.peakHeapGoalBytes !== null && <Card label="Peak heap goal" value={formatValue(s.peakHeapGoalBytes, 'bytes')} />}
             <Card label="Allocation" value={`${formatValue(s.allocMeanBytesPerS, 'bytes')}/s`} sub={`peak ${formatValue(s.allocPeakBytesPerS, 'bytes')}/s`} />
           </div>
           {r.findings.length > 0 ? (
@@ -140,6 +145,13 @@ function Report({ r }: { r: GcReport }) {
           <AllocChart points={r.series.allocRate} durationNs={r.durationNs} range={range} />
         </div>
       ) }, { value: 'events', label: 'Collections', panel: <EventTable events={events} total={s.totalGcs} /> }]} />
+      {r.config && (r.config.gogc !== undefined || r.config.mem_limit_bytes !== undefined) && (
+        <div className="muted gc-note">
+          {r.config.gogc !== undefined && `GOGC ${r.config.gogc < 0 ? 'off' : r.config.gogc}`}
+          {r.config.gogc !== undefined && r.config.mem_limit_bytes !== undefined && ', '}
+          {r.config.mem_limit_bytes !== undefined && `GOMEMLIMIT ${formatValue(r.config.mem_limit_bytes, 'bytes')}`}
+        </div>
+      )}
       {r.notes.map((n) => <div key={n} className="muted gc-note">{n}</div>)}
     </>
   )

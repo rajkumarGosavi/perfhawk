@@ -68,6 +68,8 @@ fn data(events: Vec<GcEvent>) -> GcData {
             bytes: vec![100, 200],
         },
         notes: vec!["n".into()],
+        config: None,
+        cpu: None,
     }
 }
 

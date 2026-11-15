@@ -36,6 +36,8 @@ fn data(events: Vec<GcEvent>) -> GcData {
             bytes: vec![],
         },
         notes: vec![],
+        config: None,
+        cpu: None,
     }
 }
 

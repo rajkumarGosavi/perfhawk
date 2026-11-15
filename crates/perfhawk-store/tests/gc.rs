@@ -56,6 +56,8 @@ fn data() -> GcData {
             bytes: vec![],
         },
         notes: vec![],
+        config: None,
+        cpu: None,
     }
 }
 
