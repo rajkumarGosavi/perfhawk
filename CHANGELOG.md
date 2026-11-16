@@ -6,6 +6,8 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-16
+
 ### Added
 - GC: GCs per minute, mean interval, time since the last GC and long-pause count (pauses at or above 50 ms) for every runtime. For Go also the heap goal (dashed line on the heap chart), GC share of CPU, and GOGC / GOMEMLIMIT; these need the agent module `agents/go` v0.1.2 or later and are hidden with an older agent. `perfhawk gc <A> --against <B>` compares two sessions (pauses, heap, GC CPU, allocation) with the change from A to B. Go's sweep/mark pause split and pacer assist data are not available because the Go runtime only prints them to `GODEBUG=gctrace` at process start.
 - GC analysis for Go: `perfhawk record` on a Go process running the perfhawk agent now captures GC data (collections, pauses, live heap, allocation rate), shown by `perfhawk gc`, `perfhawk doctor` and the web UI. Go reports no GC duration, reasons or generations, so the data is marked approximate. Needs the agent module `agents/go` v0.1.1 or later; an older agent gives a warning and no GC data.
@@ -43,4 +45,5 @@ First public release (Windows x64).
 - The Go agent module path is now `github.com/rajkumarGosavi/perfhawk/agents/go` (was `perfhawk.dev/agent`).
 - The ".NET helper not found" message now explains what to do for release-package users.
 
+[0.1.2]: https://github.com/rajkumarGosavi/perfhawk/releases/tag/v0.1.2
 [0.1.0]: https://github.com/rajkumarGosavi/perfhawk/releases/tag/v0.1.0
