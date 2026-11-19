@@ -31,6 +31,8 @@ pub enum StoreError {
     InvalidTimeline(String),
     #[error("invalid GC data: {0}")]
     InvalidGc(String),
+    #[error("invalid runtime counters: {0}")]
+    InvalidCounters(String),
     #[error("invalid heap snapshot: {0}")]
     InvalidHeap(String),
 }
@@ -438,6 +440,69 @@ impl Store {
             .and_then(|raw| perfhawk_model::GcData::from_json(&raw).ok());
         if decoded.is_none() {
             eprintln!("perfhawk-store: ignoring unreadable GC data for {session_id}");
+        }
+        Ok(decoded)
+    }
+
+    fn counters_path(&self, id: &str) -> PathBuf {
+        self.root
+            .join("blobs")
+            .join(&id[..2])
+            .join(format!("{id}.counters.zst"))
+    }
+
+    /// Writes a session's runtime counters as a zstd-compressed JSON sidecar (atomic rename).
+    pub fn save_counters(
+        &self,
+        session_id: &str,
+        c: &perfhawk_model::CounterData,
+    ) -> Result<(), StoreError> {
+        if session_id.len() < 2 || !session_id.is_ascii() {
+            return Err(StoreError::NotFound(session_id.to_string()));
+        }
+        c.validate()
+            .map_err(|e| StoreError::InvalidCounters(e.to_string()))?;
+        let packed = zstd::encode_all(&c.to_json()[..], 3)?;
+        let path = self.counters_path(session_id);
+        let dir = path.parent().expect("counters path has parent");
+        std::fs::create_dir_all(dir)?;
+        let tmp = dir.join(format!("{session_id}.counters.tmp-{}", std::process::id()));
+        {
+            use std::io::Write;
+            let mut f = std::fs::File::create(&tmp)?;
+            f.write_all(&packed)?;
+            f.sync_all()?;
+        }
+        if let Err(e) = std::fs::rename(&tmp, &path) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e.into());
+        }
+        Ok(())
+    }
+
+    /// True when a counters sidecar exists (it is not decoded or validated).
+    pub fn has_counters(&self, session_id: &str) -> bool {
+        session_id.len() >= 2 && session_id.is_ascii() && self.counters_path(session_id).exists()
+    }
+
+    /// `Ok(None)` when there is no sidecar or it is unreadable or invalid (a warning is logged).
+    pub fn load_counters(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<perfhawk_model::CounterData>, StoreError> {
+        if session_id.len() < 2 || !session_id.is_ascii() {
+            return Ok(None);
+        }
+        let packed = match std::fs::read(self.counters_path(session_id)) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+        let decoded = zstd::decode_all(&packed[..])
+            .ok()
+            .and_then(|raw| perfhawk_model::CounterData::from_json(&raw).ok());
+        if decoded.is_none() {
+            eprintln!("perfhawk-store: ignoring unreadable runtime counters for {session_id}");
         }
         Ok(decoded)
     }
@@ -936,6 +1001,7 @@ impl Store {
         if s.id.len() >= 2 && s.id.is_ascii() {
             let _ = std::fs::remove_file(self.gc_path(&s.id));
             let _ = std::fs::remove_file(self.heap_path(&s.id));
+            let _ = std::fs::remove_file(self.counters_path(&s.id));
         }
         Ok(s.profile_ids.len())
     }
