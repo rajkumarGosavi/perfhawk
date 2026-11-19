@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { indexToRange, peak, toPath } from './sparkline'
+import { fillGaps, indexToRange, peak, toPath } from './sparkline'
 
 describe('toPath', () => {
   it('draws a flat baseline for empty or all-zero input, never NaN', () => {
@@ -41,5 +41,14 @@ describe('indexToRange', () => {
     expect(last.t1).toBeLessThanOrEqual(50)
     expect(last.t1).toBeGreaterThan(last.t0)
     expect(indexToRange(500, 10, 1000)).toEqual({ t0: 900, t1: 1000 })
+  })
+})
+
+describe('fillGaps', () => {
+  it('holds each value until the next point so sparse counters draw as a line', () => {
+    expect(fillGaps([null, 3, null, null, 5, null])).toEqual([0, 3, 3, 3, 5, 5])
+  })
+  it('all null is a zero baseline', () => {
+    expect(fillGaps([null, null])).toEqual([0, 0])
   })
 })

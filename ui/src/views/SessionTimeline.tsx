@@ -5,7 +5,7 @@ import {
 } from '../api'
 import { formatValue } from '../format'
 import { formatRange, type Range } from '../time/range'
-import { indexToRange, peak, toPath } from '../time/sparkline'
+import { fillGaps, indexToRange, peak, toPath } from '../time/sparkline'
 
 type Props = {
   sessionId: string
@@ -30,6 +30,7 @@ export const DEFAULT_COUNTERS = new Set([
 ])
 
 function formatCounter(v: number, unit: string): string {
+  if (unit === 'B') return formatValue(v, 'bytes')
   const n = Number.isInteger(v) ? v.toLocaleString() : v.toFixed(2)
   return unit ? `${n} ${unit}` : n
 }
@@ -101,7 +102,7 @@ export function SessionTimeline({ sessionId, onOpenWindow }: Props) {
   }
 
   const counterRow = (c: CounterRow) => {
-    const values = c.values.map((v) => v ?? 0)
+    const values = fillGaps(c.values)
     const pk = c.values.some((v) => v !== null) ? peak(values) : null
     const markers = c.events.map((e, i) => (
       <rect key={i} className="timeline-marker" x={(e.index / points) * W} y={0} width={Math.max(W / points, 2)} height={H}>

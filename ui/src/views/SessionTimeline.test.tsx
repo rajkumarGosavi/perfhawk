@@ -86,4 +86,9 @@ describe('SessionTimeline counters', () => {
     expect(list.textContent).toContain('Threadpool starvation')
     expect(list.textContent).toContain('queue > 0 for >= 5 intervals')
   })
+
+  it('formats byte counters with binary units', async () => {
+    await show({ durationMs: 2000, series: profileSeries, counters: [row('gc-heap-size', { unit: 'B', values: vals(20, 2, 7471955232) })] })
+    expect(host.querySelector('.timeline-row:last-of-type .muted')?.textContent ?? host.textContent).toContain('GiB')
+  })
 })

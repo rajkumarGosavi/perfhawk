@@ -34,3 +34,9 @@ export function indexToRange(index: number, points: number, durationMs: number):
   }
   return { t0, t1 }
 }
+
+/** Sparse series (`null` = no point in that slice) as a drawable line: each value is held until the next point; leading gaps are 0. */
+export function fillGaps(values: (number | null)[]): number[] {
+  let last = 0
+  return values.map((v) => (v === null ? last : (last = v)))
+}
