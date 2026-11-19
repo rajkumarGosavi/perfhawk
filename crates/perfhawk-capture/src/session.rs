@@ -73,6 +73,7 @@ pub fn record(
         duration: req.plan.duration,
         timeline: req.plan.timeline,
         gc: req.plan.gc,
+        counters: req.plan.counters,
     };
 
     let name = req
@@ -181,6 +182,7 @@ pub fn record(
             end: CaptureEnd::Complete,
             warnings: vec![],
             gc: None,
+            counters: None,
         },
     };
     match sys_res {
@@ -198,6 +200,7 @@ pub fn record(
 
     let mut warnings = outcome.warnings;
     let gc = outcome.gc;
+    let counters = outcome.counters;
     for a in outcome.artifacts {
         if let Some(w) = &a.warning {
             warnings.push(format!("{}: {w}", a.kind));
@@ -254,6 +257,13 @@ pub fn record(
     } else if req.plan.gc && provider.supports_gc() && !lang_kinds.is_empty() {
         // Only when the runtime provider was asked to capture: an OS-only recording has no GC stream.
         warnings.push("no GC data was captured".into());
+    }
+    if let Some(c) = &counters {
+        if let Err(e) = store.save_counters(&session.id, c) {
+            warnings.push(format!("counters: could not store runtime counters: {e}"));
+        }
+    } else if req.plan.counters && provider.supports_counters() && !lang_kinds.is_empty() {
+        warnings.push("counters: no runtime counters were captured".into());
     }
     // A terminal Ctrl-C reaches the whole process group, so the target can die at the
     // same moment the user cancels; the user's cancellation is what gets recorded.

@@ -120,6 +120,7 @@ fn plan(kinds: Vec<ProfileKind>, secs: u64) -> CapturePlan {
         duration: Duration::from_secs(secs),
         timeline: false,
         gc: false,
+        counters: false,
     }
 }
 
@@ -787,6 +788,7 @@ fn timeline_plan(kinds: Vec<ProfileKind>, on: bool) -> CapturePlan {
         duration: Duration::from_secs(1),
         timeline: on,
         gc: false,
+        counters: false,
     }
 }
 

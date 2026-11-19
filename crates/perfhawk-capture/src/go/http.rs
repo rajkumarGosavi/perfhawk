@@ -332,5 +332,6 @@ pub(crate) fn capture_http(
         end,
         warnings,
         gc: gc_data,
+        counters: None,
     })
 }

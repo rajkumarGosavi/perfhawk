@@ -137,6 +137,9 @@ pub struct SessionRecord {
     pub profile_ids: Vec<String>,
     /// Whether the session has a GC data sidecar (computed, not stored in the database).
     pub has_gc: bool,
+    /// Set by `get_session`/`list_sessions` from the counters sidecar.
+    #[serde(default)]
+    pub has_counters: bool,
     /// Whether the session has a heap snapshot sidecar (computed, not stored in the database).
     #[serde(default)]
     pub has_heap: bool,
@@ -279,6 +282,7 @@ fn row_to_session(row: &Row) -> rusqlite::Result<SessionRecord> {
         tags: json_col(row, 9)?,
         profile_ids: Vec::new(),
         has_gc: false,
+        has_counters: false,
         has_heap: false,
     })
 }
@@ -868,6 +872,7 @@ impl Store {
             tags: tags.to_vec(),
             profile_ids: Vec::new(),
             has_gc: false,
+        has_counters: false,
             has_heap: false,
         };
         self.conn().execute(
@@ -910,6 +915,7 @@ impl Store {
 
     fn fill_profile_ids(&self, mut s: SessionRecord) -> Result<SessionRecord, StoreError> {
         s.has_gc = self.has_gc(&s.id);
+        s.has_counters = self.has_counters(&s.id);
         s.has_heap = self.has_heap(&s.id);
         let conn = self.conn();
         let mut stmt = conn.prepare(

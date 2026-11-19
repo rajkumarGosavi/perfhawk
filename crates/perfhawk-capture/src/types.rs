@@ -44,6 +44,8 @@ pub struct CapturePlan {
     pub timeline: bool,
     /// Also capture GC data when the runtime supports it (see `Provider::supports_gc`).
     pub gc: bool,
+    /// Also sample runtime counters when the runtime supports it (see `Provider::supports_counters`).
+    pub counters: bool,
 }
 
 /// One captured profile, ready to import.
@@ -70,6 +72,8 @@ pub struct CaptureOutcome {
     pub artifacts: Vec<Artifact>,
     /// GC data, when the plan asked for it and the provider produced it.
     pub gc: Option<perfhawk_model::GcData>,
+    /// Runtime counters, when the plan asked for them and the provider produced them.
+    pub counters: Option<perfhawk_model::CounterData>,
     pub end: CaptureEnd,
     pub warnings: Vec<String>,
 }

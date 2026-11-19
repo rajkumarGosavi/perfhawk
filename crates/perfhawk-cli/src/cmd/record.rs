@@ -18,6 +18,8 @@ pub struct Args {
     pub timeline: bool,
     /// Capture GC data when the runtime supports it.
     pub gc: bool,
+    /// Sample runtime counters when the runtime supports it.
+    pub counters: bool,
 }
 
 pub const ONE_TARGET: &str = "choose one target: --pid, --url, --go-test or -- <program>";
@@ -65,6 +67,7 @@ pub fn run(store: &Store, a: Args, target: Target) -> (u8, Option<String>) {
             duration: a.duration,
             timeline: a.timeline,
             gc: a.gc,
+            counters: a.counters,
         },
         name: a.name,
         tags: a.tags,

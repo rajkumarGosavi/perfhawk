@@ -282,6 +282,7 @@ impl SystemProvider for EtwProvider {
             end,
             warnings,
             gc: None,
+            counters: None,
         })
     }
 }

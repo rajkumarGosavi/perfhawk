@@ -19,6 +19,11 @@ pub trait Provider: Send + Sync {
         false
     }
 
+    /// Whether `capture` can return runtime counters when `CapturePlan::counters` is set.
+    fn supports_counters(&self) -> bool {
+        false
+    }
+
     fn capture(
         &self,
         rt: &RuntimeInfo,

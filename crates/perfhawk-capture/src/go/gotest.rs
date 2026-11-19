@@ -121,5 +121,6 @@ pub(crate) fn capture_go_test(
         end,
         warnings,
         gc: None,
+        counters: None,
     })
 }

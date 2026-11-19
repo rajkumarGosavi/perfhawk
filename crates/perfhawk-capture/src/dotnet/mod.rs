@@ -451,6 +451,7 @@ impl Provider for DotnetProvider {
         Ok(CaptureOutcome {
             artifacts,
             gc,
+            counters: None,
             end: end.unwrap_or(CaptureEnd::Complete),
             warnings,
         })

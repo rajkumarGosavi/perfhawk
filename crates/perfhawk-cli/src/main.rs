@@ -111,6 +111,9 @@ enum Command {
         /// Do not capture GC data (it is captured by default where the runtime supports it)
         #[arg(long)]
         no_gc: bool,
+        /// Skip runtime counters (threadpool, goroutines, ...); sampled by default where supported
+        #[arg(long)]
+        no_counters: bool,
         /// Open the UI on the new session afterwards
         #[arg(long)]
         open: bool,
@@ -354,6 +357,7 @@ async fn main() -> ExitCode {
             tags: vec![],
             timeline: true,
             gc: true,
+            counters: true,
         };
         if let Err(m) = cmd::record::build_target(&probe) {
             let _ = Cli::command()
@@ -382,6 +386,7 @@ async fn main() -> ExitCode {
             tags: vec![],
             timeline: true,
             gc: true,
+            counters: true,
         };
         let bad = match (session, cmd::record::build_target(&probe)) {
             (Some(_), _) if !program.is_empty() => {
@@ -502,6 +507,7 @@ async fn main() -> ExitCode {
             timeline: _,
             no_timeline,
             no_gc,
+            no_counters,
             open,
             port,
             program,
@@ -517,6 +523,7 @@ async fn main() -> ExitCode {
                 tags,
                 timeline: !no_timeline,
                 gc: !no_gc,
+                counters: !no_counters,
             };
             let target = match cmd::record::build_target(&args) {
                 Ok(t) => t,
@@ -558,6 +565,7 @@ async fn main() -> ExitCode {
                     tags: vec![],
                     timeline: true,
                     gc: true,
+                    counters: true,
                 };
                 match cmd::record::build_target(&args) {
                     Ok(t) => Some(t),

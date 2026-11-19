@@ -97,6 +97,7 @@ fn diagnose_mode(mode: &str) -> perfhawk_analysis::Diagnosis {
                 duration: Duration::from_secs(10),
                 timeline: true,
                 gc: false,
+                counters: false,
             },
             name: Some(format!("doctor-{mode}")),
             tags: vec![],

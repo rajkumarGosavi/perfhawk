@@ -61,6 +61,9 @@ impl Provider for FakeProvider {
     fn supports_gc(&self) -> bool {
         self.gc_support
     }
+    fn supports_counters(&self) -> bool {
+        self.gc_support
+    }
     fn capture(
         &self,
         _rt: &RuntimeInfo,
@@ -107,6 +110,7 @@ fn req(kinds: Vec<ProfileKind>) -> RecordRequest {
             duration: Duration::from_secs(1),
             timeline: false,
             gc: false,
+            counters: false,
         },
         name: None,
         tags: vec!["t".into()],
@@ -122,6 +126,7 @@ fn two_artifacts(end: CaptureEnd) -> CaptureOutcome {
         end,
         warnings: vec![],
         gc: None,
+        counters: None,
     }
 }
 
@@ -179,6 +184,7 @@ fn record_target_exit_is_partial() {
             end: CaptureEnd::TargetExited,
             warnings: vec!["exited early".into()],
             gc: None,
+            counters: None,
         })
     });
     let s = record(&store, &reg, &req(vec![]), &CancelToken::new(), &|_| {}).unwrap();
@@ -197,6 +203,7 @@ fn record_cancel_is_cancelled() {
             end: CaptureEnd::Cancelled,
             warnings: vec![],
             gc: None,
+            counters: None,
         })
     });
     let token = CancelToken::new();
@@ -272,6 +279,7 @@ impl Provider for Spy {
             end: CaptureEnd::Complete,
             warnings: vec![],
             gc: None,
+            counters: None,
         })
     }
 }
@@ -334,6 +342,7 @@ fn cancelled_token_wins_over_target_exited() {
             end: CaptureEnd::TargetExited,
             warnings: vec![],
             gc: None,
+            counters: None,
         })
     });
     let s = record(&store, &reg, &req(vec![]), &token, &|_| {}).unwrap();
@@ -367,6 +376,7 @@ fn cpu_with_timeline(t: Option<perfhawk_model::Timeline>) -> CaptureOutcome {
         end: CaptureEnd::Complete,
         warnings: vec![],
         gc: None,
+        counters: None,
     }
 }
 
@@ -500,6 +510,7 @@ fn cpu_outcome(gc: Option<perfhawk_model::GcData>) -> CaptureOutcome {
         end: CaptureEnd::Complete,
         warnings: vec![],
         gc,
+        counters: None,
     }
 }
 
@@ -556,4 +567,62 @@ fn record_does_not_warn_when_provider_does_not_support_gc() {
         "{:?}",
         s.warnings
     );
+}
+
+fn counters_req(on: bool) -> RecordRequest {
+    let mut r = req(vec![ProfileKind::Cpu]);
+    r.plan.counters = on;
+    r
+}
+
+fn counter_data() -> perfhawk_model::CounterData {
+    perfhawk_model::CounterData {
+        schema: perfhawk_model::COUNTER_SCHEMA,
+        runtime: "fake".into(),
+        start_unix_ns: 1,
+        duration_ns: 1_000_000_000,
+        interval_ns: 1_000_000_000,
+        series: vec![],
+        events: vec![],
+        notes: vec![],
+    }
+}
+
+#[test]
+fn record_saves_counters() {
+    let caps = vec![cap(ProfileKind::Cpu, true)];
+    let (_t, store, reg) = setup_gc(
+        caps,
+        |_| {
+            let mut o = cpu_outcome(None);
+            o.counters = Some(counter_data());
+            Ok(o)
+        },
+        true,
+    );
+    let s = record(&store, &reg, &counters_req(true), &CancelToken::new(), &|_| {}).unwrap();
+    assert!(store.has_counters(&s.id));
+    assert!(s.has_counters);
+    assert!(s.warnings.iter().all(|w| !w.contains("counters")), "{:?}", s.warnings);
+}
+
+#[test]
+fn record_warns_when_counters_missing() {
+    let caps = vec![cap(ProfileKind::Cpu, true)];
+    let (_t, store, reg) = setup_gc(caps, |_| Ok(cpu_outcome(None)), true);
+    let s = record(&store, &reg, &counters_req(true), &CancelToken::new(), &|_| {}).unwrap();
+    assert!(
+        s.warnings.iter().any(|w| w.starts_with("counters:")),
+        "{:?}",
+        s.warnings
+    );
+    assert_eq!(s.status, SessionStatus::Complete);
+}
+
+#[test]
+fn no_counters_plan_skips_warning() {
+    let caps = vec![cap(ProfileKind::Cpu, true)];
+    let (_t, store, reg) = setup_gc(caps, |_| Ok(cpu_outcome(None)), true);
+    let s = record(&store, &reg, &counters_req(false), &CancelToken::new(), &|_| {}).unwrap();
+    assert!(s.warnings.iter().all(|w| !w.contains("counters")), "{:?}", s.warnings);
 }
