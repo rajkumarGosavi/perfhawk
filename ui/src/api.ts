@@ -169,7 +169,24 @@ export type TimelineSeries = {
   sampleType: SampleTypeInfo
   values: number[]
 }
-export type SessionTimeline = { durationMs: number; series: TimelineSeries[] }
+/** One runtime counter resampled to the timeline's points; `null` where a slice has no point. */
+export type CounterRow = {
+  name: string
+  displayName: string
+  unit: string
+  kind: 'gauge' | 'rate'
+  values: (number | null)[]
+  events: { index: number; kind: string; detail: string }[]
+}
+export type SessionTimeline = { durationMs: number; series: TimelineSeries[]; counters?: CounterRow[] }
+export type CounterStat = {
+  name: string; displayName: string; unit: string; kind: 'gauge' | 'rate'
+  min: number; mean: number; max: number; last: number; points: number
+}
+export type CounterFinding = { id: string; title: string; detail: string; threshold: string; atNs: number | null }
+export type CounterReport =
+  | { available: true; stats: CounterStat[]; findings: CounterFinding[] }
+  | { available: false; reason: string }
 
 export type SeriesInfo = {
   key: string
@@ -390,6 +407,8 @@ export const getDoctor = (sessionRef: string) =>
   request<Diagnosis>(`/api/sessions/${encodeURIComponent(sessionRef)}/doctor`)
 export const getSessionTimeline = (sessionRef: string, points = 200) =>
   request<SessionTimeline>(`/api/sessions/${encodeURIComponent(sessionRef)}/timeline${qs({ points })}`)
+export const getSessionCounters = (sessionRef: string) =>
+  request<CounterReport>(`/api/sessions/${encodeURIComponent(sessionRef)}/counters`)
 export const getSeries = () => request<SeriesInfo[]>('/api/series')
 export const getHistory = (q: {
   series: string; kind: string; func: string; st?: string; tx?: string; focus?: string; exclude?: string; hide?: string

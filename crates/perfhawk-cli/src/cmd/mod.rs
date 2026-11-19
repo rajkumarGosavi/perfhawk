@@ -1,4 +1,5 @@
 pub mod check;
+pub mod counters;
 pub mod diff;
 pub mod doctor;
 pub mod gc;

@@ -64,6 +64,7 @@ fn plan(kinds: Vec<ProfileKind>) -> CapturePlan {
         duration: Duration::from_secs(2),
         timeline: false,
         gc: false,
+        counters: false,
     }
 }
 
@@ -720,6 +721,7 @@ fn gc_plan(on: bool) -> CapturePlan {
         duration: Duration::from_secs(2),
         timeline: false,
         gc: on,
+        counters: false,
     }
 }
 
@@ -746,6 +748,52 @@ fn invalid_gc_json_becomes_a_warning_not_a_failure() {
     assert!(out.gc.is_none());
     assert!(
         out.warnings.iter().any(|w| w.contains("GC data")),
+        "{:?}",
+        out.warnings
+    );
+}
+
+const COUNTERS_OK: &str = "fixtures/counters.json";
+const COUNTERS_BAD: &str = "fixtures/counters-bad.json";
+
+fn counters_plan(on: bool) -> CapturePlan {
+    CapturePlan {
+        counters: on,
+        ..gc_plan(false)
+    }
+}
+
+#[test]
+fn parses_counters_artifact_event() {
+    let (out, _) = capture_with(script(art("counters", COUNTERS_OK)), counters_plan(true));
+    let c = out.counters.expect("counters");
+    assert_eq!(c.series[0].name, "threadpool-queue-length");
+    assert_eq!(c.events[0].kind, "threadpool_starvation");
+    assert!(
+        out.artifacts.is_empty(),
+        "counters is not a profile artifact"
+    );
+}
+
+#[test]
+fn kinds_arg_includes_counters() {
+    let (_, on) = capture_with(script(art("cpu", CPU)), counters_plan(true));
+    assert!(
+        on.iter().any(|m| m.contains("--kinds cpu,counters ")),
+        "{on:?}"
+    );
+    let (_, off) = capture_with(script(art("cpu", CPU)), counters_plan(false));
+    assert!(off.iter().any(|m| m.contains("--kinds cpu ")), "{off:?}");
+}
+
+#[test]
+fn bad_counters_json_warns() {
+    let (out, _) = capture_with(script(art("counters", COUNTERS_BAD)), counters_plan(true));
+    assert!(out.counters.is_none());
+    assert!(
+        out.warnings
+            .iter()
+            .any(|w| w.starts_with("counters: ignoring invalid counter data from the helper")),
         "{:?}",
         out.warnings
     );

@@ -8,14 +8,17 @@ public sealed record CollectResult(string End, List<ArtifactInfo> Artifacts);
 
 public static class Collector
 {
-    // Runtime keywords: GC (allocation ticks), Loader, Jit, NGen, Contention, Stack.
-    private const long RuntimeKeywords = 0x1 | 0x8 | 0x10 | 0x20 | 0x4000 | 0x40000000;
+    // Runtime keywords: GC (allocation ticks), Loader, Jit, NGen, Contention, Threading (threadpool starvation), Stack.
+    private const long RuntimeKeywords = 0x1 | 0x8 | 0x10 | 0x20 | 0x4000 | 0x10000 | 0x40000000;
 
     public static IReadOnlyList<EventPipeProvider> Providers() => new[]
     {
         new EventPipeProvider("Microsoft-DotNETCore-SampleProfiler", EventLevel.Informational, 0),
         // Verbose is required for GCAllocationTick.
         new EventPipeProvider("Microsoft-Windows-DotNETRuntime", EventLevel.Verbose, RuntimeKeywords),
+        // The counters dotnet-counters shows by default, once per second.
+        new EventPipeProvider("System.Runtime", EventLevel.Informational, 0,
+            new Dictionary<string, string> { ["EventCounterIntervalSec"] = "1" }),
     };
 
     /// <summary>

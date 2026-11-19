@@ -110,6 +110,7 @@ fn provider_captures_block_io_off_cpu_and_sched_for_this_process() {
         duration: Duration::from_secs(3),
         timeline: true,
         gc: false,
+        counters: false,
     };
     let out = EtwProvider::new()
         .capture(&rt, &plan, &CancelToken::new(), &|m| eprintln!("{m}"))

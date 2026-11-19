@@ -1,0 +1,1 @@
+{"schema":1,"runtime":"dotnet","start_unix_ns":1,"duration_ns":2000000000,"interval_ns":1000000000,"series":[{"name":"threadpool-queue-length","display_name":"ThreadPool Queue Length","unit":"","kind":"gauge","points":[{"t_ns":0,"value":1.0},{"t_ns":1000000000,"value":3.0}]}],"events":[{"t_ns":1000000000,"kind":"threadpool_starvation","detail":"worker threads -> 9"}],"notes":[]}

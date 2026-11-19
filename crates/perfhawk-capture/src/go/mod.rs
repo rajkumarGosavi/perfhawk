@@ -169,6 +169,11 @@ impl Provider for GoProvider {
         true
     }
 
+    /// Like GC, only agent targets return counters; others get a warning at capture time.
+    fn supports_counters(&self) -> bool {
+        true
+    }
+
     fn capabilities(&self, rt: &RuntimeInfo) -> Vec<Capability> {
         use ProfileKind::*;
         let n = Fidelity::Native;
@@ -265,6 +270,7 @@ fn launch_and_capture(
             end: CaptureEnd::Cancelled,
             warnings: vec![],
             gc: None,
+            counters: None,
         }),
         None => Err(CaptureError::Target(
             "program did not start the perfhawk agent; import github.com/rajkumarGosavi/perfhawk/agents/go".into(),

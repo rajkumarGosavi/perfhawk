@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Runtime counters: `perfhawk record` now samples runtime counters once per second (turn off with `--no-counters`). .NET records every `System.Runtime` counter that `dotnet-counters` shows (threadpool queue and threads, CPU, GC heap, lock contentions, exceptions, ...) plus the runtime's threadpool starvation events, in the same EventPipe session. Go records goroutines, runnable goroutines, OS threads, GOMAXPROCS, scheduler latency p99 and mutex wait; this needs the agent module `agents/go` v0.1.3 or later. Counters show as rows on the session timeline (key ones first, "Show all" for the rest), and `perfhawk counters [REF] [--json]` prints min/mean/max/last per counter with findings for threadpool starvation or backlog, runaway goroutine growth, scheduler latency over 10 ms and more than 100 lock contentions per second.
+
 ## [0.1.2] - 2026-11-16
 
 ### Added

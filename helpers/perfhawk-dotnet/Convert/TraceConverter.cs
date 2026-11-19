@@ -12,7 +12,7 @@ public sealed record ArtifactInfo(string Kind, string Path, int Samples);
 /// <summary>Converts a <c>.nettrace</c> file into one pprof file per requested kind.</summary>
 public static class TraceConverter
 {
-    public static readonly string[] AllKinds = { "cpu", "wall", "memory", "lock", "threads", "gc" };
+    public static readonly string[] AllKinds = { "cpu", "wall", "memory", "lock", "threads", "gc", "counters" };
 
     private const long SampleIntervalNs = 1_000_000; // SampleProfiler default: 1 ms
 
@@ -47,6 +47,18 @@ public static class TraceConverter
         }
         frames.Reverse(); // root first
         return frames;
+    }
+
+    /// <summary>
+    /// EventCounters events carry one field, <c>Payload</c>, holding the counter's
+    /// fields; depending on the parser it may be wrapped in one more dictionary.
+    /// </summary>
+    private static IDictionary<string, object>? CounterPayload(TraceEvent ev)
+    {
+        object? v = ev.PayloadNames.Contains("Payload") ? ev.PayloadByName("Payload") : (ev.PayloadNames.Length > 0 ? ev.PayloadValue(0) : null);
+        var d = v as IDictionary<string, object>;
+        if (d != null && d.TryGetValue("Payload", out var inner) && inner is IDictionary<string, object> id) d = id;
+        return d;
     }
 
     private static List<ArtifactInfo> ConvertLog(TraceLog log, string outDir, ISet<string> kinds, int bucketMs)
@@ -98,6 +110,21 @@ public static class TraceConverter
             clr.GCAllocationTick += ev => gcc.OnAllocTick(ev.TimeStampRelativeMSec, ev.AllocationAmount64);
         }
 
+        CounterCollector? cc = kinds.Contains("counters") ? new CounterCollector() : null;
+        if (cc != null)
+        {
+            source.Dynamic.All += ev =>
+            {
+                if (ev.ProviderName != "System.Runtime" || ev.EventName != "EventCounters") return;
+                if (CounterPayload(ev) is { } p) cc.OnCounterPayload(ev.TimeStampRelativeMSec, p);
+            };
+            clr.ThreadPoolWorkerThreadAdjustmentAdjustment += ev =>
+            {
+                if (ev.Reason == ThreadAdjustmentReason.Starvation)
+                    cc.OnStarvation(ev.TimeStampRelativeMSec, ev.NewWorkerThreadCount);
+            };
+        }
+
         if (kinds.Contains("memory"))
             clr.GCAllocationTick += ev =>
                 mem.AddSample(FramesOf(ev), new[] { ev.AllocationAmount64, 1L });
@@ -143,6 +170,12 @@ public static class TraceConverter
             var gcPath = Path.Combine(outDir, "gc.json");
             File.WriteAllBytes(gcPath, gcc.BuildJson(startNs, durNs));
             result.Add(new ArtifactInfo("gc", gcPath, gcc.EventCount));
+        }
+        if (cc != null)
+        {
+            var cPath = Path.Combine(outDir, "counters.json");
+            File.WriteAllBytes(cPath, cc.BuildJson(startNs, durNs));
+            result.Add(new ArtifactInfo("counters", cPath, cc.EventCount));
         }
         return result;
     }

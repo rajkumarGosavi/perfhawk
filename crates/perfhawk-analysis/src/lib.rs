@@ -2,6 +2,7 @@
 //! views over a [`perfhawk_model::Profile`], with pprof-compatible filters.
 
 mod check;
+pub mod counters;
 mod diff;
 mod doctor;
 mod filter;

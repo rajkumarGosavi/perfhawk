@@ -106,6 +106,11 @@ pub enum HelperEvent {
         path: PathBuf,
         samples: u64,
     },
+    /// The `counters` artifact: a `counters.json` file, not a profile.
+    Counters {
+        path: PathBuf,
+        events: u64,
+    },
     /// The `gc` artifact: a `gc.json` file, not a profile.
     Gc {
         path: PathBuf,
@@ -155,6 +160,10 @@ fn parse_event(line: &str) -> Result<HelperEvent, CaptureError> {
         "progress" => HelperEvent::Progress(req("message")?),
         "warning" => HelperEvent::Warning(req("message")?),
         "artifact" if s("kind").as_deref() == Some("gc") => HelperEvent::Gc {
+            path: PathBuf::from(req("path")?),
+            events: v.get("samples").and_then(|p| p.as_u64()).unwrap_or(0),
+        },
+        "artifact" if s("kind").as_deref() == Some("counters") => HelperEvent::Counters {
             path: PathBuf::from(req("path")?),
             events: v.get("samples").and_then(|p| p.as_u64()).unwrap_or(0),
         },

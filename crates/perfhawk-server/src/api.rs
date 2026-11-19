@@ -144,6 +144,7 @@ pub fn routes() -> Router<St> {
         .route("/api/sessions/{reference}/pivot", get(pivot_h))
         .route("/api/sessions/{reference}/doctor", get(doctor_h))
         .route("/api/sessions/{reference}/gc", get(gc_h))
+        .route("/api/sessions/{reference}/counters", get(counters_h))
         .route("/api/sessions/{reference}/heap", get(heap_h))
         .route(
             "/api/sessions/{reference}/timeline",
@@ -906,6 +907,29 @@ async fn gc_h(State(s): State<St>, Path(r): Path<String>) -> ApiResult<Response>
     Ok(Json(body).into_response())
 }
 
+/// Runtime counter summary and findings: `{"available": false, "reason"}` or
+/// `{"available": true, "stats", "findings"}` (same shape rule as `/gc`).
+async fn counters_h(State(s): State<St>, Path(r): Path<String>) -> ApiResult<Response> {
+    let store = s.store.clone();
+    let data = blocking(move || {
+        let sess = store.resolve_session(&r)?;
+        store.load_counters(&sess.id)
+    })
+    .await?;
+    let body = match data {
+        Some(d) => {
+            let rep = perfhawk_analysis::counters::summarize(&d);
+            let mut v = serde_json::to_value(&rep).map_err(ApiError::internal)?;
+            v["available"] = true.into();
+            v
+        }
+        None => {
+            serde_json::json!({"available": false, "reason": "no runtime counters for this session"})
+        }
+    };
+    Ok(Json(body).into_response())
+}
+
 #[derive(Deserialize, Default)]
 struct HeapQuery {
     top: Option<usize>,
@@ -1003,6 +1027,29 @@ struct TimelineSeries {
 struct SessionTimelineOut {
     duration_ms: i64,
     series: Vec<TimelineSeries>,
+    counters: Vec<CounterRowOut>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CounterEventOut {
+    /// Index into the row's `values`.
+    index: usize,
+    kind: String,
+    detail: String,
+}
+
+/// One runtime counter resampled onto the timeline: gauges keep the max per slice,
+/// rates the sum; `null` where the slice has no point.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CounterRowOut {
+    name: String,
+    display_name: String,
+    unit: String,
+    kind: perfhawk_model::CounterKind,
+    values: Vec<Option<f64>>,
+    events: Vec<CounterEventOut>,
 }
 
 /// One sparkline per session profile that has a timeline, resampled to `points`
@@ -1032,17 +1079,20 @@ async fn session_timeline_h(
             let vals = (0..p.samples.len()).map(|i| p.value(i, st)).collect();
             items.push(Item { rec, t, vals });
         }
-        if items.is_empty() {
+        let counters = store.load_counters(&sess.id)?;
+        if items.is_empty() && counters.is_none() {
             return Ok(SessionTimelineOut {
                 duration_ms: 0,
                 series: vec![],
+                counters: vec![],
             });
         }
         // Window in ns relative to the earliest known start; unknown starts align to it.
         let origin = items
             .iter()
-            .filter(|i| i.t.start_unix_ns > 0)
             .map(|i| i.t.start_unix_ns)
+            .chain(counters.iter().map(|c| c.start_unix_ns))
+            .filter(|&s| s > 0)
             .min()
             .unwrap_or(0);
         let offset = |t: &Timeline| -> u128 {
@@ -1052,20 +1102,69 @@ async fn session_timeline_h(
                 0
             }
         };
+        let counter_off: u128 = counters
+            .as_ref()
+            .filter(|c| c.start_unix_ns > 0)
+            .map_or(0, |c| (c.start_unix_ns - origin).max(0) as u128);
+        let counter_end = counters.as_ref().map(|c| {
+            let last = c
+                .series
+                .iter()
+                .filter_map(|s| s.points.last())
+                .map(|p| p.t_ns + 1)
+                .max()
+                .unwrap_or(0);
+            counter_off + c.duration_ns.max(last) as u128
+        });
         let span: u128 = items
             .iter()
             .map(|i| offset(&i.t) + i.t.bucket_count() as u128 * i.t.bucket_ns as u128)
+            .chain(counter_end)
             .max()
             .unwrap_or(0)
             .max(1);
+        let slot = |at: u128| ((at * points as u128) / span).min(points as u128 - 1) as usize;
+        let counter_rows: Vec<CounterRowOut> = counters
+            .map(|c| {
+                c.series
+                    .iter()
+                    .map(|s| {
+                        let mut values: Vec<Option<f64>> = vec![None; points];
+                        for p in &s.points {
+                            let v = &mut values[slot(counter_off + p.t_ns as u128)];
+                            *v = Some(match (*v, s.kind) {
+                                (None, _) => p.value,
+                                (Some(a), perfhawk_model::CounterKind::Gauge) => a.max(p.value),
+                                (Some(a), perfhawk_model::CounterKind::Rate) => a + p.value,
+                            });
+                        }
+                        CounterRowOut {
+                            name: s.name.clone(),
+                            display_name: s.display_name.clone(),
+                            unit: s.unit.clone(),
+                            kind: s.kind,
+                            values,
+                            events: c
+                                .events
+                                .iter()
+                                .map(|e| CounterEventOut {
+                                    index: slot(counter_off + e.t_ns as u128),
+                                    kind: e.kind.clone(),
+                                    detail: e.detail.clone(),
+                                })
+                                .collect(),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         let series = items
             .into_iter()
             .map(|i| {
                 let mut values = vec![0i64; points];
                 let off = offset(&i.t);
                 for (k, &b) in i.t.sample_bucket.iter().enumerate() {
-                    let at = off + b as u128 * i.t.bucket_ns as u128;
-                    let idx = ((at * points as u128) / span).min(points as u128 - 1) as usize;
+                    let idx = slot(off + b as u128 * i.t.bucket_ns as u128);
                     values[idx] = values[idx].saturating_add(i.vals[k]);
                 }
                 let info = i.rec.sample_types.get(i.rec.default_sample_type).cloned();
@@ -1084,6 +1183,7 @@ async fn session_timeline_h(
         Ok(SessionTimelineOut {
             duration_ms: (span / 1_000_000).min(i64::MAX as u128) as i64,
             series,
+            counters: counter_rows,
         })
     })
     .await?;
