@@ -869,3 +869,82 @@ fn go_wall_has_no_timeline() {
     let out = run_capture(&m, &p, &rt, timeline_plan(vec![ProfileKind::Wall], true));
     assert!(kind_of(&out, ProfileKind::Wall).timeline.is_none());
 }
+
+const COUNTERS_JSON: &str = r#"{"schema":1,"runtime":"go","start_unix_ns":1,"duration_ns":1000000000,"interval_ns":1000000000,"series":[{"name":"/sched/goroutines:goroutines","display_name":"Goroutines","unit":"count","kind":"gauge","points":[{"t_ns":0,"value":5.0}]}],"events":[],"notes":[]}"#;
+
+fn capture_counters(m: &Mock, kinds: Vec<ProfileKind>) -> CaptureOutcome {
+    let (p, rt) = detect_url(m);
+    let plan = CapturePlan {
+        counters: true,
+        ..plan(kinds, 1)
+    };
+    p.capture(&rt, &Target::Url(m.base.clone()), &plan, &CancelToken::new(), &|_| {})
+        .unwrap()
+}
+
+#[test]
+fn agent_counters_land_in_outcome() {
+    let mut routes = agent_routes();
+    routes.push(("/debug/perfhawk/counters", ok(COUNTERS_JSON.as_bytes(), true)));
+    let m = mock(routes);
+    let out = capture_counters(&m, vec![ProfileKind::Cpu]);
+    let c = out.counters.expect("counters");
+    assert_eq!(c.series[0].name, "/sched/goroutines:goroutines");
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    let hits = m.hits.lock().unwrap().clone();
+    assert!(hits.contains(&"/debug/perfhawk/counters?seconds=1".to_string()), "{hits:?}");
+}
+
+#[test]
+fn old_agent_counters_404_warns() {
+    let m = mock(agent_routes());
+    let out = capture_counters(&m, vec![ProfileKind::Memory]);
+    assert!(out.counters.is_none());
+    assert_eq!(out.end, CaptureEnd::Complete);
+    assert!(
+        out.warnings
+            .iter()
+            .any(|w| w == "counters: update the perfhawk agent to record runtime counters"),
+        "{:?}",
+        out.warnings
+    );
+}
+
+#[test]
+fn counters_409_warns_and_record_continues() {
+    let mut routes = agent_routes();
+    routes.push((
+        "/debug/perfhawk/counters",
+        Route {
+            status: 409,
+            body: b"a counters capture is already running".to_vec(),
+            delay_by_seconds: false,
+        },
+    ));
+    let m = mock(routes);
+    let out = capture_counters(&m, vec![ProfileKind::Memory]);
+    assert!(out.counters.is_none());
+    assert_eq!(out.artifacts.len(), 1);
+    assert!(
+        out.warnings.iter().any(|w| w.starts_with("counters: HTTP 409")),
+        "{:?}",
+        out.warnings
+    );
+}
+
+#[test]
+fn counters_without_agent_warns() {
+    let m = mock(vec![
+        ("/debug/pprof/", ok(b"x", false)),
+        ("/debug/pprof/heap", ok(HEAP, false)),
+    ]);
+    let out = capture_counters(&m, vec![ProfileKind::Memory]);
+    assert!(out.counters.is_none());
+    assert!(
+        out.warnings
+            .iter()
+            .any(|w| w == "counters: runtime counters need the perfhawk agent in the target"),
+        "{:?}",
+        out.warnings
+    );
+}

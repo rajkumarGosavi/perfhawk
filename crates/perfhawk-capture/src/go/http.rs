@@ -105,6 +105,44 @@ enum Msg {
         gone: bool,
         warning: Option<String>,
     },
+    Counters {
+        data: Option<perfhawk_model::CounterData>,
+        gone: bool,
+        warning: Option<String>,
+    },
+}
+
+/// Fetches and validates the agent's `/debug/perfhawk/counters` result. Like GC,
+/// every failure is a warning, never a failed capture.
+fn fetch_counters(url: &str, timeout: Duration) -> Msg {
+    let warn = |w: String, gone: bool| Msg::Counters {
+        data: None,
+        gone,
+        warning: Some(w),
+    };
+    match fetch(url, timeout) {
+        Ok(bytes) => match perfhawk_model::CounterData::from_json(&bytes) {
+            Ok(d) => Msg::Counters {
+                data: Some(d),
+                gone: false,
+                warning: None,
+            },
+            Err(e) => warn(
+                format!("counters: ignoring invalid counter data from the agent ({e})"),
+                false,
+            ),
+        },
+        Err(FetchError::Status(404, _)) => warn(
+            "counters: update the perfhawk agent to record runtime counters".into(),
+            false,
+        ),
+        Err(FetchError::Gone(t)) => warn(format!("counters: {t}"), true),
+        Err(FetchError::Status(code, body)) => warn(
+            format!("counters: HTTP {code} {body}").trim().to_string(),
+            false,
+        ),
+        Err(FetchError::Other(t)) => warn(format!("counters: {t}"), false),
+    }
 }
 
 /// Fetches and validates the agent's `/debug/perfhawk/gc` result. A missing
@@ -253,14 +291,33 @@ pub(crate) fn capture_http(
             warnings.push("gc: GC data needs the perfhawk agent in the target".into());
         }
     }
+    let mut counters_pending = false;
+    if plan.counters {
+        if has_agent {
+            progress("capturing runtime counters from /debug/perfhawk/counters");
+            counters_pending = true;
+            let (tx, url) = (
+                tx.clone(),
+                format!("{base}/debug/perfhawk/counters?seconds={secs}"),
+            );
+            std::thread::spawn(move || {
+                let _ = tx.send(fetch_counters(&url, timeout));
+            });
+        } else {
+            warnings.push(
+                "counters: runtime counters need the perfhawk agent in the target".into(),
+            );
+        }
+    }
     drop(tx);
 
     let mut gc_data = None;
+    let mut counter_data = None;
     let mut artifacts: HashMap<ProfileKind, Artifact> = HashMap::new();
     let mut gone = false;
     let mut cancelled = false;
     let mut grace_deadline: Option<Instant> = None;
-    while !pending.is_empty() || gc_pending {
+    while !pending.is_empty() || gc_pending || counters_pending {
         if !cancelled && cancel.is_cancelled() {
             cancelled = true;
             grace_deadline = Some(Instant::now() + CANCEL_GRACE);
@@ -285,6 +342,19 @@ pub(crate) fn capture_http(
             }) => {
                 gc_pending = false;
                 gc_data = data;
+                gone |= g;
+                warnings.extend(warning);
+                if gone {
+                    break;
+                }
+            }
+            Ok(Msg::Counters {
+                data,
+                gone: g,
+                warning,
+            }) => {
+                counters_pending = false;
+                counter_data = data;
                 gone |= g;
                 warnings.extend(warning);
                 if gone {
@@ -332,6 +402,6 @@ pub(crate) fn capture_http(
         end,
         warnings,
         gc: gc_data,
-        counters: None,
+        counters: counter_data,
     })
 }

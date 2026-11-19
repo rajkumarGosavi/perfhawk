@@ -169,6 +169,11 @@ impl Provider for GoProvider {
         true
     }
 
+    /// Like GC, only agent targets return counters; others get a warning at capture time.
+    fn supports_counters(&self) -> bool {
+        true
+    }
+
     fn capabilities(&self, rt: &RuntimeInfo) -> Vec<Capability> {
         use ProfileKind::*;
         let n = Fidelity::Native;
