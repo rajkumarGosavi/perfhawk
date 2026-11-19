@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Diagnostics;
 using System.Diagnostics.Tracing;
 using System.Runtime.CompilerServices;
@@ -61,6 +62,31 @@ public class ConverterTests
         var d = Path.Combine(Path.GetTempPath(), "perfhawk-dotnet-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(d);
         return d;
+    }
+
+    [Fact]
+    public async Task CollectsRuntimeCountersFromOwnProcess()
+    {
+        var (cts, threads) = Workload.Start();
+        var outDir = TempDir();
+        try
+        {
+            var client = new DiagnosticsClient(Environment.ProcessId);
+            var result = await Collector.CollectAsync(client, 3000, new HashSet<string> { "counters" }, outDir, CancellationToken.None, null);
+            var art = result.Artifacts.Single(a => a.Kind == "counters");
+            using var doc = JsonDocument.Parse(File.ReadAllBytes(art.Path));
+            var series = doc.RootElement.GetProperty("series").EnumerateArray().ToList();
+            var names = series.Select(s => s.GetProperty("name").GetString()).ToList();
+            Assert.Contains("threadpool-thread-count", names);
+            Assert.Contains("cpu-usage", names);
+            Assert.All(series, s => Assert.True(s.GetProperty("points").GetArrayLength() >= 1, s.GetProperty("name").GetString()));
+        }
+        finally
+        {
+            cts.Cancel();
+            foreach (var t in threads) t.Join(2000);
+            try { Directory.Delete(outDir, true); } catch { }
+        }
     }
 
     [Fact]
