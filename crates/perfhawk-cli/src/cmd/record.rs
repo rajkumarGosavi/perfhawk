@@ -121,6 +121,9 @@ pub fn run(store: &Store, a: Args, target: Target) -> (u8, Option<String>) {
     if let Ok(Some(g)) = store.load_gc(&session.id) {
         println!("{}", super::gc::headline(&g));
     }
+    if let Ok(Some(c)) = store.load_counters(&session.id) {
+        println!("{}", super::counters::headline(&c));
+    }
     let code = match session.status {
         SessionStatus::Complete => 0,
         SessionStatus::Partial => {

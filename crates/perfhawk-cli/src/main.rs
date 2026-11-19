@@ -175,6 +175,13 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Runtime counters for a session: threadpool, goroutines, locks, with findings
+    Counters {
+        #[arg(default_value = "last")]
+        reference: String,
+        #[arg(long)]
+        json: bool,
+    },
     /// Take a heap snapshot of a running .NET process (pauses it for one full GC)
     Snapshot {
         /// Process id of a .NET 8+ process
@@ -586,6 +593,7 @@ async fn main() -> ExitCode {
             ))
         }
         Command::Targets { json } => done(cmd::targets::run(json)),
+        Command::Counters { reference, json } => done(cmd::counters::run(&store, &reference, json)),
         Command::Gc {
             reference,
             against,
