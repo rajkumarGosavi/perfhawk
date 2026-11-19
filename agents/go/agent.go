@@ -122,6 +122,7 @@ func Start(opts Options) (*Agent, error) {
 	mux.Handle("/debug/perfhawk/wall", fgprof.Handler())
 	mux.HandleFunc("/debug/perfhawk/contention", contentionHandler)
 	mux.HandleFunc("/debug/perfhawk/gc", gcHandler)
+	mux.HandleFunc("/debug/perfhawk/counters", countersHandler)
 	mux.HandleFunc("/debug/perfhawk/cpu-windows", cpuWindowsHandler)
 
 	a := &Agent{
