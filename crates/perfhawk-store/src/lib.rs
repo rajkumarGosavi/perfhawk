@@ -872,7 +872,7 @@ impl Store {
             tags: tags.to_vec(),
             profile_ids: Vec::new(),
             has_gc: false,
-        has_counters: false,
+            has_counters: false,
             has_heap: false,
         };
         self.conn().execute(

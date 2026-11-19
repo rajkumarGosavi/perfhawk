@@ -36,7 +36,10 @@ fn data() -> CounterData {
             display_name: "Goroutines".into(),
             unit: "count".into(),
             kind: CounterKind::Gauge,
-            points: vec![CounterPoint { t_ns: 0, value: 10.0 }],
+            points: vec![CounterPoint {
+                t_ns: 0,
+                value: 10.0,
+            }],
         }],
         events: vec![],
         notes: vec![],
@@ -44,7 +47,9 @@ fn data() -> CounterData {
 }
 
 fn sidecar(root: &std::path::Path, id: &str) -> std::path::PathBuf {
-    root.join("blobs").join(&id[..2]).join(format!("{id}.counters.zst"))
+    root.join("blobs")
+        .join(&id[..2])
+        .join(format!("{id}.counters.zst"))
 }
 
 #[test]

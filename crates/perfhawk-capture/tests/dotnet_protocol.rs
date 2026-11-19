@@ -769,13 +769,19 @@ fn parses_counters_artifact_event() {
     let c = out.counters.expect("counters");
     assert_eq!(c.series[0].name, "threadpool-queue-length");
     assert_eq!(c.events[0].kind, "threadpool_starvation");
-    assert!(out.artifacts.is_empty(), "counters is not a profile artifact");
+    assert!(
+        out.artifacts.is_empty(),
+        "counters is not a profile artifact"
+    );
 }
 
 #[test]
 fn kinds_arg_includes_counters() {
     let (_, on) = capture_with(script(art("cpu", CPU)), counters_plan(true));
-    assert!(on.iter().any(|m| m.contains("--kinds cpu,counters ")), "{on:?}");
+    assert!(
+        on.iter().any(|m| m.contains("--kinds cpu,counters ")),
+        "{on:?}"
+    );
     let (_, off) = capture_with(script(art("cpu", CPU)), counters_plan(false));
     assert!(off.iter().any(|m| m.contains("--kinds cpu ")), "{off:?}");
 }

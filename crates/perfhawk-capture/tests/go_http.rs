@@ -878,21 +878,33 @@ fn capture_counters(m: &Mock, kinds: Vec<ProfileKind>) -> CaptureOutcome {
         counters: true,
         ..plan(kinds, 1)
     };
-    p.capture(&rt, &Target::Url(m.base.clone()), &plan, &CancelToken::new(), &|_| {})
-        .unwrap()
+    p.capture(
+        &rt,
+        &Target::Url(m.base.clone()),
+        &plan,
+        &CancelToken::new(),
+        &|_| {},
+    )
+    .unwrap()
 }
 
 #[test]
 fn agent_counters_land_in_outcome() {
     let mut routes = agent_routes();
-    routes.push(("/debug/perfhawk/counters", ok(COUNTERS_JSON.as_bytes(), true)));
+    routes.push((
+        "/debug/perfhawk/counters",
+        ok(COUNTERS_JSON.as_bytes(), true),
+    ));
     let m = mock(routes);
     let out = capture_counters(&m, vec![ProfileKind::Cpu]);
     let c = out.counters.expect("counters");
     assert_eq!(c.series[0].name, "/sched/goroutines:goroutines");
     assert!(out.warnings.is_empty(), "{:?}", out.warnings);
     let hits = m.hits.lock().unwrap().clone();
-    assert!(hits.contains(&"/debug/perfhawk/counters?seconds=1".to_string()), "{hits:?}");
+    assert!(
+        hits.contains(&"/debug/perfhawk/counters?seconds=1".to_string()),
+        "{hits:?}"
+    );
 }
 
 #[test]
@@ -926,7 +938,9 @@ fn counters_409_warns_and_record_continues() {
     assert!(out.counters.is_none());
     assert_eq!(out.artifacts.len(), 1);
     assert!(
-        out.warnings.iter().any(|w| w.starts_with("counters: HTTP 409")),
+        out.warnings
+            .iter()
+            .any(|w| w.starts_with("counters: HTTP 409")),
         "{:?}",
         out.warnings
     );

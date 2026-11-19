@@ -94,10 +94,16 @@ impl CounterData {
                 )));
             }
             if s.points.windows(2).any(|w| w[1].t_ns <= w[0].t_ns) {
-                return Err(invalid(format!("counter '{}' points must be ordered by time", s.name)));
+                return Err(invalid(format!(
+                    "counter '{}' points must be ordered by time",
+                    s.name
+                )));
             }
             if s.points.iter().any(|p| !p.value.is_finite()) {
-                return Err(invalid(format!("counter '{}' has a non-finite value", s.name)));
+                return Err(invalid(format!(
+                    "counter '{}' has a non-finite value",
+                    s.name
+                )));
             }
         }
         Ok(())
@@ -137,8 +143,14 @@ mod tests {
                 unit: "".into(),
                 kind: CounterKind::Gauge,
                 points: vec![
-                    CounterPoint { t_ns: 0, value: 0.0 },
-                    CounterPoint { t_ns: 1_000_000_000, value: 4.5 },
+                    CounterPoint {
+                        t_ns: 0,
+                        value: 0.0,
+                    },
+                    CounterPoint {
+                        t_ns: 1_000_000_000,
+                        value: 4.5,
+                    },
                 ],
             }],
             events: vec![CounterEvent {
@@ -162,14 +174,20 @@ mod tests {
     fn rejects_schema_2() {
         let mut d = sample();
         d.schema = 2;
-        assert!(matches!(CounterData::from_json(&d.to_json()), Err(CounterError::Invalid(_))));
+        assert!(matches!(
+            CounterData::from_json(&d.to_json()),
+            Err(CounterError::Invalid(_))
+        ));
     }
 
     #[test]
     fn rejects_unordered_points() {
         let mut d = sample();
         d.series[0].points.reverse();
-        assert!(matches!(CounterData::from_json(&d.to_json()), Err(CounterError::Invalid(_))));
+        assert!(matches!(
+            CounterData::from_json(&d.to_json()),
+            Err(CounterError::Invalid(_))
+        ));
     }
 
     #[test]
@@ -178,7 +196,9 @@ mod tests {
         v["series"][0]["points"][0]["value"] = serde_json::Value::Null;
         let bytes = serde_json::to_vec(&v).unwrap();
         assert!(CounterData::from_json(&bytes).is_err());
-        let text = String::from_utf8(sample().to_json()).unwrap().replace("4.5", "1e400");
+        let text = String::from_utf8(sample().to_json())
+            .unwrap()
+            .replace("4.5", "1e400");
         assert!(CounterData::from_json(text.as_bytes()).is_err());
     }
 
@@ -187,23 +207,35 @@ mod tests {
         let mut d = sample();
         let s = d.series[0].clone();
         d.series = (0..MAX_COUNTER_SERIES + 1).map(|_| s.clone()).collect();
-        assert!(matches!(CounterData::from_json(&d.to_json()), Err(CounterError::Invalid(_))));
+        assert!(matches!(
+            CounterData::from_json(&d.to_json()),
+            Err(CounterError::Invalid(_))
+        ));
     }
 
     #[test]
     fn rejects_too_many_points() {
         let mut d = sample();
         d.series[0].points = (0..MAX_COUNTER_POINTS as u64 + 1)
-            .map(|i| CounterPoint { t_ns: i, value: 1.0 })
+            .map(|i| CounterPoint {
+                t_ns: i,
+                value: 1.0,
+            })
             .collect();
-        assert!(matches!(CounterData::from_json(&d.to_json()), Err(CounterError::Invalid(_))));
+        assert!(matches!(
+            CounterData::from_json(&d.to_json()),
+            Err(CounterError::Invalid(_))
+        ));
     }
 
     #[test]
     fn rejects_zero_interval() {
         let mut d = sample();
         d.interval_ns = 0;
-        assert!(matches!(CounterData::from_json(&d.to_json()), Err(CounterError::Invalid(_))));
+        assert!(matches!(
+            CounterData::from_json(&d.to_json()),
+            Err(CounterError::Invalid(_))
+        ));
     }
 
     #[test]

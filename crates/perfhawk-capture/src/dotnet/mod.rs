@@ -461,9 +461,7 @@ impl Provider for DotnetProvider {
                 Err(e) => read_err = Some(e),
             },
             HelperEvent::Gc { path, .. } => gc = read_gc(&path, &mut warnings),
-            HelperEvent::Counters { path, .. } => {
-                counters = read_counters(&path, &mut warnings)
-            }
+            HelperEvent::Counters { path, .. } => counters = read_counters(&path, &mut warnings),
             HelperEvent::Error { code, message } => error = Some((code, message)),
             HelperEvent::Done { end: e } => end = Some(e),
             HelperEvent::Hello { .. } | HelperEvent::Process { .. } | HelperEvent::Heap { .. } => {}

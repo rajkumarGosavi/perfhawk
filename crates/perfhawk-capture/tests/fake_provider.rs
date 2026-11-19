@@ -600,17 +600,35 @@ fn record_saves_counters() {
         },
         true,
     );
-    let s = record(&store, &reg, &counters_req(true), &CancelToken::new(), &|_| {}).unwrap();
+    let s = record(
+        &store,
+        &reg,
+        &counters_req(true),
+        &CancelToken::new(),
+        &|_| {},
+    )
+    .unwrap();
     assert!(store.has_counters(&s.id));
     assert!(s.has_counters);
-    assert!(s.warnings.iter().all(|w| !w.contains("counters")), "{:?}", s.warnings);
+    assert!(
+        s.warnings.iter().all(|w| !w.contains("counters")),
+        "{:?}",
+        s.warnings
+    );
 }
 
 #[test]
 fn record_warns_when_counters_missing() {
     let caps = vec![cap(ProfileKind::Cpu, true)];
     let (_t, store, reg) = setup_gc(caps, |_| Ok(cpu_outcome(None)), true);
-    let s = record(&store, &reg, &counters_req(true), &CancelToken::new(), &|_| {}).unwrap();
+    let s = record(
+        &store,
+        &reg,
+        &counters_req(true),
+        &CancelToken::new(),
+        &|_| {},
+    )
+    .unwrap();
     assert!(
         s.warnings.iter().any(|w| w.starts_with("counters:")),
         "{:?}",
@@ -623,6 +641,17 @@ fn record_warns_when_counters_missing() {
 fn no_counters_plan_skips_warning() {
     let caps = vec![cap(ProfileKind::Cpu, true)];
     let (_t, store, reg) = setup_gc(caps, |_| Ok(cpu_outcome(None)), true);
-    let s = record(&store, &reg, &counters_req(false), &CancelToken::new(), &|_| {}).unwrap();
-    assert!(s.warnings.iter().all(|w| !w.contains("counters")), "{:?}", s.warnings);
+    let s = record(
+        &store,
+        &reg,
+        &counters_req(false),
+        &CancelToken::new(),
+        &|_| {},
+    )
+    .unwrap();
+    assert!(
+        s.warnings.iter().all(|w| !w.contains("counters")),
+        "{:?}",
+        s.warnings
+    );
 }

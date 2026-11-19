@@ -304,9 +304,8 @@ pub(crate) fn capture_http(
                 let _ = tx.send(fetch_counters(&url, timeout));
             });
         } else {
-            warnings.push(
-                "counters: runtime counters need the perfhawk agent in the target".into(),
-            );
+            warnings
+                .push("counters: runtime counters need the perfhawk agent in the target".into());
         }
     }
     drop(tx);
