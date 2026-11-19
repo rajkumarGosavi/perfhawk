@@ -530,3 +530,172 @@ async fn history_keeps_the_most_recent_200_points() {
     assert_eq!(pts.last().unwrap()["value"], 205);
     assert_eq!(pts[0]["value"], 6);
 }
+
+// ---- B1 runtime counters ----
+
+fn empty_session(store: &Store) -> SessionRecord {
+    store
+        .create_session(
+            "c",
+            TargetInfo {
+                runtime: "dotnet".into(),
+                pid: Some(1),
+                command: None,
+                url: None,
+                runtime_version: None,
+            },
+            &[],
+            &[],
+        )
+        .unwrap()
+}
+
+fn counters(
+    start_unix_ns: i64,
+    series: Vec<perfhawk_model::CounterSeries>,
+) -> perfhawk_model::CounterData {
+    perfhawk_model::CounterData {
+        schema: perfhawk_model::COUNTER_SCHEMA,
+        runtime: "dotnet".into(),
+        start_unix_ns,
+        duration_ns: 2_000_000_000,
+        interval_ns: 1_000_000_000,
+        series,
+        events: vec![perfhawk_model::CounterEvent {
+            t_ns: 1_000_000_000,
+            kind: "threadpool_starvation".into(),
+            detail: "worker threads -> 9".into(),
+        }],
+        notes: vec![],
+    }
+}
+
+fn cs(
+    name: &str,
+    kind: perfhawk_model::CounterKind,
+    pts: &[(u64, f64)],
+) -> perfhawk_model::CounterSeries {
+    perfhawk_model::CounterSeries {
+        name: name.into(),
+        display_name: name.into(),
+        unit: "".into(),
+        kind,
+        points: pts
+            .iter()
+            .map(|&(t_ns, value)| perfhawk_model::CounterPoint { t_ns, value })
+            .collect(),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn timeline_includes_counter_rows() {
+    let (_d, store, addr) = start().await;
+    let s = session_with(&store, &[CPU]);
+    put_timeline(&store, &s.profile_ids[0], 1_700_000_000_000_000_000, 20, 10);
+    let g = cs(
+        "threadpool-queue-length",
+        perfhawk_model::CounterKind::Gauge,
+        &[(0, 1.0), (1_000_000_000, 4.0)],
+    );
+    store
+        .save_counters(&s.id, &counters(1_700_000_000_000_000_000, vec![g]))
+        .unwrap();
+    let (st, v) = get(addr, &format!("/api/sessions/{}/timeline?points=50", s.id)).await;
+    assert_eq!(st, 200, "{v}");
+    assert_eq!(v["series"].as_array().unwrap().len(), 1);
+    let c = &v["counters"][0];
+    assert_eq!(c["name"], "threadpool-queue-length");
+    assert_eq!(c["displayName"], "threadpool-queue-length");
+    assert_eq!(c["kind"], "gauge");
+    assert_eq!(c["values"].as_array().unwrap().len(), 50);
+    assert_eq!(c["events"][0]["kind"], "threadpool_starvation");
+    assert!(c["events"][0]["index"].as_u64().unwrap() < 50);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn timeline_gauge_max_rate_sum() {
+    let (_d, store, addr) = start().await;
+    let s = empty_session(&store);
+    let g = cs(
+        "cpu-usage",
+        perfhawk_model::CounterKind::Gauge,
+        &[(0, 3.0), (10_000_000, 7.0)],
+    );
+    let r = cs(
+        "exception-count",
+        perfhawk_model::CounterKind::Rate,
+        &[(0, 2.0), (10_000_000, 3.0)],
+    );
+    store
+        .save_counters(&s.id, &counters(5, vec![g, r]))
+        .unwrap();
+    let (st, v) = get(addr, &format!("/api/sessions/{}/timeline?points=20", s.id)).await;
+    assert_eq!(st, 200, "{v}");
+    assert_eq!(v["durationMs"], 2000);
+    assert_eq!(v["series"].as_array().unwrap().len(), 0);
+    assert_eq!(v["counters"][0]["values"][0], 7.0);
+    assert_eq!(v["counters"][1]["values"][0], 5.0);
+    assert!(v["counters"][0]["values"][5].is_null());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn timeline_aligns_counters_starting_later() {
+    let (_d, store, addr) = start().await;
+    let s = session_with(&store, &[CPU]);
+    let t0 = 1_700_000_000_000_000_000;
+    put_timeline(&store, &s.profile_ids[0], t0, 20, 10);
+    let g = cs(
+        "cpu-usage",
+        perfhawk_model::CounterKind::Gauge,
+        &[(0, 1.0), (1_000_000_000, 2.0)],
+    );
+    store
+        .save_counters(&s.id, &counters(t0 + 2_000_000_000, vec![g]))
+        .unwrap();
+    let points = 100;
+    let (_, v) = get(
+        addr,
+        &format!("/api/sessions/{}/timeline?points={points}", s.id),
+    )
+    .await;
+    let span_ms = v["durationMs"].as_i64().unwrap();
+    let vals = v["counters"][0]["values"].as_array().unwrap();
+    let first = vals.iter().position(|x| !x.is_null()).unwrap();
+    assert_eq!(first as i64, 2000 * points / span_ms, "span {span_ms} ms");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn timeline_without_counters_has_empty_list() {
+    let (_d, store, addr) = start().await;
+    let s = session_with(&store, &[CPU]);
+    let (_, v) = get(addr, &format!("/api/sessions/{}/timeline", s.id)).await;
+    assert_eq!(v["counters"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn counters_endpoint_report() {
+    let (_d, store, addr) = start().await;
+    let s = empty_session(&store);
+    let g = cs(
+        "threadpool-queue-length",
+        perfhawk_model::CounterKind::Gauge,
+        &[(0, 1.0)],
+    );
+    store.save_counters(&s.id, &counters(1, vec![g])).unwrap();
+    let (st, v) = get(addr, &format!("/api/sessions/{}/counters", s.id)).await;
+    assert_eq!(st, 200, "{v}");
+    assert_eq!(v["available"], true);
+    assert_eq!(v["stats"][0]["name"], "threadpool-queue-length");
+    assert_eq!(v["findings"][0]["id"], "threadpool_starvation");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn counters_endpoint_without_data_is_unavailable() {
+    let (_d, store, addr) = start().await;
+    let s = empty_session(&store);
+    let (st, v) = get(addr, &format!("/api/sessions/{}/counters", s.id)).await;
+    assert_eq!(st, 200);
+    assert_eq!(v["available"], false);
+    let (st, _) = get(addr, "/api/sessions/nope/counters").await;
+    assert_eq!(st, 404);
+}
