@@ -50,13 +50,32 @@ fn is_dotnet_program(program: &str) -> bool {
     p.with_extension("runtimeconfig.json").is_file()
 }
 
-/// The helper's `--kinds` value: profile kinds, plus `gc` when GC data is wanted.
-fn kinds_arg(kinds: &[ProfileKind], gc: bool) -> String {
+/// The helper's `--kinds` value: profile kinds, plus `gc` and `counters` when wanted.
+fn kinds_arg(kinds: &[ProfileKind], gc: bool, counters: bool) -> String {
     let mut v: Vec<&str> = kinds.iter().map(|k| k.as_str()).collect();
     if gc {
         v.push("gc");
     }
+    if counters {
+        v.push("counters");
+    }
     v.join(",")
+}
+
+/// Parses a helper-written `counters.json`, turning a bad file into a warning.
+fn read_counters(path: &Path, warnings: &mut Vec<String>) -> Option<perfhawk_model::CounterData> {
+    let parsed = std::fs::read(path)
+        .map_err(|e| e.to_string())
+        .and_then(|b| perfhawk_model::CounterData::from_json(&b).map_err(|e| e.to_string()));
+    match parsed {
+        Ok(c) => Some(c),
+        Err(e) => {
+            warnings.push(format!(
+                "counters: ignoring invalid counter data from the helper ({e})"
+            ));
+            None
+        }
+    }
 }
 
 /// Parses a helper-written `gc.json`, turning a bad file into a warning.
@@ -309,6 +328,10 @@ impl Provider for DotnetProvider {
         true
     }
 
+    fn supports_counters(&self) -> bool {
+        true
+    }
+
     fn capabilities(&self, _rt: &RuntimeInfo) -> Vec<Capability> {
         use ProfileKind::*;
         let cap = |kind, fidelity, available, note: Option<&str>| Capability {
@@ -383,7 +406,7 @@ impl Provider for DotnetProvider {
                     "--duration-ms".into(),
                     duration_ms.clone(),
                     "--kinds".into(),
-                    kinds_arg(&plan.kinds, plan.gc),
+                    kinds_arg(&plan.kinds, plan.gc, plan.counters),
                     "--out".into(),
                     dir.0.to_string_lossy().into_owned(),
                 ]);
@@ -402,7 +425,7 @@ impl Provider for DotnetProvider {
                 "--duration-ms".into(),
                 duration_ms,
                 "--kinds".into(),
-                kinds_arg(&plan.kinds, plan.gc),
+                kinds_arg(&plan.kinds, plan.gc, plan.counters),
                 "--out".into(),
                 dir.0.to_string_lossy().into_owned(),
             ]);
@@ -412,6 +435,7 @@ impl Provider for DotnetProvider {
         let mut artifacts: Vec<Artifact> = Vec::new();
         let mut warnings: Vec<String> = Vec::new();
         let mut gc: Option<perfhawk_model::GcData> = None;
+        let mut counters: Option<perfhawk_model::CounterData> = None;
         let mut end = None;
         let mut error: Option<(String, String)> = None;
         let mut read_err: Option<std::io::Error> = None;
@@ -437,6 +461,9 @@ impl Provider for DotnetProvider {
                 Err(e) => read_err = Some(e),
             },
             HelperEvent::Gc { path, .. } => gc = read_gc(&path, &mut warnings),
+            HelperEvent::Counters { path, .. } => {
+                counters = read_counters(&path, &mut warnings)
+            }
             HelperEvent::Error { code, message } => error = Some((code, message)),
             HelperEvent::Done { end: e } => end = Some(e),
             HelperEvent::Hello { .. } | HelperEvent::Process { .. } | HelperEvent::Heap { .. } => {}
@@ -451,7 +478,7 @@ impl Provider for DotnetProvider {
         Ok(CaptureOutcome {
             artifacts,
             gc,
-            counters: None,
+            counters,
             end: end.unwrap_or(CaptureEnd::Complete),
             warnings,
         })
